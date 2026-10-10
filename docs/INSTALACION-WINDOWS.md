@@ -83,7 +83,7 @@ powershell -ExecutionPolicy Bypass -File instalar.ps1 -Reiniciar
 
 | Quiero… | Cómo |
 |---|---|
-| Abrir JARVIS | Acceso directo **JARVIS** del escritorio, o http://localhost:3333 |
+| Abrir JARVIS | Acceso directo **JARVIS** del escritorio: si está parado lo arranca y, si no, solo abre el dashboard (http://localhost:3333) |
 | Reiniciarlo | `powershell -ExecutionPolicy Bypass -File instalar.ps1 -Reiniciar` |
 | Pararlo | `... instalar.ps1 -Parar` |
 | Abrirlo con la ventana visible (para ver errores) | Doble clic en `iniciar-jarvis.bat` |

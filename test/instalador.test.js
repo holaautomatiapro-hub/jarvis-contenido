@@ -98,6 +98,13 @@ describe('npm run claves', () => {
     assert.doesNotMatch(dicho.join('\n'), /sk_nueva/, 'nunca escribe la clave en pantalla');
   });
 
+  test('un voice ID con otro formato (p. ej. un token pegado por error) no se guarda', async () => {
+    const dicho = [];
+    const cambios = await pedirClaves({ actuales: {}, preguntar: respuestas(['', '74d74c5ced31918a0ff30b127a4c1ed2289155ba7acf97ed5fb38890af6b7988', 'dNjJKg63Fr5AXwIdkATa']).preguntar, decir: (t) => dicho.push(t), fetchImpl: sinRed });
+    assert.equal(cambios.ELEVENLABS_VOICE_ID, 'dNjJKg63Fr5AXwIdkATa');
+    assert.ok(dicho.some((t) => /20 letras y números/.test(t)));
+  });
+
   test('las claves secretas se enseñan enmascaradas', () => {
     assert.equal(enmascarar('sk_abcdef1234', true), '••••1234');
     assert.equal(enmascarar('', true), '(vacío)');

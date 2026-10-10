@@ -8,7 +8,7 @@ import { asegurarEnv, guardarEnv, leerEnv, ENV_PATH } from '../server/env-archiv
 
 export const CLAVES = [
   { grupo: 'Voz (ElevenLabs)', id: 'ELEVENLABS_API_KEY', secreto: true, ayuda: 'elevenlabs.io → Developers → API Keys. Sirve para que JARVIS hable con tu voz y transcriba tus reels.' },
-  { grupo: 'Voz (ElevenLabs)', id: 'ELEVENLABS_VOICE_ID', ayuda: 'El ID de la voz (elevenlabs.io → Voices → ⋯ → Copy voice ID).', voces: true },
+  { grupo: 'Voz (ElevenLabs)', id: 'ELEVENLABS_VOICE_ID', ayuda: 'El ID de la voz (elevenlabs.io → Voices → ⋯ → Copy voice ID).', voces: true, validar: (v) => /^[A-Za-z0-9]{20}$/.test(v) || 'Un voice ID de ElevenLabs tiene 20 letras y números (por ejemplo dNjJKg63Fr5AXwIdkATa)' },
   { grupo: 'Instagram y Meta Ads', id: 'META_APP_ID', ayuda: 'developers.facebook.com → tu app → Configuración → Básica → Identificador de la app. Guía: docs/INSTAGRAM.md', validar: (v) => /^\d{6,20}$/.test(v) || 'Debe ser un número' },
   { grupo: 'Instagram y Meta Ads', id: 'META_APP_SECRET', secreto: true, ayuda: 'En la misma página: Clave secreta de la app (botón Mostrar).', validar: (v) => /^[a-f0-9]{32}$/i.test(v) || 'Son 32 caracteres (letras a-f y números)' },
   { grupo: 'Instagram y Meta Ads', id: 'META_CONFIG_ID', ayuda: 'Solo si usas "Inicio de sesión con Facebook para empresas": el ID de la Configuración que creaste con los permisos.', validar: (v) => /^\d{6,20}$/.test(v) || 'Debe ser un número' },
@@ -48,8 +48,9 @@ export async function pedirClaves({ actuales, preguntar, decir = console.log, fe
           const elegido = (await preguntar(`  Número de la voz, o pega un voice ID [${enmascarar(valorActual)}]: `, false)).trim();
           const n = Number(elegido);
           if (elegido && Number.isInteger(n) && n >= 1 && n <= r.voces.length) { cambios[c.id] = r.voces[n - 1].id; decir(`  ✓ ${r.voces[n - 1].nombre}`); continue; }
-          if (elegido) cambios[c.id] = elegido;
-          continue;
+          if (elegido && c.validar(elegido) === true) { cambios[c.id] = elegido; continue; }
+          if (elegido) decir(`  ! ${c.validar(elegido)}`);
+          else continue;
         }
         if (r.error) decir(`  ! ${r.error}`);
       }

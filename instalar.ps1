@@ -211,10 +211,11 @@ if ($EsWindows) {
     Ok 'JARVIS arrancará solo (minimizado) al iniciar sesión en Windows'
   }
   try {
-    # Acceso directo que abre el dashboard en tu navegador, con el icono de JARVIS
+    # Acceso directo: si JARVIS está parado lo arranca (minimizado) y abre el dashboard; si ya está en marcha, solo lo abre
     $lnk = (New-Object -ComObject WScript.Shell).CreateShortcut($r.Escritorio)
-    $lnk.TargetPath = Join-Path $env:WINDIR 'explorer.exe'
-    $lnk.Arguments = "http://localhost:$puerto/"
+    $lnk.TargetPath = Join-Path $Raiz 'iniciar-jarvis.bat'
+    $lnk.WorkingDirectory = $Raiz
+    $lnk.WindowStyle = 7
     $lnk.IconLocation = (Join-Path $Raiz 'assets\jarvis.ico') + ',0'
     $lnk.Description = 'JARVIS · Sistema Operativo de IA'
     $lnk.Save()
