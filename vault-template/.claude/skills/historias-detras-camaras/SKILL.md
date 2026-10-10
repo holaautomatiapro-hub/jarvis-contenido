@@ -1,0 +1,30 @@
+---
+name: historias-detras-camaras
+description: "Historias del proceso y el día a día del negocio. Úsala para humanizar la marca."
+metadata:
+  titulo: "Historias detrás de cámaras"
+  categoria: historias
+  autor: JARVIS
+---
+# Historias detrás de cámaras
+
+Historias del proceso y el día a día del negocio. Úsala para humanizar la marca.
+
+## Antes de empezar
+- Lee `_voz.md` (en la raíz del vault) y escribe con esa voz. Si está vacío, usa un tono cercano y directo en español de España y avísalo en una sola línea al final.
+- Busca material propio con `buscar_notas` (sobre todo en `03-Transcripciones` y `01-Ideas`): historias, frases y ejemplos reales valen más que cualquier invento.
+- Si te falta un dato imprescindible (tema, objetivo o público), pregunta una sola cosa y espera.
+
+## Pasos
+1. Elige un momento del proceso (grabando, con un cliente, montando algo).
+2. Secuencia de 4-6 historias con algo que se aprende en cada una.
+3. Cierra con una pregunta o encuesta.
+
+## Formato de la respuesta
+Secuencia con qué grabar y texto de cada historia.
+
+## Al terminar
+- Repasa el texto contra la lista anti-IA: nada de "en el mundo de hoy", "descubre", "sumérgete", "no solo… sino también", tríos de adjetivos ni emojis de relleno. Frases concretas, como se dicen en voz alta.
+- Guarda el resultado con `crear_nota` en `06-Publicaciones/` (título claro y la fecha si es un informe).
+- Si es una pieza de contenido nueva, créala o muévela en el pipeline (`crear_pieza` / `mover_pieza`).
+- Termina proponiendo el siguiente paso en una frase.

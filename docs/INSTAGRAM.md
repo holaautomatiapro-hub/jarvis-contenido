@@ -1,0 +1,67 @@
+# Conectar Instagram a JARVIS
+
+JARVIS lee tus métricas con la **API oficial de Instagram** (Graph API de Meta). No hace falta publicar tu app ni pasar revisión: en modo desarrollo funciona con tus propias cuentas.
+
+**Requisitos**
+- Cuenta de Instagram **profesional** (Empresa o Creador).
+- Esa cuenta **vinculada a una página de Facebook** (en Instagram: *Configuración → Centro de cuentas* o desde la página de Facebook: *Configuración → Cuentas vinculadas*).
+- Ser administrador de esa página.
+
+> Meta cambia a menudo los nombres de los menús. Si algo no coincide exactamente, busca la opción con un nombre parecido.
+
+---
+
+## Opción A · Botón "Conectar con Facebook" (recomendada)
+
+### 1. Crea la app de Meta
+1. Entra en [developers.facebook.com](https://developers.facebook.com) con tu cuenta de Facebook (la que administra la página) y pulsa **Mis apps → Crear app**.
+2. Ponle de nombre algo como `JARVIS` y tu email.
+3. En el tipo de uso elige **Otro** y, después, el tipo **Empresa**. Si te ofrece casos de uso, elige el de gestionar Instagram o páginas.
+4. Si te pide un portfolio comercial (Business Manager), elige el tuyo o déjalo en blanco.
+
+### 2. Añade el inicio de sesión con Facebook
+1. En el panel de la app, añade el producto **Inicio de sesión con Facebook para empresas** (o **Inicio de sesión con Facebook**, si es el que aparece).
+2. En sus **Ajustes**, en *URI de redireccionamiento de OAuth válidos*, añade exactamente:
+   ```
+   http://localhost:3333/api/instagram/callback
+   ```
+3. Si el producto es **para empresas**, crea una **Configuración** con estos permisos y copia su **ID de configuración**:
+   `instagram_basic`, `instagram_manage_insights`, `pages_show_list`, `pages_read_engagement`, `business_management`, `ads_read`, `ads_management`.
+
+### 3. Copia las claves en `.env`
+Ejecuta `npm run claves` en la carpeta de JARVIS y pega el **Identificador de la app** y la **Clave secreta** (en **Configuración de la app → Básica**) y, si usas "para empresas", el **ID de configuración**. Si prefieres editar `.env` a mano:
+```
+META_APP_ID=123456789012345
+META_APP_SECRET=abcdef0123456789...
+META_CONFIG_ID=987654321   # solo si usas "para empresas"
+```
+Reinicia JARVIS: `powershell -ExecutionPolicy Bypass -File instalar.ps1 -Reiniciar`.
+
+### 4. Conecta
+En la pestaña **Instagram** pulsa **Conectar con Facebook**, acepta los permisos y elige tu página. JARVIS vuelve solo y empieza a sincronizar.
+
+---
+
+## Opción B · Pegar un token (plan B si la opción A da guerra)
+1. Abre el [Explorador de la API Graph](https://developers.facebook.com/tools/explorer/).
+2. Arriba a la derecha elige tu app (la de la opción A).
+3. En **Permisos** añade los mismos de arriba y pulsa **Generate Access Token**. Acepta.
+4. Copia el token y pégalo en la pestaña **Instagram** → *…o pega un token de acceso de Meta* → **Conectar**.
+
+Si además tienes `META_APP_ID` y `META_APP_SECRET` en `.env`, JARVIS lo convierte en un token que no caduca. Si no, el token del explorador dura solo unas horas.
+
+---
+
+## Qué hace JARVIS después
+- **Sincroniza cada 6 horas** (cámbialo con `IG_SYNC_HORAS`) tus últimas 150 publicaciones: alcance, visualizaciones, interacciones, guardados, compartidos y tiempo medio de visualización de los reels. También guarda el alcance diario y los seguidores nuevos de la cuenta.
+- **Transcribe tus reels** con ElevenLabs (si tienes `ELEVENLABS_API_KEY`) y los guarda en `03-Transcripciones/` con sus métricas. Como mucho transcribe 10 por sincronización (`IG_TRANSCRIBIR_MAX`) para no gastar créditos de golpe.
+- **Clasifica los temas** de tus publicaciones con Claude Haiku y, cuando tiene 5 transcripciones o más, **crea tu perfil de voz** (`_voz.md`). Lo hace en segundo plano; si no quieres estas tareas automáticas, pon `JARVIS_AUTO=0`.
+
+## Problemas frecuentes
+| Mensaje | Solución |
+|---|---|
+| *No encuentro ninguna página con una cuenta de Instagram profesional* | La cuenta no es profesional, no está vinculada a la página o no marcaste esa página al dar permisos. Vuelve a conectar y marca la página. |
+| *La conexión con Instagram ha caducado* | Vuelve a conectar (botón o token). Con App ID y secreto el token de página no caduca. |
+| *Falta un permiso en la app de Meta* | Añade el permiso que indica a la configuración o al token y vuelve a conectar. |
+| *URL bloqueada* o *redirect_uri* al conectar | La URI del paso 2 no coincide exactamente. Revisa `http://localhost:3333/api/instagram/callback`. |
+| Faltan visualizaciones en algunas publicaciones | Meta no da todas las métricas para todos los tipos ni para publicaciones muy antiguas. JARVIS guarda las que hay. |

@@ -1,0 +1,38 @@
+{
+  "name": "jarvis-contenido",
+  "version": "0.1.0",
+  "private": true,
+  "description": "JARVIS de contenido: sistema operativo de IA para creadores (Windows)",
+  "type": "module",
+  "scripts": {
+    "dev": "node scripts/dev.js",
+    "build": "vite build",
+    "start": "node --disable-warning=ExperimentalWarning server/index.js",
+    "test": "node --disable-warning=ExperimentalWarning --test \"test/*.test.js\"",
+    "mcp": "node --disable-warning=ExperimentalWarning mcp/jarvis-mcp.js",
+    "skills": "node scripts/generar-skills.js",
+    "hermes": "node --disable-warning=ExperimentalWarning scripts/configurar-hermes.js",
+    "doctor": "node --disable-warning=ExperimentalWarning scripts/doctor.js",
+    "claves": "node scripts/claves.js"
+  },
+  "engines": {
+    "node": ">=22.5"
+  },
+  "dependencies": {
+    "@modelcontextprotocol/sdk": "^1.32.1",
+    "dotenv": "^18.0.7",
+    "express": "^4.22.3",
+    "ws": "^8.22.0",
+    "zod": "^4.6.5"
+  },
+  "devDependencies": {
+    "@fontsource/inter": "^5.3.0",
+    "@fontsource/jetbrains-mono": "^5.3.0",
+    "@vitejs/plugin-react": "^4.7.0",
+    "dompurify": "^3.4.16",
+    "marked": "^18.1.0",
+    "react": "^18.3.1",
+    "react-dom": "^18.3.1",
+    "vite": "^5.4.21"
+  }
+}

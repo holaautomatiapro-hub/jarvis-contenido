@@ -1,0 +1,144 @@
+import { row, rows } from './db.js';
+import { clasificar } from './router-jev.js';
+import { ejecutar, mcpConfigDe } from './claude-runner.js';
+
+// Orquesta las conversaciones con JARVIS: JEV elige modelo → Claude Code responde en directo →
+// se registra en la actividad y en las estadísticas de enrutamiento.
+
+export class OcupadoError extends Error {}
+
+// Conversaciones independientes, cada una con su sesión de Claude Code
+export const CONVERSACIONES = {
+  principal: { modeloPorDefecto: null, sistema: null },
+  ads: {
+    modeloPorDefecto: 'sonnet',
+    sistema: `Estás en el ASISTENTE DE META ADS de JARVIS. Herramientas: ads_rendimiento (gasto, CTR, CPC y resultados por campaña), ads_biblioteca (anuncios de la competencia en la Ad Library), contenido_para_impulsar (publicaciones orgánicas que conviene promocionar) y proponer_campana.
+Reglas que no se rompen:
+- Tú NO creas campañas: proponer_campana deja un BORRADOR. La persona lo revisa y pulsa "Crear en pausa" en la pestaña Meta Ads; se crea en PAUSA y la activa ella en el Administrador de anuncios. Dilo siempre al proponer.
+- Antes de proponer, confirma objetivo, presupuesto diario y duración si la persona no los dijo. Indica el gasto máximo (presupuesto × días).
+- Da cifras con su moneda y no inventes datos: si algo es de ejemplo (no conectado), dilo.
+- Respuestas cortas, con números concretos y una recomendación clara.`,
+  },
+  publicar: {
+    modeloPorDefecto: 'sonnet',
+    sistema: 'Estás en "Crea una vez, publica en todos lados" de JARVIS. Adaptas una pieza a cada red con versiones nativas y las guardas con guardar_versiones. NUNCA publicas nada: la persona copia cada versión y la publica ella.',
+  },
+  // Tareas automáticas de fondo (clasificar temas, perfil de voz…)
+  sistema: { modeloPorDefecto: null, sinMemoria: true, sistema: 'Estás ejecutando una tarea automática en segundo plano: no hagas preguntas, hazla y responde en una o tres líneas.' },
+  guiones: {
+    modeloPorDefecto: 'sonnet',
+    sistema: `Estás en el CHAT PARA GUIONES de JARVIS. Antes de escribir cualquier guion:
+1. Lee _voz.md y escribe con esa voz (si está vacío, tono cercano y directo, y avísalo en una línea).
+2. Busca con buscar_notas en 03-Transcripciones y 01-Ideas historias, frases e ideas relacionadas con el tema y úsalas como materia prima. No escribas desde cero si hay material propio; di de qué nota sale cada idea reutilizada.
+3. Si hay una skill adecuada en .claude/skills (guion-reel-30s, guion-reel-60s, ganchos-reel, carrusel-educativo…), síguela.
+Cuando la persona dé el guion por bueno o pida guardarlo, guárdalo con crear_nota en 02-Guiones y crea o mueve la pieza del pipeline al estado "guion".`,
+  },
+};
+
+export function createAsistente({ db, jarvis, vaultPath, emitir = () => {}, ejecutarImpl = ejecutar }) {
+  const q = {
+    ins: db.prepare('INSERT INTO enrutamiento (ruta, modelo, etiqueta, canal) VALUES (?, ?, ?, ?)'),
+    fin: db.prepare('UPDATE enrutamiento SET ok = ?, duracion_ms = ?, coste = ? WHERE id = ?'),
+    stats: db.prepare("SELECT etiqueta, COUNT(*) AS n FROM enrutamiento WHERE ts >= datetime('now','localtime','-30 days') GROUP BY etiqueta"),
+    voz: db.prepare("SELECT COUNT(*) AS n FROM enrutamiento WHERE canal = 'voz' AND ts >= datetime('now','localtime','-30 days')"),
+    total: db.prepare("SELECT COUNT(*) AS n, COALESCE(SUM(coste), 0) AS coste FROM enrutamiento WHERE ts >= datetime('now','localtime','-30 days')"),
+    ultimo: db.prepare('SELECT * FROM enrutamiento ORDER BY id DESC LIMIT 1'),
+  };
+
+  const sesiones = Object.fromEntries(Object.keys(CONVERSACIONES).map((k) => [k, null])); // id de sesión de Claude Code por conversación
+  let actual = null;     // petición en curso (una a la vez)
+  let historial = [];    // eventos (para quien abra la pestaña a mitad)
+  let n = 0;
+  let seq = 0;           // número de evento, para que el navegador no pierda ni duplique nada
+
+  const enviar = (e) => {
+    const ev = { ...e, seq: ++seq, at: Date.now() };
+    historial.push(ev);
+    if (historial.length > 600) historial = historial.slice(-600);
+    emitir({ type: 'jarvis', ...ev });
+  };
+
+  function preguntar({ texto, canal = 'texto', modelo: forzarModelo, conversacion = 'principal' }) {
+    const prompt = String(texto || '').trim();
+    if (!prompt) throw new Error('Falta "texto"');
+    const conv = CONVERSACIONES[conversacion];
+    if (!conv) throw new Error('Falta "conversacion" válida');
+    if (actual) throw new OcupadoError('JARVIS está terminando otra petición. Espera un momento o cancélala.');
+
+    let decision = clasificar(prompt, { forzarModelo });
+    // En el chat de guiones, lo rápido sube a Sonnet: escribir bien importa más que la velocidad
+    if (!forzarModelo && conv.modeloPorDefecto && decision.modelo === 'haiku') decision = clasificar(prompt, { forzarModelo: conv.modeloPorDefecto });
+    const id = ++n;
+    const { lastInsertRowid } = q.ins.run(decision.ruta, decision.modelo, decision.etiqueta, canal);
+    enviar({ id, conversacion, tipo: 'pregunta', texto: prompt, canal, ruta: decision.ruta, modelo: decision.modelo, etiqueta: decision.etiqueta, motivo: decision.motivo });
+
+    const t0 = Date.now();
+    const run = ejecutarImpl({
+      prompt: canal === 'voz' ? `${prompt}\n\n(Te hablo por voz: responde breve y natural, como si hablaras.)` : prompt,
+      cwd: vaultPath,
+      modelo: decision.modelo,
+      sesion: conv.sinMemoria ? null : sesiones[conversacion],
+      sistema: conv.sistema,
+      mcpConfig: mcpConfigDe(vaultPath),
+      onEvento: (e) => {
+        if (e.tipo === 'inicio' && e.sesion) sesiones[conversacion] = e.sesion;
+        if (e.tipo === 'fin' || e.tipo === 'error') {
+          if (e.sesion) sesiones[conversacion] = e.sesion;
+          q.fin.run(e.tipo === 'fin' ? 1 : 0, e.duracion ?? Date.now() - t0, e.coste ?? null, lastInsertRowid);
+          if (e.tipo === 'fin' && decision.actividad) jarvis.registrar(decision.actividad, `JARVIS (${decision.etiqueta}): ${prompt}`, 'dashboard');
+          actual = null;
+        }
+        enviar({ id, conversacion, ...e });
+      },
+    });
+    actual = { id, run, decision, conversacion };
+    run.terminado.then(() => { if (actual?.id === id) actual = null; });
+    return { id, ...decision };
+  }
+
+  function cancelar() {
+    if (!actual) return { ok: false };
+    actual.run.cancelar();
+    return { ok: true };
+  }
+
+  function nuevaSesion({ conversacion = 'principal' } = {}) {
+    if (!(conversacion in sesiones)) throw new Error('Falta "conversacion" válida');
+    if (actual?.conversacion === conversacion) actual.run.cancelar();
+    sesiones[conversacion] = null;
+    historial = historial.filter((e) => e.conversacion !== conversacion);
+    enviar({ id: 0, conversacion, tipo: 'sesion_nueva' });
+    return { ok: true };
+  }
+
+  function estado({ conversacion = 'principal' } = {}) {
+    return {
+      ocupado: Boolean(actual),
+      ocupadoAqui: actual?.conversacion === conversacion,
+      sesion: sesiones[conversacion] ?? null,
+      eventos: historial.filter((e) => e.conversacion === conversacion),
+    };
+  }
+
+  // Porcentajes para el widget "Enrutamiento" (últimos 30 días)
+  function enrutamiento() {
+    const total = row(q.total);
+    const por = Object.fromEntries(rows(q.stats).map((r) => [r.etiqueta, r.n]));
+    const pct = (k) => (total.n ? Math.round(((por[k] || 0) / total.n) * 100) : 0);
+    return {
+      total: total.n,
+      coste: Math.round(total.coste * 100) / 100,
+      ultimo: row(q.ultimo),
+      barras: [
+        { label: 'Claude Opus', pct: pct('Claude Opus'), color: 'var(--purple)' },
+        { label: 'Claude Sonnet', pct: pct('Claude Sonnet'), color: 'var(--accent-2)' },
+        { label: 'Claude Haiku', pct: pct('Claude Haiku'), color: 'var(--cyan)' },
+        { label: 'Obsidian', pct: pct('Obsidian'), color: 'var(--pink)' },
+        { label: 'Web', pct: pct('Web'), color: 'var(--orange)' },
+        { label: 'Por voz', pct: total.n ? Math.round((row(q.voz).n / total.n) * 100) : 0, color: 'var(--green)' },
+      ],
+    };
+  }
+
+  return { preguntar, cancelar, nuevaSesion, estado, enrutamiento };
+}
