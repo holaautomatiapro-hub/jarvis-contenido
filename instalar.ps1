@@ -27,10 +27,9 @@ $EsWindows = $env:OS -eq 'Windows_NT'
 try { [Console]::OutputEncoding = [System.Text.Encoding]::UTF8 } catch { }
 $Npm = if ($EsWindows) { 'npm.cmd' } else { 'npm' }
 $PidFile = Join-Path $Raiz 'data\jarvis.pid'
-$Oculto = Join-Path $Raiz 'data\arrancar-jarvis.vbs'
+# Restos de versiones anteriores del instalador (arranque con VBS), que se limpian al reinstalar
+$VbsAntiguo = Join-Path $Raiz 'data\arrancar-jarvis.vbs'
 $NodeMinimo = [version]'22.5.0'
-# Windows está retirando VBScript poco a poco: si ya no existe, se usa iniciar-jarvis.bat minimizado
-$HayVbs = $EsWindows -and (Test-Path -LiteralPath (Join-Path $env:WINDIR 'System32\wscript.exe'))
 
 function Titulo($t) { Write-Host ''; Write-Host "  > $t" -ForegroundColor Cyan }
 function Ok($t) { Write-Host "    ✓ $t" -ForegroundColor Green }
@@ -86,31 +85,10 @@ function Parar-Jarvis {
   return [bool]$p
 }
 
-# Script oculto que arranca JARVIS en segundo plano (sin ventana) y guarda el registro en data\jarvis.log
-function Escribir-Arranque {
-  $node = (Get-Command node).Source
-  $comando = 'cmd /c ""' + $node + '" --disable-warning=ExperimentalWarning server\index.js >> data\jarvis.log 2>&1"'
-  $vbs = @(
-    "' JARVIS: arranca el dashboard en segundo plano. Lo crea instalar.ps1; si lo borras, JARVIS no arrancará solo.",
-    'Set fso = CreateObject("Scripting.FileSystemObject")',
-    'Set sh = CreateObject("WScript.Shell")',
-    ('sh.CurrentDirectory = "' + $Raiz.Replace('"', '""') + '"'),
-    'If fso.FileExists("data\jarvis.log") Then',
-    '  If fso.GetFile("data\jarvis.log").Size > 5242880 Then fso.DeleteFile "data\jarvis.log"',
-    'End If',
-    ('sh.Run "' + $comando.Replace('"', '""') + '", 0, False')
-  ) -join "`r`n"
-  New-Item -ItemType Directory -Force -Path (Join-Path $Raiz 'data') | Out-Null
-  # UTF-16 con BOM: Windows Script Host lo lee bien aunque la ruta tenga tildes o eñes
-  Set-Content -LiteralPath $Oculto -Value $vbs -Encoding Unicode
-}
-
 function Arrancar-Jarvis($puerto) {
   if (Responde $puerto) { Ok "JARVIS ya estaba en marcha en http://localhost:$puerto"; return $true }
-  if ($HayVbs) {
-    Escribir-Arranque
-    Start-Process -FilePath 'wscript.exe' -ArgumentList ('"' + $Oculto + '"')
-  } elseif ($EsWindows) {
+  if ($EsWindows) {
+    # Ventana minimizada con el título JARVIS (si la cierras, se para JARVIS)
     Start-Process -FilePath (Join-Path $Raiz 'iniciar-jarvis.bat') -ArgumentList '--sin-navegador' -WorkingDirectory $Raiz -WindowStyle Minimized
   } else {
     New-Item -ItemType Directory -Force -Path (Join-Path $Raiz 'data') | Out-Null
@@ -120,7 +98,7 @@ function Arrancar-Jarvis($puerto) {
     Start-Sleep -Milliseconds 750
     if (Responde $puerto) { Ok "JARVIS en marcha en http://localhost:$puerto"; return $true }
   }
-  Aviso "JARVIS no responde todavía. Mira data\jarvis.log o ábrelo a mano con iniciar-jarvis.bat"
+  Aviso "JARVIS no responde todavía. Abre la ventana JARVIS minimizada en la barra de tareas para ver el error, o ábrelo con iniciar-jarvis.bat"
   return $false
 }
 
@@ -153,7 +131,7 @@ if ($Desinstalar) {
   Parar-Jarvis | Out-Null
   if ($EsWindows) {
     $r = Rutas-Windows
-    foreach ($f in @($r.Inicio, $r.InicioLnk, $r.Escritorio, $Oculto)) { if (Test-Path -LiteralPath $f) { Remove-Item -LiteralPath $f -Force; Ok "Borrado $f" } }
+    foreach ($f in @($r.Inicio, $r.InicioLnk, $r.Escritorio, $VbsAntiguo)) { if (Test-Path -LiteralPath $f) { Remove-Item -LiteralPath $f -Force; Ok "Borrado $f" } }
   }
   Write-Host ''
   Write-Host '    Tus notas (vault), tu base de datos (data\) y tus claves (.env) siguen en su sitio.'
@@ -174,13 +152,6 @@ Ok "Node $v"
 
 # ---------- 2. Claude Code (el motor) ----------
 Titulo 'Claude Code'
-if (-not (Tiene 'claude')) {
-  if ($EsWindows) {
-    Write-Host '    Instalando Claude Code (instalador oficial)...'
-    try { Invoke-Expression (Invoke-RestMethod -Uri 'https://claude.ai/install.ps1') } catch { Aviso "No he podido instalarlo: $($_.Exception.Message)" }
-    Actualizar-Path
-  }
-}
 if (Tiene 'claude') {
   Ok 'Claude Code instalado'
   if ($EsWindows) {
@@ -188,7 +159,7 @@ if (Tiene 'claude') {
     if ($sinSesion) { Aviso 'Si aún no has iniciado sesión, abre una terminal, escribe claude y sigue los pasos (con tu cuenta Pro o Max).' }
   }
 } else {
-  Aviso 'Sin Claude Code el dashboard funciona, pero JARVIS no puede pensar. Instálalo con: irm https://claude.ai/install.ps1 | iex'
+  Aviso 'Sin Claude Code el dashboard funciona, pero JARVIS no puede pensar. Instálalo con el instalador oficial de https://claude.ai/code y vuelve a ejecutar este instalador.'
 }
 
 # ---------- 3. Obsidian (opcional) ----------
@@ -225,14 +196,11 @@ $puerto = [int]$info.port
 if ($EsWindows) {
   Titulo 'Arranque y acceso directo'
   $r = Rutas-Windows
-  foreach ($f in @($r.Inicio, $r.InicioLnk)) { if (Test-Path -LiteralPath $f) { Remove-Item -LiteralPath $f -Force } }
+  foreach ($f in @($r.Inicio, $r.InicioLnk, $VbsAntiguo)) { if (Test-Path -LiteralPath $f) { Remove-Item -LiteralPath $f -Force } }
   if ($SinAutoarranque) {
     Aviso 'Sin arranque automático: ábrelo con iniciar-jarvis.bat'
-  } elseif ($HayVbs) {
-    Escribir-Arranque
-    Copy-Item -LiteralPath $Oculto -Destination $r.Inicio -Force
-    Ok 'JARVIS arrancará solo (en segundo plano) al iniciar sesión en Windows'
   } else {
+    # Un acceso directo normal en la carpeta Inicio, que abre iniciar-jarvis.bat minimizado
     $lnk = (New-Object -ComObject WScript.Shell).CreateShortcut($r.InicioLnk)
     $lnk.TargetPath = Join-Path $Raiz 'iniciar-jarvis.bat'
     $lnk.Arguments = '--sin-navegador'

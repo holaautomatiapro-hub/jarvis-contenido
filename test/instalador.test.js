@@ -111,6 +111,8 @@ test('instalar.ps1 se guarda en UTF-8 con BOM y CRLF (si no, Windows PowerShell 
   const t = b.toString('utf8');
   assert.ok(!/[^\r]\n/.test(t), 'todas las líneas en CRLF');
   assert.match(readFileSync(path.join(ROOT, '.gitattributes'), 'utf8'), /\*\.ps1 text eol=crlf/);
+  // Nada que los antivirus marquen como malware: ni descargar y ejecutar código (irm | iex) ni scripts ocultos en Inicio
+  assert.doesNotMatch(t, /Invoke-Expression|\|\s*iex\b|\biex\s*\(|wscript\.exe|\.vbs['"]\s*-Encoding|Set-Content[^\n]*\.vbs/i);
   // Sintaxis que no existe en PowerShell 5.1
   assert.doesNotMatch(t, /\?\?|\?\.|\s&&\s|\s\|\|\s/);
 });

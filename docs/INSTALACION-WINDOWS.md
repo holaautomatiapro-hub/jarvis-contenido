@@ -43,10 +43,10 @@ powershell -ExecutionPolicy Bypass -File instalar.ps1 -InstalarObsidian
 (Quita `-InstalarObsidian` si ya lo tienes o no lo quieres.) El instalador:
 
 - instala Node.js LTS con winget si falta o es antiguo (Windows te pedirá permiso);
-- instala Claude Code si no lo encuentra;
+- comprueba que tienes Claude Code (si no, te dice cómo instalarlo; no descarga ni ejecuta nada por su cuenta);
 - instala las dependencias y prepara la interfaz;
 - crea `.env`, tu vault en `Documentos\JARVIS-Vault` (también si Documentos está en OneDrive) y la base de datos;
-- deja JARVIS arrancando en segundo plano al iniciar sesión, sin ventanas, y crea el acceso directo **JARVIS** en el escritorio;
+- deja JARVIS arrancando al iniciar sesión (una ventana **JARVIS** minimizada en la barra de tareas: si la cierras, se para) y crea el acceso directo **JARVIS** en el escritorio;
 - arranca JARVIS, lo revisa (`npm run doctor`) y lo abre en el navegador.
 
 Puedes repetirlo cuando quieras (por ejemplo, después de un `git pull` para actualizar): nunca borra tus notas, datos ni claves.
@@ -100,6 +100,6 @@ powershell -ExecutionPolicy Bypass -File instalar.ps1 -Reiniciar
 | `node`, `claude` o `git` "no se reconoce" justo después de instalarlos | Cierra y abre PowerShell |
 | "El puerto 3333 ya está en uso" | JARVIS ya está abierto. Si es otro programa, cambia `PORT` en `.env` y ejecuta `instalar.ps1` |
 | El dashboard abre pero JARVIS no contesta | Ejecuta `claude` en una terminal y comprueba que tienes la sesión iniciada |
-| No arranca al iniciar Windows | Mira `data\jarvis.log` y ejecuta `npm run doctor` |
-| El antivirus avisa de `JARVIS.vbs` en la carpeta Inicio | Es el lanzador en segundo plano que crea el instalador (lo puedes abrir con el Bloc de notas). Si prefieres no usarlo: `instalar.ps1 -SinAutoarranque` |
+| No arranca al iniciar Windows | Abre la ventana JARVIS de la barra de tareas para ver el error y ejecuta `npm run doctor` |
+| El antivirus bloquea `instalar.ps1` | Descarga la última versión (`git pull`): ya no descarga ni ejecuta nada de internet ni crea scripts ocultos. Si aun así lo bloquea, avísanos y no lo permitas a ciegas |
 | Obsidian no encuentra el vault | Obsidian → "Abrir carpeta como vault" → `Documentos\JARVIS-Vault` |
