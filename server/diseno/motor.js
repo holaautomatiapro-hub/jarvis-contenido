@@ -184,15 +184,55 @@ window.__revisar = function (zona) {
 `;
 
 // ---------------------------------------------------------------------------------------------------
-async function lanzarNavegador() {
+async function intentarLanzar() {
   const { chromium } = await import('playwright-core');
   const args = ['--autoplay-policy=no-user-gesture-required', '--mute-audio', '--disable-dev-shm-usage', '--font-render-hinting=none', '--hide-scrollbars'];
   const intentos = [{ channel: 'msedge' }, { channel: 'chrome' }, {}];
   if (process.env.CHROME_PATH) intentos.unshift({ executablePath: process.env.CHROME_PATH });
+  let ultimo = null;
   for (const o of intentos) {
-    try { return await chromium.launch({ headless: true, args, ...o }); } catch { /* siguiente */ }
+    try { return await chromium.launch({ headless: true, args, ...o }); } catch (e) { ultimo = e; }
   }
-  throw new Error('No encuentro un navegador para dibujar los diseños. En Windows instala Microsoft Edge o Google Chrome; en el VPS ejecuta  bash instalar-vps.sh  (instala Chromium).');
+  const err = new Error('sin navegador');
+  err.causa = ultimo;
+  throw err;
+}
+
+// En Linux (el VPS) y macOS, si no hay navegador, JARVIS instala Chromium solo la primera vez (con las
+// librerías del sistema si corre como root). En Windows siempre está Edge.
+let instalacion = null;
+export function instalarChromium({ ejecutar = spawn } = {}) {
+  if (!instalacion) {
+    instalacion = new Promise((resolve, reject) => {
+      const cli = path.join(path.dirname(require.resolve('playwright-core/package.json')), 'cli.js');
+      const conDeps = process.platform === 'linux' && process.getuid?.() === 0;
+      const p = ejecutar(process.execPath, [cli, 'install', ...(conDeps ? ['--with-deps'] : []), '--only-shell', 'chromium'], { stdio: ['ignore', 'pipe', 'pipe'], windowsHide: true });
+      let salida = '';
+      p.stdout?.on('data', (b) => { salida += b; });
+      p.stderr?.on('data', (b) => { salida += b; });
+      p.on('error', reject);
+      p.on('close', (code) => {
+        if (code === 0) return resolve();
+        // Del registro, la primera línea de error que explica algo (no las de la pila)
+        const lineas = salida.split(/\r?\n/).map((l) => l.replace(/\x1b\[[0-9;]*m/g, '').trim()).filter((l) => l && !/^at /.test(l));
+        reject(new Error(lineas.find((l) => /^Error: (?!Download failure|Failed to download)/.test(l)) || lineas.at(-1) || `código ${code}`));
+      });
+    }).catch((e) => { instalacion = null; throw e; });
+  }
+  return instalacion;
+}
+
+async function lanzarNavegador({ log = () => {} } = {}) {
+  try { return await intentarLanzar(); } catch { /* se intenta instalar */ }
+  if (process.platform === 'win32') throw new Error('No encuentro un navegador para dibujar los diseños: instala Microsoft Edge o Google Chrome.');
+  log('Instalando Chromium para dibujar los diseños (solo la primera vez, tarda un par de minutos)…');
+  try {
+    await instalarChromium();
+    return await intentarLanzar();
+  } catch (e) {
+    const detalle = e.causa?.message || e.message;
+    throw new Error(`No hay navegador para dibujar los diseños y no se ha podido instalar Chromium (${String(detalle).split('\n')[0].slice(0, 200)}). En la carpeta de JARVIS ejecuta:  npx playwright-core install --with-deps chromium`);
+  }
 }
 
 export async function rutaFfmpeg() {
@@ -233,8 +273,15 @@ export function createMotor({ kit: kitApi, archivos = null, lanzar = lanzarNaveg
 
   async function obtenerNavegador() {
     clearTimeout(temporizador);
-    if (!navegador || !navegador.isConnected()) navegador = await lanzar();
+    if (!navegador || !navegador.isConnected()) navegador = await lanzar({ log });
     return navegador;
+  }
+
+  // Al arrancar JARVIS: deja el navegador listo (y lo instala si falta) para que el primer diseño no espere
+  function preparar() {
+    return enCola(async () => {
+      try { await obtenerNavegador(); log('Navegador para Diseño: listo'); } catch (e) { log(e.message); } finally { soltarNavegador(); }
+    });
   }
   function soltarNavegador() {
     clearTimeout(temporizador);
@@ -355,7 +402,7 @@ export function createMotor({ kit: kitApi, archivos = null, lanzar = lanzarNaveg
     await n?.close().catch(() => {});
   }
 
-  return { previsualizar, exportar, cerrar };
+  return { previsualizar, exportar, cerrar, preparar };
 }
 
 // Fotograma a fotograma: ir al instante, capturar y pasárselo a ffmpeg (H.264, yuv420p, faststart, sin audio)

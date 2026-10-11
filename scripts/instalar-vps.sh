@@ -46,8 +46,14 @@ ok "dependencias, interfaz, vault en $HOME/JARVIS-Vault y base de datos"
 
 paso "Navegador para la sección Diseño"
 # Dibuja los carruseles y stories (imágenes y vídeo). Instala Chromium y las librerías y fuentes que necesita.
-if npx --yes playwright-core install --with-deps chromium >/dev/null 2>&1; then ok "Chromium listo"
-else aviso "No se ha podido instalar Chromium: Contenido → Diseño no podrá dibujar. Prueba:  cd $DIR && npx playwright-core install --with-deps chromium"; fi
+LOG_CHROMIUM="$(mktemp)"
+if npx --yes playwright-core install --with-deps chromium >"$LOG_CHROMIUM" 2>&1; then ok "Chromium listo"
+else
+  aviso "No se ha podido instalar Chromium: Contenido → Diseño no podrá dibujar. Esto es lo que ha fallado:"
+  tail -n 8 "$LOG_CHROMIUM" | sed 's/^/      /'
+  aviso "Vuelve a probar con:  cd $DIR && npx playwright-core install --with-deps chromium"
+fi
+rm -f "$LOG_CHROMIUM"
 
 paso "Claude Code"
 if ! command -v claude >/dev/null; then $SUDO npm install -g @anthropic-ai/claude-code --loglevel=error >/dev/null; fi
