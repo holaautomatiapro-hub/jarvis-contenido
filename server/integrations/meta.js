@@ -25,7 +25,8 @@ function traducir(err, estado) {
 export function createGraph({ token, fetchImpl = fetch, version = VERSION() } = {}) {
   async function get(ruta, params = {}, { tokenPropio } = {}) {
     const url = new URL(ruta.startsWith('http') ? ruta : `${BASE}/${version}/${ruta.replace(/^\//, '')}`);
-    for (const [k, v] of Object.entries(params)) if (v != null) url.searchParams.set(k, Array.isArray(v) ? v.join(',') : String(v));
+    // Las listas van separadas por comas; los objetos (p. ej. time_range) en JSON, como pide la Graph API
+    for (const [k, v] of Object.entries(params)) if (v != null) url.searchParams.set(k, Array.isArray(v) ? v.join(',') : typeof v === 'object' ? JSON.stringify(v) : String(v));
     if (!url.searchParams.has('access_token') && (tokenPropio || token)) url.searchParams.set('access_token', tokenPropio || token);
     let r;
     try {

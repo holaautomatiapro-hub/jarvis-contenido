@@ -37,6 +37,10 @@ function metaFalsa({ fallarEn } = {}) {
       { id: 'c2', name: 'Vieja', status: 'ARCHIVED', effective_status: 'ARCHIVED' },
     ] });
     if (ruta === 'act_123/insights') {
+      // Como Meta: time_range tiene que ser un JSON con since y until
+      let rango = null;
+      try { rango = JSON.parse(u.searchParams.get('time_range')); } catch { /* "[object Object]" */ }
+      if (!rango?.since || !rango?.until) return json({ error: { code: 100, message: "For field 'insights': param time_range must be non-empty." } }, 400);
       if (u.searchParams.get('time_increment')) return json({ data: [{ date_start: '2026-10-01', spend: '20.5', clicks: '100' }, { date_start: '2026-10-02', spend: '30', clicks: '140' }] });
       return json({ data: [{ campaign_id: 'c1', campaign_name: 'TOFU Septiembre', spend: '5421.36', impressions: '200000', reach: '120000', clicks: '5420', ctr: '2.71', cpc: '1.0003', cpm: '27.1', actions: [{ action_type: 'post_engagement', value: '9000' }, { action_type: 'lead', value: '150' }] }] });
     }
