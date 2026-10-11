@@ -96,7 +96,7 @@ export default function Skills() {
               <div key={s.nombre} className="skill-item">
                 <span className="dot" style={{ background: colorDe(s.categoria), boxShadow: `0 0 6px ${colorDe(s.categoria)}` }} />
                 <div className="skill-txt">
-                  <b>{s.titulo}{s.propia && <span className="tag" style={{ marginLeft: 8, background: 'rgba(34,197,94,.14)', color: '#7ee0a2' }}>tuya</span>}</b>
+                  <b>{s.titulo}{s.propia && <span className="tag" style={{ marginLeft: 8, background: 'rgba(34,197,94,.14)', color: 'var(--verde-texto)' }}>tuya</span>}</b>
                   <span>{s.descripcion}</span>
                 </div>
                 <button className="btn btn-sec" onClick={() => usar(s)}>Usar</button>

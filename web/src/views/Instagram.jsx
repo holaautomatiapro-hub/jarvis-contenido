@@ -13,7 +13,6 @@ const SERIES = [
   { id: 'views', label: 'Visualizaciones' },
   { id: 'nuevos', label: 'Nuevos seguidores' },
 ];
-const resolver = (c) => (c.startsWith('var(') ? getComputedStyle(document.documentElement).getPropertyValue(c.slice(4, -1)).trim() : c);
 
 function Kpi({ k }) {
   const up = (k.delta ?? 0) >= 0;
@@ -28,7 +27,7 @@ function Kpi({ k }) {
         {k.delta != null && <span className={`delta ${up ? 'up' : 'down'}`}>{up ? '▲' : '▼'} {Math.abs(k.delta)}%</span>}
         {k.extra != null && <span className="delta up">+{num(k.extra)}</span>}
       </div>
-      <Sparkline data={k.series.length > 1 ? k.series : [0, 0]} color={resolver(k.color)} height={26} />
+      <Sparkline data={k.series.length > 1 ? k.series : [0, 0]} color={k.color} height={26} />
     </div>
   );
 }
@@ -47,7 +46,7 @@ function TodasLasMetricas({ todas, dias }) {
           <div key={m.id} className="todas-item" title={m.instantanea ? 'Último valor del periodo' : `Suma de los ${dias} días`}>
             <span className="todas-label">{m.label}</span>
             <b>{num(m.valor)}{m.delta != null && <span className={`delta ${m.delta >= 0 ? 'up' : 'down'}`}>{m.delta >= 0 ? '▲' : '▼'} {Math.abs(m.delta)}%</span>}</b>
-            {!m.instantanea && <Sparkline data={m.series.length > 1 ? m.series : [0, 0]} color="#3d8bff" height={20} />}
+            {!m.instantanea && <Sparkline data={m.series.length > 1 ? m.series : [0, 0]} color="var(--accent-2)" height={20} />}
           </div>
         ))}
       </div>
@@ -299,7 +298,7 @@ export default function Instagram() {
                 <div className="insight-fila" key={t.tema} title={`${t.piezas} piezas · alcance medio ${numLargo(t.alcanceMedio)}`}>
                   <span className="insight-n">{i + 1}</span>
                   <span className="insight-nombre">{t.tema}</span>
-                  <div className="bar"><span style={{ width: `${(t.tasa / maxTasa) * 100}%`, background: '#3987e5' }} /></div>
+                  <div className="bar"><span style={{ width: `${(t.tasa / maxTasa) * 100}%`, background: 'var(--accent-2)' }} /></div>
                   <span className="bar-pct">{t.tasa}%</span>
                 </div>
               )) : <div className="vacio">JARVIS clasificará los temas tras la primera sincronización.</div>)}

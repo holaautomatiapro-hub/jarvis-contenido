@@ -3,6 +3,16 @@
 Especificación visual extraída de las capturas del post de referencia (diapositivas 1–8).
 Los valores viven como variables CSS en `web/src/theme.css`; cambia ahí y se actualiza todo.
 
+## Modo y color (Apariencia)
+
+El botón de la paleta, arriba a la derecha, abre **Apariencia**: modo **Oscuro**, **Claro** o **Sistema** (sigue al de Windows) y el **color principal**, con 10 colores listos, cualquier otro con el selector o pegando su código (`#ff5a1f`). Se guarda en el navegador y se aplica antes de pintar la página.
+
+- El modo va en `<html data-theme="light|dark">`. Las variables de fondo y texto (`--bg`, `--panel`, `--hondo`, `--tinta`, `--text`, `--text-2`, `--muted`, `--…-texto`) tienen un valor para cada modo en `theme.css`.
+- El color principal es `--accent`. De él salen `--accent-2` (tono más claro), `--sobre-acento` (texto blanco u oscuro según lo claro que sea), `--glow`, `--border` y todas las transparencias, con `color-mix(in srgb, var(--accent) N%, transparent)`. No escribas azules fijos: usa estas variables.
+- La esfera (canvas) toma el acento al cambiarlo con el evento `apariencia` de `web/src/lib/apariencia.js`. Los colores por categoría (tareas, ideas, notas, formatos de Instagram…) no cambian.
+
+La tabla de abajo son los valores del modo oscuro con el azul por defecto.
+
 ## Paleta
 
 | Token | Valor | Uso |

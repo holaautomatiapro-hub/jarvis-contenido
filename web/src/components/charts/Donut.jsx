@@ -13,7 +13,7 @@ export default function Donut({ datos, colores, total, etiquetaTotal = 'Total', 
     <div className="donut">
       <div className="donut-svg" style={{ width: tam, height: tam }}>
         <svg width={tam} height={tam} viewBox={`0 0 ${tam} ${tam}`} role="img" aria-label="Distribución por formato">
-          <circle cx={tam / 2} cy={tam / 2} r={r} fill="none" stroke="rgba(255,255,255,.05)" strokeWidth="16" />
+          <circle cx={tam / 2} cy={tam / 2} r={r} fill="none" style={{ stroke: 'color-mix(in srgb, var(--tinta) 6%, transparent)' }} strokeWidth="16" />
           {datos.map((d, i) => {
             const largo = (d.valor / suma) * c;
             const seg = (

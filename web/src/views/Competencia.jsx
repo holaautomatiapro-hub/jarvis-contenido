@@ -101,7 +101,7 @@ export default function Competencia() {
                     <span>“{g.gancho}”</span>
                     <small>@{g.username} · {g.formato}</small>
                   </div>
-                  <div className="bar mini"><span style={{ width: `${((g.engagement || 0) / maxEng) * 100}%`, background: '#3987e5' }} /></div>
+                  <div className="bar mini"><span style={{ width: `${((g.engagement || 0) / maxEng) * 100}%`, background: 'var(--accent-2)' }} /></div>
                   <span className="bar-pct">{g.engagement ?? '—'}%</span>
                 </div>
               ))}
@@ -113,9 +113,9 @@ export default function Competencia() {
               <div className="comp-titulo"><Icon name="sparkle" size={14} color="var(--orange)" />Temas que más funcionan</div>
               {a?.temas?.length ? a.temas.map((t) => (
                 <div key={t.tema} className="insight-fila" title={t.detalle}>
-                  <span className="leyenda-marca" style={{ background: '#3987e5' }} />
+                  <span className="leyenda-marca" style={{ background: 'var(--accent-2)' }} />
                   <span className="insight-nombre">{t.tema}</span>
-                  <div className="bar"><span style={{ width: `${t.pct}%`, background: '#3987e5' }} /></div>
+                  <div className="bar"><span style={{ width: `${t.pct}%`, background: 'var(--accent-2)' }} /></div>
                   <span className="bar-pct">{t.pct}%</span>
                 </div>
               )) : <div className="vacio">Pulsa “Analizar con JARVIS” para detectar los temas.</div>}
@@ -163,7 +163,7 @@ export default function Competencia() {
                 {!ins?.miniatura && <Icon name="bulb" size={13} />}
               </span>
               <div className="idea-txt">
-                <div className="idea-tags"><span className="tag" style={{ background: 'rgba(47,107,255,.15)', color: '#9cc0ff' }}>{idea.formato}</span>{ins && <small>inspirada en @{ins.username} · {ins.engagement}%</small>}</div>
+                <div className="idea-tags"><span className="tag" style={{ background: 'color-mix(in srgb, var(--accent) 15%, transparent)', color: 'var(--accent-texto)' }}>{idea.formato}</span>{ins && <small>inspirada en @{ins.username} · {ins.engagement}%</small>}</div>
                 <b>{idea.titulo}</b>
                 {idea.gancho && <span className="idea-gancho">“{idea.gancho}”</span>}
                 <span className="idea-porque">{idea.porque}</span>
