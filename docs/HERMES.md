@@ -86,7 +86,7 @@ Para ver cómo va: `hermes gateway status`. Para pararlo: `hermes gateway stop`.
 
 ## Prueba final
 
-Manda a tu bot: **idea: test desde Telegram**. En unos segundos debería aparecer en **Inicio** (actividad), en **Apps → Últimos mensajes por Telegram**, en el pipeline de **Tareas** y como nota en `01-Ideas`.
+Manda a tu bot: **idea: test desde Telegram**. En unos segundos debería aparecer en **Inicio** (actividad), en **Apps → Últimos mensajes por Telegram**, en el pipeline de **Contenido** y como nota en `01-Ideas`.
 
 ## Voz
 

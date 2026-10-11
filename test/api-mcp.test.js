@@ -85,7 +85,7 @@ describe('MCP jarvis', () => {
   test('expone las herramientas', async () => {
     const { tools } = await client.listTools();
     const nombres = tools.map((t) => t.name);
-    for (const n of ['capturar_idea', 'crear_pieza', 'mover_pieza', 'anadir_tarea', 'tareas_de_hoy', 'resumen_del_dia', 'buscar_notas', 'leer_nota']) {
+    for (const n of ['capturar_idea', 'crear_pieza', 'mover_pieza', 'anadir_tarea', 'actualizar_tarea', 'listar_tareas', 'tareas_de_hoy', 'resumen_del_dia', 'buscar_notas', 'leer_nota']) {
       assert.ok(nombres.includes(n), n);
     }
   });

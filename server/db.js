@@ -182,9 +182,35 @@ export function openDb(file) {
   db.exec('PRAGMA journal_mode = WAL; PRAGMA busy_timeout = 4000;');
   db.exec(SCHEMA);
   // Migraciones de columnas añadidas después (se ignoran si ya existen)
-  for (const sql of ['ALTER TABLE comp_perfiles ADD COLUMN fb_pagina TEXT']) {
-    try { db.exec(sql); } catch { /* ya existe */ }
+  const migrar = (sql) => { try { db.exec(sql); return true; } catch { return false; /* ya existe */ } };
+  migrar('ALTER TABLE comp_perfiles ADD COLUMN fb_pagina TEXT');
+  // Tareas con estado, prioridad y fecha límite (día, semana o mes)
+  for (const sql of [
+    'ALTER TABLE tareas ADD COLUMN descripcion TEXT',
+    "ALTER TABLE tareas ADD COLUMN estado TEXT NOT NULL DEFAULT 'sin_empezar'",
+    "ALTER TABLE tareas ADD COLUMN prioridad TEXT NOT NULL DEFAULT 'media'",
+    'ALTER TABLE tareas ADD COLUMN plazo_desde TEXT',
+    'ALTER TABLE tareas ADD COLUMN plazo_hasta TEXT',
+    'ALTER TABLE tareas ADD COLUMN actualizado TEXT',
+  ]) migrar(sql);
+  // Solo la primera vez: las tareas de antes eran de un día concreto
+  if (migrar('ALTER TABLE tareas ADD COLUMN plazo_tipo TEXT')) {
+    db.exec("UPDATE tareas SET plazo_tipo = 'dia', plazo_desde = fecha, plazo_hasta = fecha, estado = CASE WHEN hecha = 1 THEN 'terminada' ELSE 'sin_empezar' END");
   }
+  // Contenido: hora, caption, archivos, enlace al vídeo y carpeta de la biblioteca
+  for (const sql of [
+    'ALTER TABLE piezas ADD COLUMN hora TEXT',
+    'ALTER TABLE piezas ADD COLUMN caption TEXT',
+    "ALTER TABLE piezas ADD COLUMN archivos TEXT NOT NULL DEFAULT '[]'",
+    'ALTER TABLE piezas ADD COLUMN video_url TEXT',
+    'ALTER TABLE piezas ADD COLUMN carpeta TEXT',
+  ]) migrar(sql);
+  db.exec(`CREATE TABLE IF NOT EXISTS contenido_carpetas (
+    nombre TEXT PRIMARY KEY,
+    creado TEXT NOT NULL DEFAULT (datetime('now','localtime'))
+  );
+  CREATE INDEX IF NOT EXISTS tareas_plazo ON tareas(plazo_desde, plazo_hasta);
+  CREATE INDEX IF NOT EXISTS piezas_fecha ON piezas(fecha);`);
   return db;
 }
 

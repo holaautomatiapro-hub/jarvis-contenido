@@ -11,6 +11,7 @@ import { ROOT, getConfig } from '../server/config.js';
 import { openDb, ESTADOS, CATEGORIAS } from '../server/db.js';
 import { createVault, ensureVault, CARPETAS } from '../server/vault.js';
 import { createJarvis } from '../server/jarvis.js';
+import { ESTADOS_TAREA, PRIORIDADES, PLAZOS } from '../server/tareas.js';
 import { createInstagram } from '../server/integrations/instagram.js';
 import { createCompetencia } from '../server/integrations/competencia.js';
 import { createAds } from '../server/integrations/ads.js';
@@ -58,7 +59,9 @@ export function buildServer(jarvis, { origen = 'claude', avisar = () => {}, inst
       estado: z.enum(ESTADOS).optional(),
       formato: z.string().optional(),
       plataformas: z.array(z.string()).optional(),
-      fecha: z.string().optional().describe('Fecha prevista de publicación, AAAA-MM-DD'),
+      fecha: z.string().optional().describe('Fecha prevista de publicación, AAAA-MM-DD (sin fecha va a la biblioteca)'),
+      hora: z.string().optional().describe('HH:MM'),
+      caption: z.string().optional().describe('Texto que acompaña a la publicación'),
       nota: z.string().optional().describe('Ruta de la nota asociada en el vault'),
     },
     (a) => jarvis.crearPieza({ ...a, origen }), true);
@@ -70,7 +73,9 @@ export function buildServer(jarvis, { origen = 'claude', avisar = () => {}, inst
       titulo: z.string().optional(),
       formato: z.string().optional(),
       plataformas: z.array(z.string()).optional(),
-      fecha: z.string().optional(),
+      fecha: z.string().optional().describe('AAAA-MM-DD; cadena vacía la devuelve a la biblioteca'),
+      hora: z.string().optional(),
+      caption: z.string().optional(),
       nota: z.string().optional(),
     },
     ({ id, ...cambios }) => jarvis.actualizarPieza(id, cambios, origen), true);
@@ -79,15 +84,56 @@ export function buildServer(jarvis, { origen = 'claude', avisar = () => {}, inst
     { estado: z.enum(ESTADOS).optional() },
     ({ estado }) => jarvis.listarPiezas({ estado }));
 
-  tool('anadir_tarea', 'Añade una tarea al plan del día (o de otra fecha).',
-    { titulo: z.string(), fecha: z.string().optional().describe('AAAA-MM-DD, por defecto hoy'), categoria: z.enum(CATEGORIAS).optional() },
+  const plazo = {
+    plazo_tipo: z.enum(PLAZOS).nullable().optional().describe('Fecha límite: dia (un día concreto), semana o mes; null = sin fecha. Por defecto, un día'),
+    plazo: z.string().optional().describe('dia: AAAA-MM-DD · semana: AAAA-Www o un día de esa semana · mes: AAAA-MM. Por defecto, hoy / esta semana / este mes'),
+  };
+  tool('anadir_tarea', 'Añade una tarea. Por defecto es para hoy, prioridad media y sin empezar.',
+    {
+      titulo: z.string(),
+      descripcion: z.string().optional(),
+      fecha: z.string().optional().describe('AAAA-MM-DD (atajo de un día concreto), por defecto hoy'),
+      ...plazo,
+      prioridad: z.enum(PRIORIDADES).optional(),
+      estado: z.enum(ESTADOS_TAREA).optional(),
+      categoria: z.enum(CATEGORIAS).optional(),
+    },
     (a) => jarvis.crearTarea({ ...a, origen }), true);
 
-  tool('completar_tarea', 'Marca una tarea como hecha (o pendiente con hecha=false).',
+  tool('actualizar_tarea', 'Cambia una tarea: título, descripción, estado (sin_empezar, en_proceso, terminada), prioridad, categoría o fecha límite.',
+    {
+      id: z.number().int(),
+      titulo: z.string().optional(),
+      descripcion: z.string().optional(),
+      estado: z.enum(ESTADOS_TAREA).optional(),
+      prioridad: z.enum(PRIORIDADES).optional(),
+      categoria: z.enum(CATEGORIAS).optional(),
+      ...plazo,
+    },
+    ({ id, ...cambios }) => jarvis.actualizarTarea(id, cambios, origen), true);
+
+  tool('completar_tarea', 'Marca una tarea como terminada (o pendiente con hecha=false).',
     { id: z.number().int(), hecha: z.boolean().optional() },
     ({ id, hecha = true }) => jarvis.marcarTarea(id, hecha, origen), true);
 
-  tool('tareas_de_hoy', 'Devuelve las tareas de hoy y las atrasadas.', {}, () => jarvis.tareas());
+  tool('listar_tareas', 'Lista tareas con filtros (todos opcionales). atrasada = no terminada y su fecha límite ya pasó.',
+    {
+      estado: z.array(z.enum(ESTADOS_TAREA)).optional(),
+      prioridad: z.array(z.enum(PRIORIDADES)).optional(),
+      categoria: z.array(z.enum(CATEGORIAS)).optional(),
+      desde: z.string().optional().describe('AAAA-MM-DD: tareas cuya fecha límite cae en o después'),
+      hasta: z.string().optional().describe('AAAA-MM-DD'),
+      sinFecha: z.boolean().optional(),
+      atrasadas: z.boolean().optional(),
+      texto: z.string().optional(),
+    },
+    (f) => jarvis.listarTareas(f));
+
+  tool('borrar_tarea', 'Elimina una tarea. Pide confirmación a la persona antes de usarla.',
+    { id: z.number().int() },
+    ({ id }) => jarvis.borrarTarea(id), true);
+
+  tool('tareas_de_hoy', 'Devuelve las tareas que vencen hoy o caen en esta semana/mes, y las atrasadas.', {}, () => jarvis.tareas());
 
   tool('resumen_del_dia', 'Resumen del día: tareas, estado del pipeline, piezas previstas para hoy e ideas recientes.', {}, () => jarvis.resumenDelDia());
 

@@ -3,6 +3,7 @@ import Topbar, { TABS } from './components/Topbar.jsx';
 import Captura from './components/Captura.jsx';
 import Inicio from './views/Inicio.jsx';
 import Tareas from './views/Tareas.jsx';
+import Contenido from './views/Contenido.jsx';
 import Notas from './views/Notas.jsx';
 import Voz from './views/Voz.jsx';
 import Skills from './views/Skills.jsx';
@@ -45,7 +46,8 @@ export default function App() {
 
   let vista;
   if (tab === 'inicio') vista = <Inicio data={inicio} onAsk={(t) => { setPendiente(t); go('voz'); }} acciones={acciones} />;
-  else if (tab === 'tareas') vista = <Tareas onCaptura={setCaptura} />;
+  else if (tab === 'tareas') vista = <Tareas />;
+  else if (tab === 'contenido') vista = <Contenido onCaptura={setCaptura} />;
   else if (tab === 'notas') vista = <Notas onCaptura={setCaptura} />;
   else if (tab === 'voz') vista = <Voz sistema={inicio.sistema} pendiente={pendiente} onConsumido={() => setPendiente(null)} />;
   else if (tab === 'skills') vista = <Skills />;

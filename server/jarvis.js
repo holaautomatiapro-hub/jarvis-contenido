@@ -1,8 +1,10 @@
 import { CATEGORIAS, ESTADOS, row, rows } from './db.js';
+import { createTareas, TareaError } from './tareas.js';
 
 // Lógica de negocio compartida por la API del dashboard y por el MCP (Hermes / Claude Code).
 
 export class JarvisError extends Error {}
+export { TareaError };
 
 export const hoy = (d = new Date()) => d.toLocaleDateString('sv-SE');
 const ahora = (d = new Date()) => `${hoy(d)} ${d.toTimeString().slice(0, 5)}`;
@@ -23,18 +25,15 @@ const frontmatter = (campos) =>
 export function createJarvis({ db, vault }) {
   const q = {
     insActividad: db.prepare('INSERT INTO actividad (tipo, texto, origen) VALUES (?, ?, ?)'),
-    insPieza: db.prepare('INSERT INTO piezas (titulo, estado, formato, plataformas, fecha, nota, origen, orden) VALUES (?, ?, ?, ?, ?, ?, ?, ?)'),
     getPieza: db.prepare('SELECT * FROM piezas WHERE id = ?'),
     piezas: db.prepare('SELECT * FROM piezas ORDER BY orden DESC, id DESC'),
     piezasEstado: db.prepare('SELECT * FROM piezas WHERE estado = ? ORDER BY orden DESC, id DESC'),
     maxOrden: db.prepare('SELECT COALESCE(MAX(orden), 0) AS m FROM piezas WHERE estado = ?'),
     delPieza: db.prepare('DELETE FROM piezas WHERE id = ?'),
-    insTarea: db.prepare('INSERT INTO tareas (titulo, fecha, categoria, origen) VALUES (?, ?, ?, ?)'),
-    getTarea: db.prepare('SELECT * FROM tareas WHERE id = ?'),
-    tareasFecha: db.prepare('SELECT * FROM tareas WHERE fecha = ? ORDER BY hecha, id'),
-    pendientesAntes: db.prepare('SELECT * FROM tareas WHERE fecha < ? AND hecha = 0 ORDER BY fecha, id'),
-    setHecha: db.prepare("UPDATE tareas SET hecha = ?, completada = CASE WHEN ? = 1 THEN datetime('now','localtime') ELSE NULL END WHERE id = ?"),
-    delTarea: db.prepare('DELETE FROM tareas WHERE id = ?'),
+    carpetas: db.prepare("SELECT nombre FROM contenido_carpetas UNION SELECT carpeta FROM piezas WHERE carpeta IS NOT NULL AND carpeta != ''"),
+    getCarpeta: db.prepare('SELECT nombre FROM contenido_carpetas WHERE nombre = ?'),
+    insCarpeta: db.prepare('INSERT INTO contenido_carpetas (nombre) VALUES (?)'),
+    usoCarpeta: db.prepare('SELECT COUNT(*) AS n FROM piezas WHERE carpeta = ?'),
     actividad: db.prepare('SELECT * FROM actividad ORDER BY id DESC LIMIT ?'),
     actividadDe: db.prepare('SELECT * FROM actividad WHERE origen = ? ORDER BY id DESC LIMIT ?'),
     cuentaPorDia: (tabla, col, filtro = '') =>
@@ -43,6 +42,7 @@ export function createJarvis({ db, vault }) {
   };
 
   const registrar = (tipo, txt, origen = 'dashboard') => q.insActividad.run(tipo, txt.slice(0, 300), origen);
+  const tareasDb = createTareas({ db, registrar });
 
   // ---------- Ideas, notas y piezas ----------
   function capturarIdea({ texto: t, origen = 'dashboard', formato = null }) {
@@ -63,29 +63,62 @@ export function createJarvis({ db, vault }) {
     return { nota: ruta };
   }
 
-  function crearPieza({ titulo, estado = 'idea', formato = null, plataformas = null, fecha = null, nota = null, origen = 'dashboard', registrarActividad = true }) {
-    const t = texto(titulo, 'titulo', 200);
-    if (!ESTADOS.includes(estado)) throw new JarvisError(`Estado no válido. Usa: ${ESTADOS.join(', ')}`);
-    const plats = Array.isArray(plataformas) ? plataformas.join(', ') : plataformas;
-    const orden = q.maxOrden.get(estado).m + 1;
-    const { lastInsertRowid } = q.insPieza.run(t, estado, formato, plats, fecha, nota, origen, orden);
-    if (registrarActividad) registrar('Contenido', `Pieza creada: ${t}`, origen);
-    return row(q.getPieza, lastInsertRowid);
+  // Las piezas guardan sus archivos como JSON: [{ path, url, nombre, mime, tamano }]
+  const pieza = (p) => {
+    if (!p) return p;
+    let archivos = [];
+    try { archivos = JSON.parse(p.archivos || '[]'); } catch { /* columna dañada: sin archivos */ }
+    return { ...p, archivos: Array.isArray(archivos) ? archivos : [] };
+  };
+  const leerPieza = (id) => {
+    const p = pieza(row(q.getPieza, Number(id)));
+    if (!p) throw new JarvisError('Esa pieza no existe');
+    return p;
+  };
+  const archivosValidos = (v) => {
+    if (!Array.isArray(v)) throw new JarvisError('"archivos" debe ser una lista');
+    return JSON.stringify(v.slice(0, 50).map((a) => ({
+      path: String(a?.path || ''), url: String(a?.url || ''), nombre: String(a?.nombre || '').slice(0, 200),
+      mime: String(a?.mime || ''), tamano: Number(a?.tamano) || 0,
+    })).filter((a) => a.url));
+  };
+  // Normaliza los campos que se pueden escribir en una pieza
+  const camposPieza = (c) => {
+    const set = {};
+    for (const k of ['titulo', 'estado', 'formato', 'plataformas', 'fecha', 'hora', 'nota', 'caption', 'video_url', 'carpeta', 'archivos']) {
+      if (!(k in c)) continue;
+      const v = c[k];
+      if (k === 'archivos') set.archivos = archivosValidos(v);
+      else if (k === 'plataformas') set.plataformas = Array.isArray(v) ? v.join(', ') : v || null;
+      else set[k] = typeof v === 'string' ? (k === 'caption' ? v : v.trim()) || null : v ?? null;
+    }
+    if ('titulo' in set) set.titulo = texto(set.titulo, 'titulo', 200);
+    if ('estado' in set && !ESTADOS.includes(set.estado)) throw new JarvisError(`Estado no válido. Usa: ${ESTADOS.join(', ')}`);
+    if (set.fecha && !/^\d{4}-\d{2}-\d{2}$/.test(set.fecha)) throw new JarvisError('La fecha debe ser AAAA-MM-DD');
+    if (set.hora && !/^\d{2}:\d{2}$/.test(set.hora)) throw new JarvisError('La hora debe ser HH:MM');
+    if (set.caption) set.caption = set.caption.slice(0, 5000);
+    if (set.carpeta) set.carpeta = set.carpeta.slice(0, 80);
+    return set;
+  };
+
+  function crearPieza({ estado = 'idea', origen = 'dashboard', registrarActividad = true, ...datos }) {
+    const set = camposPieza({ ...datos, estado, titulo: datos.titulo });
+    set.orden = q.maxOrden.get(set.estado).m + 1;
+    set.origen = origen;
+    const claves = Object.keys(set);
+    const { lastInsertRowid } = db.prepare(`INSERT INTO piezas (${claves.join(', ')}) VALUES (${claves.map(() => '?').join(', ')})`).run(...claves.map((k) => set[k] ?? null));
+    if (registrarActividad) registrar('Contenido', `Pieza creada: ${set.titulo}`, origen);
+    return leerPieza(lastInsertRowid);
   }
 
   function listarPiezas({ estado } = {}) {
     if (estado && !ESTADOS.includes(estado)) throw new JarvisError(`Estado no válido. Usa: ${ESTADOS.join(', ')}`);
-    return estado ? rows(q.piezasEstado, estado) : rows(q.piezas);
+    return (estado ? rows(q.piezasEstado, estado) : rows(q.piezas)).map(pieza);
   }
 
   function actualizarPieza(id, cambios = {}, origen = 'dashboard') {
-    const actual = row(q.getPieza, Number(id));
-    if (!actual) throw new JarvisError('Esa pieza no existe');
-    const permitidos = ['titulo', 'estado', 'formato', 'plataformas', 'fecha', 'nota'];
-    const set = {};
-    for (const k of permitidos) if (k in cambios) set[k] = Array.isArray(cambios[k]) ? cambios[k].join(', ') : cambios[k];
-    if ('estado' in set && !ESTADOS.includes(set.estado)) throw new JarvisError(`Estado no válido. Usa: ${ESTADOS.join(', ')}`);
-    if ('titulo' in set) set.titulo = texto(set.titulo, 'titulo', 200);
+    const actual = leerPieza(id);
+    const set = camposPieza(cambios);
     if ('estado' in set && set.estado !== actual.estado) set.orden = q.maxOrden.get(set.estado).m + 1;
     const claves = Object.keys(set);
     if (!claves.length) return actual;
@@ -94,40 +127,81 @@ export function createJarvis({ db, vault }) {
     if (set.estado && set.estado !== actual.estado) {
       registrar(set.estado === 'publicado' ? 'Contenido' : 'Tarea', `"${actual.titulo}" pasa a ${ETIQUETA_ESTADO[set.estado]}`, origen);
     }
-    return row(q.getPieza, actual.id);
+    return leerPieza(actual.id);
   }
 
+  // Devuelve la pieza borrada para que quien llama pueda borrar también sus archivos
   function borrarPieza(id) {
-    if (!q.delPieza.run(Number(id)).changes) throw new JarvisError('Esa pieza no existe');
+    const p = leerPieza(id);
+    q.delPieza.run(p.id);
+    return { ok: true, pieza: p };
+  }
+
+  // ---------- Biblioteca: carpetas y carruseles ----------
+  const nombreCarpeta = (v) => {
+    const s = typeof v === 'string' ? v.trim().replace(/\s+/g, ' ') : '';
+    if (!s) throw new JarvisError('Ponle nombre a la carpeta.');
+    return s.slice(0, 80);
+  };
+  function carpetas() {
+    return rows(q.carpetas).map((r) => ({ nombre: r.nombre, piezas: q.usoCarpeta.get(r.nombre).n }))
+      .sort((a, b) => a.nombre.localeCompare(b.nombre, 'es', { numeric: true }));
+  }
+  function crearCarpeta(nombre) {
+    const n = nombreCarpeta(nombre);
+    if (carpetas().some((c) => c.nombre.toLowerCase() === n.toLowerCase())) throw new JarvisError('Ya hay una carpeta con ese nombre.');
+    q.insCarpeta.run(n);
+    return { nombre: n };
+  }
+  function renombrarCarpeta(viejo, nuevo) {
+    const v = nombreCarpeta(viejo), n = nombreCarpeta(nuevo);
+    if (v === n) return { nombre: n };
+    if (carpetas().some((c) => c.nombre.toLowerCase() === n.toLowerCase() && c.nombre.toLowerCase() !== v.toLowerCase())) throw new JarvisError('Ya hay una carpeta con ese nombre.');
+    db.prepare('DELETE FROM contenido_carpetas WHERE nombre = ?').run(v);
+    if (!q.getCarpeta.get(n)) q.insCarpeta.run(n);
+    db.prepare('UPDATE piezas SET carpeta = ? WHERE carpeta = ?').run(n, v);
+    return { nombre: n };
+  }
+  // Las piezas de la carpeta no se borran: se quedan sueltas
+  function borrarCarpeta(nombre) {
+    const n = nombreCarpeta(nombre);
+    db.prepare('DELETE FROM contenido_carpetas WHERE nombre = ?').run(n);
+    const { changes } = db.prepare('UPDATE piezas SET carpeta = NULL WHERE carpeta = ?').run(n);
+    return { ok: true, sueltas: changes };
+  }
+  const idsDe = (ids) => {
+    if (!Array.isArray(ids) || !ids.length) throw new JarvisError('Marca al menos una pieza');
+    return ids.map((id) => leerPieza(id).id);
+  };
+  function moverACarpeta(ids, carpeta) {
+    const n = carpeta ? nombreCarpeta(carpeta) : null;
+    if (n && !q.getCarpeta.get(n)) q.insCarpeta.run(n);
+    const upd = db.prepare("UPDATE piezas SET carpeta = ?, actualizado = datetime('now','localtime') WHERE id = ?");
+    for (const id of idsDe(ids)) upd.run(n, id);
     return { ok: true };
   }
-
-  // ---------- Tareas ----------
-  function crearTarea({ titulo, fecha = hoy(), categoria = 'contenido', origen = 'dashboard' }) {
-    const t = texto(titulo, 'titulo', 200);
-    if (!CATEGORIAS.includes(categoria)) throw new JarvisError(`Categoría no válida. Usa: ${CATEGORIAS.join(', ')}`);
-    if (!/^\d{4}-\d{2}-\d{2}$/.test(fecha)) throw new JarvisError('La fecha debe ser AAAA-MM-DD');
-    const { lastInsertRowid } = q.insTarea.run(t, fecha, categoria, origen);
-    if (origen === 'hermes') registrar('Hermes', `Tarea añadida vía Telegram: ${t}`, origen);
-    return row(q.getTarea, lastInsertRowid);
+  // Junta varias piezas en un carrusel, en el orden en que se marcaron. Los archivos no se borran: pasan al carrusel.
+  function juntarEnCarrusel(ids, origen = 'dashboard') {
+    const lista = idsDe(ids).map(leerPieza);
+    if (lista.length < 2) throw new JarvisError('Marca al menos dos piezas para juntarlas');
+    const [primera] = lista;
+    const nueva = crearPieza({
+      titulo: primera.titulo, estado: primera.estado, formato: 'Carrusel', fecha: primera.fecha, hora: primera.hora,
+      carpeta: primera.carpeta, caption: lista.find((p) => p.caption?.trim())?.caption || null,
+      archivos: lista.flatMap((p) => p.archivos), origen, registrarActividad: false,
+    });
+    for (const p of lista) q.delPieza.run(p.id);
+    registrar('Contenido', `Carrusel creado con ${lista.length} piezas: ${nueva.titulo}`, origen);
+    return nueva;
   }
 
-  function marcarTarea(id, hecha = true, origen = 'dashboard') {
-    const t = row(q.getTarea, Number(id));
-    if (!t) throw new JarvisError('Esa tarea no existe');
-    q.setHecha.run(hecha ? 1 : 0, hecha ? 1 : 0, t.id);
-    if (hecha && !t.hecha) registrar('Tarea', `Tarea completada: ${t.titulo}`, origen);
-    return row(q.getTarea, t.id);
-  }
-
-  function borrarTarea(id) {
-    if (!q.delTarea.run(Number(id)).changes) throw new JarvisError('Esa tarea no existe');
-    return { ok: true };
-  }
-
-  function tareas({ fecha = hoy() } = {}) {
-    return { fecha, tareas: rows(q.tareasFecha, fecha), atrasadas: fecha === hoy() ? rows(q.pendientesAntes, fecha) : [] };
-  }
+  // ---------- Tareas (server/tareas.js) ----------
+  const crearTarea = (datos) => tareasDb.crear(datos);
+  const actualizarTarea = (id, cambios, origen) => tareasDb.actualizar(id, cambios, origen);
+  const marcarTarea = (id, hecha = true, origen = 'dashboard') => tareasDb.actualizar(id, { hecha }, origen);
+  const borrarTarea = (id) => tareasDb.borrar(id);
+  const listarTareas = (filtros) => tareasDb.listar(filtros);
+  const tareas = (opts) => tareasDb.delDia(opts);
 
   // ---------- Resúmenes ----------
   function resumenDelDia() {
@@ -136,7 +210,7 @@ export function createJarvis({ db, vault }) {
     const porEstado = Object.fromEntries(ESTADOS.map((e) => [e, piezas.filter((p) => p.estado === e)]));
     return {
       fecha: hoy(),
-      tareas: { total: lista.length, hechas: lista.filter((t) => t.hecha).length, pendientes: lista.filter((t) => !t.hecha).map((t) => t.titulo), atrasadas: atrasadas.map((t) => `${t.titulo} (${t.fecha})`) },
+      tareas: { total: lista.length, hechas: lista.filter((t) => t.hecha).length, pendientes: lista.filter((t) => !t.hecha).map((t) => t.titulo), atrasadas: atrasadas.map((t) => `${t.titulo} (vencía ${t.plazo_hasta})`), altaPrioridad: lista.filter((t) => !t.hecha && t.prioridad === 'alta').map((t) => t.titulo) },
       pipeline: Object.fromEntries(ESTADOS.map((e) => [e, porEstado[e].length])),
       paraHoy: piezas.filter((p) => p.fecha === hoy() && p.estado !== 'publicado').map((p) => `${p.titulo} [${ETIQUETA_ESTADO[p.estado]}]`),
       ideasRecientes: porEstado.idea.slice(0, 5).map((p) => p.titulo),
@@ -198,7 +272,8 @@ export function createJarvis({ db, vault }) {
 
   return {
     capturarIdea, crearNota, crearPieza, listarPiezas, actualizarPieza, borrarPieza,
-    crearTarea, marcarTarea, borrarTarea, tareas, resumenDelDia, inicio, registrar, actividadDe,
+    carpetas, crearCarpeta, renombrarCarpeta, borrarCarpeta, moverACarpeta, juntarEnCarrusel,
+    crearTarea, actualizarTarea, marcarTarea, borrarTarea, listarTareas, tareas, resumenDelDia, inicio, registrar, actividadDe,
     vault,
   };
 }

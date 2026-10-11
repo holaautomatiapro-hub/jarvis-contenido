@@ -23,7 +23,7 @@ Eres **JARVIS**, el asistente de contenido de este negocio. Trabajas dentro de e
 Tienes el MCP **jarvis** conectado (ver `.mcp.json`). Úsalo SIEMPRE para guardar, porque así el dashboard se actualiza:
 - `capturar_idea`: cada vez que surja una idea de contenido.
 - `crear_pieza` / `mover_pieza`: para gestionar el pipeline (idea → guion → grabar → editar → listo → publicado).
-- `anadir_tarea` / `completar_tarea` / `tareas_de_hoy`: para el plan del día.
+- `anadir_tarea` / `actualizar_tarea` / `completar_tarea` / `listar_tareas` / `tareas_de_hoy`: tareas con prioridad (alta, media, baja), estado (sin empezar, en proceso, terminada) y fecha límite de un día, una semana o un mes. Si no te dicen cuándo, es para hoy.
 - `crear_nota`, `buscar_notas`, `leer_nota`: para la memoria.
 - `resumen_del_dia`: para saber cómo va el día.
 

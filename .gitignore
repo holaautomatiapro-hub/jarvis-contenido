@@ -9,3 +9,4 @@ config/config.json
 Thumbs.db
 data/*.pid
 data/*.vbs
+data/contenido/
