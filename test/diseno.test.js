@@ -14,7 +14,8 @@ import { createApp } from '../server/index.js';
 import { createAsistente } from '../server/asistente.js';
 import { crearZip, leerZip } from '../server/diseno/zip.js';
 import { createKit } from '../server/diseno/kit.js';
-import { createMotor, normalizarDiseno, paginaDiapositiva } from '../server/diseno/motor.js';
+import { createMotor, instalarChromium, normalizarDiseno, paginaDiapositiva } from '../server/diseno/motor.js';
+import { EventEmitter } from 'node:events';
 import { createDisenos } from '../server/diseno/disenos.js';
 import { buildServer } from '../mcp/jarvis-mcp.js';
 
@@ -232,6 +233,23 @@ describe('diseños: API, exportar a la biblioteca y Claude', () => {
     await json('guardar_diseno', { id: 7, caption: 'c', slides: [slide(1)] });
     assert.deepEqual(llamadas.at(-1).slice(0, 2), ['PUT', '/api/disenos/7/datos']);
     assert.equal(llamadas.at(-1)[2].slides.length, 1);
+  });
+});
+
+describe('instalar Chromium cuando falta', () => {
+  const proceso = (code, salida = '') => (bin, args) => {
+    const p = new EventEmitter();
+    p.stdout = new EventEmitter(); p.stderr = new EventEmitter();
+    p.args = args;
+    setImmediate(() => { p.stderr.emit('data', Buffer.from(salida)); p.emit('close', code); });
+    proceso.ultimo = args;
+    return p;
+  };
+  test('lanza el instalador de Playwright, explica el error y permite reintentar', async () => {
+    const fallo = 'Downloading Chromium\nError: Download failed: server returned code 403 body \'request blocked\'\n    at ChildProcess.<anonymous> (x.js:1:1)\nError: Download failure, code=1\n';
+    await assert.rejects(instalarChromium({ ejecutar: proceso(1, fallo) }), /Download failed: server returned code 403/);
+    assert.ok(proceso.ultimo.includes('install') && proceso.ultimo.includes('chromium') && proceso.ultimo.includes('--only-shell'));
+    await instalarChromium({ ejecutar: proceso(0) }); // tras un fallo se puede volver a intentar
   });
 });
 

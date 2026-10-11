@@ -127,9 +127,11 @@ Pasos: 1) ver_kit_diseno; 2) lee con Read la guía del kit y el ejemplo de esta 
     try { r = leer(id); } catch { return; }
     if (r.estado !== 'generando') return;
     const sinGuardar = r.version === version;
+    // Si el último guardado no se pudo dibujar, ese error es el que hay que ver (p. ej. falta el navegador)
+    const sinDibujar = !sinGuardar && r.error && !json(r.previas, []).length;
     actualizar(id, {
-      estado: sinGuardar ? (r.version ? 'listo' : 'error') : 'listo',
-      error: e.tipo === 'error' ? `Claude no ha podido terminar: ${e.mensaje || 'error'}` : sinGuardar ? 'Claude ha terminado sin guardar el diseño. Pídeselo en el chat.' : null,
+      estado: sinDibujar || (sinGuardar && !r.version) ? 'error' : 'listo',
+      error: e.tipo === 'error' ? `Claude no ha podido terminar: ${e.mensaje || 'error'}` : sinGuardar ? 'Claude ha terminado sin guardar el diseño. Pídeselo en el chat.' : sinDibujar ? r.error : null,
     });
     avisar(id);
   }
@@ -165,7 +167,7 @@ Pasos: 1) ver_kit_diseno; 2) lee con Read la guía del kit y el ejemplo de esta 
         vistas_previas: nombres.map((f) => path.join(dir, f)),
       };
     } catch (e) {
-      actualizar(r.id, { estado: anterior === 'generando' ? 'generando' : 'error', error: `No se ha podido dibujar: ${e.message}` });
+      actualizar(r.id, { estado: anterior === 'generando' ? 'generando' : 'error', previas: '[]', avisos: '[]', error: `No se ha podido dibujar: ${e.message}` });
       avisar(r.id);
       throw new DisenoError(`No se ha podido dibujar el diseño: ${e.message}`);
     }
