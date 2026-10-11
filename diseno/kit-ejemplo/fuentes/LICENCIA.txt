@@ -1,0 +1,3 @@
+Inter (inter-latin-*.woff2), de Rasmus Andersson y The Inter Project Authors.
+Licencia: SIL Open Font License 1.1 — https://openfontlicense.org
+Copiada de @fontsource/inter.

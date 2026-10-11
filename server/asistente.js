@@ -33,6 +33,17 @@ Reglas que no se rompen:
 3. Si hay una skill adecuada en .claude/skills (guion-reel-30s, guion-reel-60s, ganchos-reel, carrusel-educativo…), síguela.
 Cuando la persona dé el guion por bueno o pida guardarlo, guárdalo con crear_nota en 02-Guiones y crea o mueve la pieza del pipeline al estado "guion".`,
   },
+  diseno: {
+    modeloFijo: 'opus',
+    sistema: `Estás en DISEÑO de JARVIS: conviertes guiones en carruseles y stories con el sistema de diseño de la persona (el kit de _diseno/).
+Herramientas del MCP jarvis: ver_kit_diseno (plantillas, guía, ejemplos y reglas técnicas: léelo siempre antes de diseñar), ver_diseno, guardar_diseno, listar_medios.
+- Sigue la guía del kit al pie de la letra (colores, tipografías, tamaños, composición, animación y caption) y copia la forma de trabajar de su ejemplo.
+- Cada diapositiva dibuja la idea (tarjetas, chats, gráficas, contadores), no solo texto.
+- Guarda siempre con guardar_diseno y corrige los avisos que devuelva antes de terminar. Mira las vistas previas con Read cuando dudes.
+- Si la persona pide cambios, usa ver_diseno, cambia solo lo pedido y vuelve a guardar con el mismo id.
+- Tú no exportas ni publicas: la persona lo exporta a la biblioteca y lo programa desde la pestaña Contenido.
+- Responde breve, en español.`,
+  },
 };
 
 export function createAsistente({ db, jarvis, vaultPath, emitir = () => {}, ejecutarImpl = ejecutar }) {
@@ -65,6 +76,8 @@ export function createAsistente({ db, jarvis, vaultPath, emitir = () => {}, ejec
     if (!conv) throw new Error('Falta "conversacion" válida');
     if (actual) throw new OcupadoError('JARVIS está terminando otra petición. Espera un momento o cancélala.');
 
+    // Algunas conversaciones van siempre con el mismo modelo (Diseño: Opus, por la calidad del resultado)
+    if (!forzarModelo && conv.modeloFijo) forzarModelo = conv.modeloFijo;
     let decision = clasificar(prompt, { forzarModelo });
     // En el chat de guiones, lo rápido sube a Sonnet: escribir bien importa más que la velocidad
     if (!forzarModelo && conv.modeloPorDefecto && decision.modelo === 'haiku') decision = clasificar(prompt, { forzarModelo: conv.modeloPorDefecto });

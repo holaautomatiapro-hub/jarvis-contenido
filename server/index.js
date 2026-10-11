@@ -26,12 +26,15 @@ import { createCompetencia, PROMPT_ANALISIS } from './integrations/competencia.j
 import { createAds } from './integrations/ads.js';
 import { createPublicar, REDES, REDES_POR_DEFECTO } from './publicar.js';
 import { createHermes, TAREAS_PROGRAMADAS } from './integrations/hermes.js';
+import { createKit } from './diseno/kit.js';
+import { createMotor } from './diseno/motor.js';
+import { createDisenos } from './diseno/disenos.js';
 
 dotenv.config({ path: path.join(ROOT, '.env'), quiet: true });
 
 const DIST = path.join(ROOT, 'web', 'dist');
 
-export function createApp({ jarvis, archivos, publicadorIg, asistente, instagram, competencia, ads, publicar, hermes, jobs, port, onChange = () => {}, status, tts = sintetizar }) {
+export function createApp({ jarvis, archivos, publicadorIg, asistente, instagram, competencia, ads, publicar, hermes, jobs, kit, disenos, port, onChange = () => {}, status, tts = sintetizar }) {
   const estadoSistema = status || (() => systemStatus({ vaultPath: jarvis.vault.base, instagram: Boolean(instagram?.estado().conectado), ads: Boolean(ads?.estado().conectado && ads?.estado().cuenta), hermes: Boolean(hermes?.estado().gateway.online) }));
   const app = express();
 
@@ -243,6 +246,25 @@ export function createApp({ jarvis, archivos, publicadorIg, asistente, instagram
     borrarArchivosDe(borradas);
     return { ok: true, borradas: borradas.length };
   }, true));
+  // Diseño: guion → carrusel o stories con el sistema de diseño del vault
+  if (disenos) {
+    app.get('/api/disenos', h(() => ({ kit: kit.estado(), disenos: disenos.listar() })));
+    app.post('/api/disenos', h((req) => disenos.crear(req.body || {}), true));
+    app.get('/api/disenos/:id', h((req) => disenos.obtener(req.params.id, { conDatos: req.query.datos === '1' })));
+    // Lo usa guardar_diseno (MCP): guarda las diapositivas y devuelve la revisión de calidad
+    app.put('/api/disenos/:id/datos', h((req) => disenos.guardarDatos(req.params.id, req.body || {}), true));
+    app.post('/api/disenos/:id/generar', h((req) => disenos.generar(req.params.id, { indicaciones: req.body?.indicaciones }), true));
+    app.post('/api/disenos/:id/exportar', h((req) => disenos.exportar(req.params.id, { tipo: req.body?.tipo }), true));
+    app.delete('/api/disenos/:id', h((req) => disenos.borrar(req.params.id), true));
+    app.get('/api/disenos/:id/previas/:fichero', (req, res) => {
+      const ruta = disenos.rutaPrevia(req.params.id, req.params.fichero);
+      if (!ruta) return res.status(404).json({ error: 'No existe' });
+      res.sendFile(ruta, { headers: { 'X-Content-Type-Options': 'nosniff', 'Cache-Control': 'private, max-age=31536000, immutable' } });
+    });
+    // Importar el sistema de diseño: el .zip llega tal cual en el cuerpo
+    app.post('/api/disenos/kit', express.raw({ type: () => true, limit: '300mb' }), h((req) => kit.importar(req.body), true));
+  }
+
   if (archivos) {
     // El navegador manda el archivo tal cual (sin JSON ni formularios) y se escribe al disco por trozos
     app.post('/api/contenido/archivos', h((req) => archivos.guardar(req, { nombre: String(req.query.nombre || ''), mime: String(req.query.mime || '') })));
@@ -318,7 +340,8 @@ function main() {
   };
   const onChange = () => emitir({ type: 'cambio', at: Date.now() });
   // Cuando JARVIS termina, el resto del dashboard se refresca (puede haber guardado ideas, tareas…)
-  const asistente = createAsistente({ db, jarvis, vaultPath: cfg.vaultPath, emitir: (e) => { emitir(e); if (e.tipo === 'fin') onChange(); } });
+  let disenos = null;
+  const asistente = createAsistente({ db, jarvis, vaultPath: cfg.vaultPath, emitir: (e) => { emitir(e); if (e.tipo === 'fin') onChange(); disenos?.alEventoClaude(e); } });
   const instagram = createInstagram({ db, vault: jarvis.vault, alCambiar: onChange });
   const competencia = createCompetencia({ db, instagram, vault: jarvis.vault, alCambiar: onChange });
   const ads = createAds({ db, instagram, alCambiar: onChange });
@@ -328,7 +351,10 @@ function main() {
   const hermes = createHermes({ vaultPath: cfg.vaultPath, mcpScript: cfg.mcpScript });
   const publicadorIg = createPublicadorIg({ db, jarvis, instagram, almacen: createAlmacen({}), archivos, alCambiar: onChange });
   publicadorIg.iniciar();
-  const server = createServer(createApp({ jarvis, archivos, publicadorIg, asistente, instagram, competencia, ads, publicar, hermes, jobs, port: cfg.port, onChange }));
+  const kit = createKit({ vaultPath: cfg.vaultPath, copiasDir: path.join(path.dirname(cfg.dbPath), 'kits-anteriores') });
+  const motor = createMotor({ kit, archivos });
+  disenos = createDisenos({ db, jarvis, kit, motor, archivos, previasDir: path.join(cfg.vaultPath, '.jarvis', 'disenos'), asistente, emitir, alCambiar: onChange });
+  const server = createServer(createApp({ jarvis, archivos, publicadorIg, asistente, instagram, competencia, ads, publicar, hermes, jobs, kit, disenos, port: cfg.port, onChange }));
   // Solo el propio dashboard puede escuchar los eventos (otra web abierta en el navegador, no)
   const local = hostsPermitidos(cfg.port);
   wss = new WebSocketServer({ server, path: '/ws', verifyClient: ({ origin, req }) => local.has(req.headers.host) && (!origin || local.has(origin.replace(/^https?:\/\//, ''))) });

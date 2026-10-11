@@ -23,7 +23,10 @@ function turnos(eventos) {
   return [...m.values()];
 }
 
-export default function ChatJarvis({ conversacion, titulo, subtitulo, placeholder, intro, sugerencias = [], borrador, onBorradorUsado }) {
+// prefijo: se antepone a cada mensaje (p. ej. "[Diseño #4]") para que JARVIS sepa de qué se habla.
+// mostrarPregunta: cómo se enseña cada pregunta (p. ej. resumir las que lanza el propio dashboard).
+// conGuardarGuion: el botón «Guardar en el vault» del chat de guiones.
+export default function ChatJarvis({ conversacion, titulo, subtitulo, placeholder, intro, sugerencias = [], borrador, onBorradorUsado, prefijo = '', mostrarPregunta = (t) => t, conGuardarGuion = true, deshabilitado = '' }) {
   const [eventos, setEventos] = useState([]);
   const [ocupado, setOcupado] = useState(false);
   const [texto, setTexto] = useState('');
@@ -60,10 +63,10 @@ export default function ChatJarvis({ conversacion, titulo, subtitulo, placeholde
 
   const enviar = async (t) => {
     const limpio = t.trim();
-    if (!limpio || ocupado) return;
+    if (!limpio || ocupado || deshabilitado) return;
     setAviso('');
     try {
-      await api('/api/jarvis/preguntar', { method: 'POST', body: { texto: limpio, conversacion } });
+      await api('/api/jarvis/preguntar', { method: 'POST', body: { texto: prefijo ? `${prefijo} ${limpio}` : limpio, conversacion } });
       setTexto('');
       sincronizar();
     } catch (err) { setAviso(err.message); }
@@ -89,14 +92,14 @@ export default function ChatJarvis({ conversacion, titulo, subtitulo, placeholde
         )}
         {lista.map((t) => (
           <div key={t.id} className="chat-turno">
-            <div className="burbuja tu">{t.pregunta}</div>
+            <div className="burbuja tu">{mostrarPregunta(t.pregunta || '')}</div>
             <div className="burbuja jarvis">
               {t.herramientas.length > 0 && (
                 <div className="chat-tools">{[...new Set(t.herramientas)].map((h) => <span key={h} className="tag">{h}</span>)}</div>
               )}
               {t.texto ? <div className="md chat-md" dangerouslySetInnerHTML={{ __html: md(t.texto) }} /> : t.estado === 'pensando' && <span className="t-dim cursor">Pensando con {t.etiqueta}…</span>}
               {t.estado === 'error' && <div className="t-err">✕ {t.error}</div>}
-              {t.estado === 'ok' && t.final && (
+              {t.estado === 'ok' && t.final && conGuardarGuion && (
                 <div className="chat-acciones">
                   <button className="link-btn" onClick={() => navigator.clipboard?.writeText(t.final)}>Copiar</button>
                   <button className="link-btn" onClick={() => enviar('Perfecto, guárdalo en 02-Guiones y pon la pieza en el estado guion.')}>Guardar en el vault</button>
@@ -113,10 +116,10 @@ export default function ChatJarvis({ conversacion, titulo, subtitulo, placeholde
           className="campo"
           rows={2}
           value={texto}
-          placeholder={placeholder}
+          placeholder={deshabilitado || placeholder}
           onChange={(e) => setTexto(e.target.value)}
           onKeyDown={(e) => { if (e.key === 'Enter' && !e.shiftKey) { e.preventDefault(); enviar(texto); } }}
-          disabled={ocupado}
+          disabled={ocupado || Boolean(deshabilitado)}
           aria-label={placeholder}
         />
         {ocupado

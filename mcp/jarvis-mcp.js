@@ -16,10 +16,13 @@ import { createInstagram } from '../server/integrations/instagram.js';
 import { createCompetencia } from '../server/integrations/competencia.js';
 import { createAds } from '../server/integrations/ads.js';
 import { createPublicar, REDES } from '../server/publicar.js';
+import { createKit } from '../server/diseno/kit.js';
+import { reglasDiseno } from '../server/diseno/reglas.js';
+import { readFileSync, statSync } from 'node:fs';
 
 dotenv.config({ path: path.join(ROOT, '.env'), quiet: true });
 
-export function buildServer(jarvis, { origen = 'claude', avisar = () => {}, instagram = null, competencia = null, ads = null, publicar = null } = {}) {
+export function buildServer(jarvis, { origen = 'claude', avisar = () => {}, instagram = null, competencia = null, ads = null, publicar = null, diseno = null } = {}) {
   const server = new McpServer({ name: 'jarvis', version: '0.2.0' });
 
   const tool = (name, description, inputSchema, fn, escribe = false) =>
@@ -230,6 +233,68 @@ export function buildServer(jarvis, { origen = 'claude', avisar = () => {}, inst
       ({ id, fecha, hora }) => publicar.programar(id, { fecha, hora }), true);
   }
 
+  // Diseño: el motor que dibuja vive en el dashboard; estas herramientas le pasan el trabajo
+  if (diseno) {
+    const { kit, servidor } = diseno;
+    tool('ver_kit_diseno', 'Sistema de diseño de la persona: plantillas (carrusel/story), guía de marca, ejemplos y las reglas técnicas para escribir un diseño. Léelo siempre antes de diseñar.', {},
+      () => {
+        const k = kit.leer();
+        return {
+          nombre: k.nombre, propio: k.propio, cuenta: k.handle, duracion_diapositiva: `${k.duracion} s`,
+          guia: k.guia, css: k.css,
+          plantillas: k.plantillas.map(({ id, nombre, descripcion, formatos, ejemplo }) => ({ id, nombre, descripcion, formatos, ejemplo })),
+          como_leer: 'Lee la guía y el ejemplo de la plantilla con leer_archivo_kit (el ejemplo es un diseño completo hecho a mano: imítalo).',
+          reglas: reglasDiseno(k),
+        };
+      });
+    tool('leer_archivo_kit', 'Lee un archivo de texto del sistema de diseño (guía .md, ejemplos .json, .css, .html…).',
+      { archivo: z.string().describe('Ruta dentro del kit, p. ej. "CLAUDE.md" o "ejemplos/plantilla-1.json"') },
+      ({ archivo }) => {
+        const k = kit.leer();
+        const abs = kit.archivo(k, archivo);
+        if (!abs) throw new Error(`No existe ${archivo} en el kit`);
+        if (!/\.(md|json|css|html?|txt|py|js)$/i.test(abs)) throw new Error('Solo se pueden leer archivos de texto; las imágenes, con Read');
+        if (statSync(abs).size > 600_000) throw new Error('Archivo demasiado grande');
+        return { archivo, contenido: readFileSync(abs, 'utf8') };
+      });
+    tool('listar_medios', 'Fotos y vídeos de la biblioteca de Contenido, para usarlos en un diseño (pon su url tal cual en <img src> o <video src>).',
+      { tipo: z.enum(['foto', 'video']).optional(), buscar: z.string().optional().describe('Texto en el nombre del archivo o el título de la pieza') },
+      ({ tipo, buscar }) => {
+        const vistos = new Set();
+        const b = (buscar || '').toLowerCase();
+        return jarvis.listarPiezas().flatMap((p) => p.archivos.map((a) => ({ ...a, pieza: p.titulo })))
+          .filter((a) => a.url && !vistos.has(a.url) && vistos.add(a.url))
+          .filter((a) => !tipo || (tipo === 'video' ? a.mime.startsWith('video/') : a.mime.startsWith('image/')))
+          .filter((a) => !b || `${a.nombre} ${a.pieza}`.toLowerCase().includes(b))
+          .slice(0, 80).map(({ url, nombre, mime, pieza }) => ({ url, nombre, tipo: mime.startsWith('video/') ? 'video' : 'foto', pieza }));
+      });
+    tool('listar_disenos', 'Diseños hechos o en curso (id, título, formato, plantilla, estado, avisos).', {},
+      async () => (await servidor('GET', '/api/disenos')).disenos.map(({ id, titulo, formato, plantilla, estado, diapositivas, avisos, exportado }) => ({ id, titulo, formato, plantilla, estado, diapositivas, avisos: avisos.length, exportado: Boolean(exportado) })));
+    tool('ver_diseno', 'Un diseño completo, con sus diapositivas (para cambiarlo y volver a guardarlo).', { id: z.number().int() },
+      ({ id }) => servidor('GET', `/api/disenos/${id}?datos=1`));
+    tool('crear_diseno', 'Crea un diseño vacío a partir de un guion (pegado, de una nota o de una pieza del pipeline). Después escríbelo y guárdalo con guardar_diseno.',
+      {
+        formato: z.enum(['carrusel', 'story']),
+        plantilla: z.string().describe('id de la plantilla (ver_kit_diseno)'),
+        titulo: z.string().optional(),
+        guion: z.string().optional(), nota: z.string().optional().describe('Ruta de la nota del guion en el vault'),
+        pieza_id: z.number().int().optional().describe('Pieza del pipeline de la que sale el guion'),
+      },
+      (a) => servidor('POST', '/api/disenos', { ...a, generar: false }), true);
+    tool('guardar_diseno', 'Guarda las diapositivas de un diseño: JARVIS dibuja la vista previa y devuelve avisos de calidad (textos que se salen, que no caben o que se pisan) y las rutas de las vistas previas. Corrige los avisos y vuelve a guardar.',
+      {
+        id: z.number().int(),
+        titulo: z.string().optional(),
+        caption: z.string().optional().describe('Texto de la publicación'),
+        slides: z.array(z.object({
+          bg: z.string().optional(), glow: z.string().nullable().optional(), clase: z.string().optional(),
+          html: z.string().optional(), js: z.string().optional(),
+          blocks: z.array(z.object({ html: z.string(), js: z.string().optional() }).passthrough()).optional(),
+        }).passthrough()).min(1).max(20),
+      },
+      ({ id, ...datos }) => servidor('PUT', `/api/disenos/${id}/datos`, datos), true);
+  }
+
   return server;
 }
 
@@ -246,7 +311,20 @@ async function main() {
   const origen = process.env.JARVIS_ORIGEN || 'claude';
   // Avisa al dashboard (si está abierto) para que se refresque al instante
   const avisar = () => fetch(`http://127.0.0.1:${cfg.port}/api/avisar`, { method: 'POST', signal: AbortSignal.timeout(800) }).catch(() => {});
-  await buildServer(jarvis, { origen, avisar, instagram, competencia, ads, publicar }).connect(new StdioServerTransport());
+  // El motor de diseño corre en el dashboard: estas llamadas le pasan el trabajo
+  const servidor = async (metodo, ruta, body) => {
+    let res;
+    try {
+      res = await fetch(`http://127.0.0.1:${cfg.port}${ruta}`, { method: metodo, headers: body ? { 'content-type': 'application/json' } : {}, body: body ? JSON.stringify(body) : undefined, signal: AbortSignal.timeout(10 * 60_000) });
+    } catch {
+      throw new Error('JARVIS no está abierto: el motor de diseño vive en el dashboard');
+    }
+    const j = await res.json().catch(() => ({}));
+    if (!res.ok) throw new Error(j.error || `Error ${res.status}`);
+    return j;
+  };
+  const diseno = { kit: createKit({ vaultPath: cfg.vaultPath }), servidor };
+  await buildServer(jarvis, { origen, avisar, instagram, competencia, ads, publicar, diseno }).connect(new StdioServerTransport());
 }
 
 const esPrincipal = process.argv[1] && path.resolve(process.argv[1]) === fileURLToPath(import.meta.url);
