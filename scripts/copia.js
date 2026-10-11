@@ -7,7 +7,10 @@ import path from 'node:path';
 import os from 'node:os';
 import { spawnSync } from 'node:child_process';
 import { fileURLToPath } from 'node:url';
-import { cpSync, existsSync, mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync, renameSync } from 'node:fs';
+import { cpSync, createReadStream, createWriteStream, existsSync, mkdirSync, mkdtempSync, readFileSync, readdirSync, rmSync, statSync, writeFileSync, renameSync } from 'node:fs';
+import { Readable } from 'node:stream';
+import { pipeline } from 'node:stream/promises';
+import { createGzip } from 'node:zlib';
 import { DatabaseSync } from 'node:sqlite';
 import { ROOT, getConfig } from '../server/config.js';
 import { asegurarEnv, guardarEnv, leerEnv, ENV_PATH } from '../server/env-archivo.js';
@@ -20,7 +23,71 @@ function tar(args, cwd) {
   if (r.error || r.status !== 0) throw new Error(`No se pudo ejecutar tar ${args[0]} (${r.error?.message || `código ${r.status}`})`);
 }
 
-export function exportar({ destino = path.join(ROOT, 'JARVIS-copia.tar.gz') } = {}) {
+// .tar.gz escrito con Node, sin el tar del sistema: el tar.exe de Windows se cierra con un error de acceso
+// (código 3221225477) con algunas copias. Formato ustar, con cabeceras PAX para rutas largas o con tildes.
+const MAX_USTAR = 0o77777777777;
+
+function cabecera(nombre, tam, tipo) {
+  const h = Buffer.alloc(512);
+  h.write(nombre, 0, 100, 'utf8');
+  h.write(tipo === '5' ? '0000755\0' : '0000644\0', 100);
+  h.write('0000000\0', 108);
+  h.write('0000000\0', 116);
+  h.write(`${tam.toString(8).padStart(11, '0')}\0`, 124);
+  h.write(`${Math.floor(Date.now() / 1000).toString(8).padStart(11, '0')}\0`, 136);
+  h.fill(' ', 148, 156);
+  h.write(tipo, 156);
+  h.write('ustar\0' + '00', 257);
+  let suma = 0;
+  for (const b of h) suma += b;
+  h.write(`${suma.toString(8).padStart(6, '0')}\0 `, 148);
+  return h;
+}
+
+// Registro PAX "LONGITUD clave=valor\n", donde LONGITUD cuenta también sus propias cifras
+function registroPax(clave, valor) {
+  const resto = Buffer.byteLength(` ${clave}=${valor}\n`);
+  let n = resto + 1;
+  while (String(n).length + resto !== n) n = String(n).length + resto;
+  return `${n} ${clave}=${valor}\n`;
+}
+
+const relleno = (tam) => Buffer.alloc((512 - (tam % 512)) % 512);
+
+function* entrada(nombre, tam, tipo) {
+  const grande = tam > MAX_USTAR;
+  if (grande || Buffer.byteLength(nombre) > 100 || !/^[\x20-\x7e]*$/.test(nombre)) {
+    const pax = Buffer.from(registroPax('path', nombre) + (grande ? registroPax('size', String(tam)) : ''));
+    yield cabecera('PaxHeader', pax.length, 'x');
+    yield pax;
+    yield relleno(pax.length);
+    nombre = nombre.replace(/[^\x20-\x7e]/g, '_').slice(-100);
+  }
+  yield cabecera(nombre, grande ? 0 : tam, tipo);
+}
+
+async function* contenidoTar(dir, rel = '') {
+  for (const d of readdirSync(path.join(dir, rel), { withFileTypes: true })) {
+    const r = rel ? `${rel}/${d.name}` : d.name;
+    const abs = path.join(dir, r);
+    if (d.isDirectory()) {
+      yield* entrada(`${r}/`, 0, '5');
+      yield* contenidoTar(dir, r);
+    } else if (d.isFile()) {
+      const tam = statSync(abs).size;
+      yield* entrada(r, tam, '0');
+      for await (const trozo of createReadStream(abs)) yield trozo;
+      yield relleno(tam);
+    }
+  }
+  if (!rel) yield Buffer.alloc(1024);
+}
+
+export async function crearTarGz(dir, destino) {
+  await pipeline(Readable.from(contenidoTar(dir)), createGzip(), createWriteStream(destino));
+}
+
+export async function exportar({ destino = path.join(ROOT, 'JARVIS-copia.tar.gz') } = {}) {
   const cfg = getConfig({ ...process.env, ...leerEnv(readFileSync(asegurarEnv(), 'utf8')) });
   const tmp = mkdtempSync(path.join(os.tmpdir(), 'jarvis-copia-'));
   try {
@@ -34,7 +101,7 @@ export function exportar({ destino = path.join(ROOT, 'JARVIS-copia.tar.gz') } = 
     if (existsSync(ENV_PATH)) writeFileSync(path.join(tmp, 'env.txt'), readFileSync(ENV_PATH, 'utf8'));
     writeFileSync(path.join(tmp, 'copia.json'), JSON.stringify({ creada: new Date().toISOString(), desde: os.hostname() }, null, 2));
     rmSync(destino, { force: true });
-    tar(['-czf', destino, '.'], tmp);
+    await crearTarGz(tmp, destino);
     return destino;
   } finally {
     rmSync(tmp, { recursive: true, force: true });
@@ -75,11 +142,11 @@ export function importar(archivo) {
   }
 }
 
-function main() {
+async function main() {
   const [orden, archivo] = process.argv.slice(2);
   try {
     if (orden === 'exportar') {
-      const f = exportar();
+      const f = await exportar();
       console.log(`\n  ✓ Copia creada: ${f}`);
       console.log('  Lleva tus claves y tu conexión con Instagram: no la compartas y bórrala cuando la hayas pasado.\n');
     } else if (orden === 'importar') {

@@ -184,7 +184,7 @@ function EditorTarea({ tarea, onClose, onGuardada }) {
         <label className="campo-et">Prioridad</label>
         <div className="seg seg-ancho">
           {PRIORIDADES.map((p) => (
-            <button type="button" key={p.id} className={t.prioridad === p.id ? 'on' : ''} style={t.prioridad === p.id ? { background: p.color } : undefined} onClick={() => cambia('prioridad')(p.id)}>
+            <button type="button" key={p.id} className={t.prioridad === p.id ? 'on' : ''} style={t.prioridad === p.id ? { background: p.color, color: '#fff' } : undefined} onClick={() => cambia('prioridad')(p.id)}>
               <span className="punto" style={{ background: t.prioridad === p.id ? '#fff' : p.color }} />{p.label}
             </button>
           ))}

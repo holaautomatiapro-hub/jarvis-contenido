@@ -21,6 +21,8 @@ npm run doctor                                           # qué está listo y qu
 
 Después, ábrelo con el acceso directo **JARVIS** del escritorio o en http://localhost:3333. `iniciar-jarvis.bat` lo abre con la ventana visible, útil para ver errores.
 
+**Modo claro u oscuro y tu color**: el botón de la paleta, arriba a la derecha. Eliges oscuro, claro o el del sistema, y cambias el azul por cualquier color (de la lista, con el selector o con su código hex).
+
 ## Tareas (pestaña Tareas)
 
 - Cada tarea tiene **título, descripción, prioridad** (alta, media o baja), **estado** (sin empezar, en proceso o terminada) y **fecha de finalización**: un día concreto, una semana o un mes (o sin fecha).

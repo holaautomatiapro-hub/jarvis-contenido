@@ -1,6 +1,21 @@
 import { useEffect, useRef } from 'react';
+import { POR_DEFECTO, esHex, hexARgb, mezclar } from '../lib/apariencia.js';
 
-// Esfera de partículas azules (canvas 2D con proyección 3D: sin WebGL, funciona en cualquier PC).
+// Tonos de la esfera a partir del color de acento. En modo claro las partículas son más oscuras
+// y se pintan sin sumar luz (sobre fondo claro el blanco no se vería).
+function paleta() {
+  const raiz = document.documentElement;
+  const v = getComputedStyle(raiz).getPropertyValue('--accent').trim();
+  const a = hexARgb(esHex(v) ? v : POR_DEFECTO.acento);
+  const claro = raiz.dataset.theme === 'light';
+  const blanco = [255, 255, 255], negro = [0, 0, 0];
+  const c = (rgb) => (alpha) => `rgba(${rgb.map(Math.round).join(',')},${alpha})`;
+  return claro
+    ? { claro, brillo: c(mezclar(a, negro, 0.35)), medio: c(a), base: c(mezclar(a, blanco, 0.25)), halo: c(mezclar(a, blanco, 0.3)), sombra: c(a), nucleo: c(mezclar(a, blanco, 0.85)), nucleo2: c(mezclar(a, blanco, 0.4)) }
+    : { claro, brillo: c(mezclar(a, blanco, 0.78)), medio: c(mezclar(a, blanco, 0.3)), base: c(mezclar(a, blanco, 0.05)), halo: c(mezclar(a, blanco, 0.3)), sombra: c(mezclar(a, negro, 0.35)), nucleo: c(mezclar(a, blanco, 0.92)), nucleo2: c(mezclar(a, blanco, 0.5)) };
+}
+
+// Esfera de partículas del color de acento (canvas 2D con proyección 3D: sin WebGL, funciona en cualquier PC).
 export default function Sphere({ density = 3800, speed = 1, active = false }) {
   const ref = useRef(null);
   const activeRef = useRef(active);
@@ -11,6 +26,9 @@ export default function Sphere({ density = 3800, speed = 1, active = false }) {
     const ctx = canvas.getContext('2d');
     const dpr = Math.min(window.devicePixelRatio || 1, 2);
     let w = 0, h = 0, raf = 0, t = 0;
+    let col = paleta();
+    const repintar = () => { col = paleta(); };
+    window.addEventListener('apariencia', repintar);
 
     // Puntos en esfera (distribución de Fibonacci) + ruido radial + polvo exterior.
     const pts = [];
@@ -66,14 +84,14 @@ export default function Sphere({ density = 3800, speed = 1, active = false }) {
 
       // Halo
       const g = ctx.createRadialGradient(cx, cy, 0, cx, cy, R * 1.5);
-      g.addColorStop(0, 'rgba(90,150,255,0.38)');
-      g.addColorStop(0.25, 'rgba(47,107,255,0.14)');
-      g.addColorStop(0.6, 'rgba(30,64,175,0.05)');
+      g.addColorStop(0, col.halo(col.claro ? 0.3 : 0.38));
+      g.addColorStop(0.25, col.medio(0.14));
+      g.addColorStop(0.6, col.sombra(0.05));
       g.addColorStop(1, 'rgba(0,0,0,0)');
       ctx.fillStyle = g;
       ctx.fillRect(0, 0, w, h);
 
-      ctx.globalCompositeOperation = 'lighter';
+      ctx.globalCompositeOperation = col.claro ? 'source-over' : 'lighter';
       const cosA = Math.cos(t), sinA = Math.sin(t);
       const cosB = Math.cos(0.35), sinB = Math.sin(0.35);
       const plot = (p, scale, base) => {
@@ -88,7 +106,7 @@ export default function Sphere({ density = 3800, speed = 1, active = false }) {
         const tw = 0.6 + 0.4 * Math.sin(t * 30 + p.s * 20);
         const alpha = Math.min(1, base * (0.35 + depth * 0.9) * tw);
         const size = (0.7 + depth * 1.2) * (p.s > 0.97 ? 1.9 : 1);
-        ctx.fillStyle = p.s > 0.9 ? `rgba(200,228,255,${alpha})` : p.s > 0.55 ? `rgba(90,160,255,${alpha})` : `rgba(55,115,255,${alpha})`;
+        ctx.fillStyle = p.s > 0.9 ? col.brillo(alpha) : p.s > 0.55 ? col.medio(alpha) : col.base(alpha);
         ctx.fillRect(px, py, size, size);
       };
       for (const p of pts) plot(p, 1, 0.9);
@@ -96,10 +114,10 @@ export default function Sphere({ density = 3800, speed = 1, active = false }) {
 
       // Núcleo
       const c = ctx.createRadialGradient(cx, cy, 0, cx, cy, R * 0.38);
-      c.addColorStop(0, 'rgba(235,245,255,0.95)');
-      c.addColorStop(0.15, 'rgba(140,190,255,0.6)');
-      c.addColorStop(0.5, 'rgba(47,107,255,0.18)');
-      c.addColorStop(1, 'rgba(47,107,255,0)');
+      c.addColorStop(0, col.nucleo(0.95));
+      c.addColorStop(0.15, col.nucleo2(0.6));
+      c.addColorStop(0.5, col.medio(0.18));
+      c.addColorStop(1, col.medio(0));
       ctx.fillStyle = c;
       ctx.beginPath(); ctx.arc(cx, cy, R * 0.38, 0, Math.PI * 2); ctx.fill();
       ctx.globalCompositeOperation = 'source-over';
@@ -107,7 +125,7 @@ export default function Sphere({ density = 3800, speed = 1, active = false }) {
       raf = requestAnimationFrame(draw);
     };
     draw();
-    return () => { cancelAnimationFrame(raf); ro.disconnect(); };
+    return () => { cancelAnimationFrame(raf); ro.disconnect(); window.removeEventListener('apariencia', repintar); };
   }, [density, speed]);
 
   return <canvas ref={ref} />;

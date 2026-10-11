@@ -212,7 +212,7 @@ export default function Ads() {
               <div key={p.id} className="idea-card">
                 <span className="miniatura" style={p.miniatura ? { backgroundImage: `url("${p.miniatura}")` } : { background: 'color-mix(in srgb, #3987e5 30%, var(--panel-2))' }}>{!p.miniatura && <Icon name="play" size={12} />}</span>
                 <div className="idea-txt">
-                  <div className="idea-tags"><span className="tag" style={{ background: 'rgba(47,107,255,.15)', color: '#9cc0ff' }}>{p.formato}</span><small>{num(p.alcance)} alcance · {num(p.guardados)} guardados</small></div>
+                  <div className="idea-tags"><span className="tag" style={{ background: 'color-mix(in srgb, var(--accent) 15%, transparent)', color: 'var(--accent-texto)' }}>{p.formato}</span><small>{num(p.alcance)} alcance · {num(p.guardados)} guardados</small></div>
                   <b>{p.gancho}</b>
                   <span className="idea-porque">{p.motivo}</span>
                   <button className="link-btn" disabled={data.demoRecomendados || !estado.cuenta} onClick={() => setProponer(p)}>{data.demoRecomendados ? 'Ejemplo' : !estado.cuenta ? 'Elige antes la cuenta publicitaria' : '+ Proponer campaña'}</button>

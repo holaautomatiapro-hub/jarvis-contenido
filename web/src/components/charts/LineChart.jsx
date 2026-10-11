@@ -2,7 +2,7 @@ import { useEffect, useId, useRef, useState } from 'react';
 import { fechaCorta, num, numLargo } from '../../lib/formato.js';
 
 // Línea de una sola serie con área suave, cuadrícula discreta y tooltip con cruceta al pasar el ratón.
-export default function LineChart({ datos, campo, color = '#3987e5', alto = 210, etiqueta }) {
+export default function LineChart({ datos, campo, color = 'var(--accent-2)', alto = 210, etiqueta }) {
   const ref = useRef(null);
   const [ancho, setAncho] = useState(600);
   const [hover, setHover] = useState(null);
@@ -45,8 +45,8 @@ export default function LineChart({ datos, campo, color = '#3987e5', alto = 210,
       <svg width={ancho} height={alto}>
         <defs>
           <linearGradient id={`a${id}`} x1="0" x2="0" y1="0" y2="1">
-            <stop offset="0" stopColor={color} stopOpacity="0.28" />
-            <stop offset="1" stopColor={color} stopOpacity="0" />
+            <stop offset="0" style={{ stopColor: color }} stopOpacity="0.28" />
+            <stop offset="1" style={{ stopColor: color }} stopOpacity="0" />
           </linearGradient>
         </defs>
         {ticksY.map((t) => (
@@ -59,11 +59,11 @@ export default function LineChart({ datos, campo, color = '#3987e5', alto = 210,
           <text key={d.fecha} x={x(i)} y={alto - 6} className="eje-texto" textAnchor={i === datos.length - 1 ? 'end' : i === 0 ? 'start' : 'middle'}>{fechaCorta(d.fecha)}</text>
         ))}
         <path d={area} fill={`url(#a${id})`} />
-        <path d={linea} fill="none" stroke={color} strokeWidth="2" strokeLinejoin="round" strokeLinecap="round" />
+        <path d={linea} fill="none" style={{ stroke: color }} strokeWidth="2" strokeLinejoin="round" strokeLinecap="round" />
         {hover != null && (
           <g>
             <line x1={x(hover)} x2={x(hover)} y1={m.t} y2={m.t + h} className="cruceta" />
-            <circle cx={pts[hover][0]} cy={pts[hover][1]} r="4.5" fill={color} stroke="var(--panel)" strokeWidth="2" />
+            <circle cx={pts[hover][0]} cy={pts[hover][1]} r="4.5" style={{ fill: color, stroke: 'var(--panel)' }} strokeWidth="2" />
           </g>
         )}
       </svg>

@@ -20,15 +20,9 @@ function Kpi({ k }) {
         {k.value}
         <span className={`delta ${up ? 'up' : 'down'}`}>{up ? '▲' : '▼'} {Math.abs(k.delta)}%</span>
       </div>
-      <div className="kpi-spark"><Sparkline data={k.series} color={k.color.startsWith('var') ? getVar(k.color) : k.color} /></div>
+      <div className="kpi-spark"><Sparkline data={k.series} color={k.color} /></div>
     </div>
   );
-}
-
-// Los SVG necesitan el color resuelto para el degradado
-function getVar(v) {
-  const name = v.slice(4, -1);
-  return getComputedStyle(document.documentElement).getPropertyValue(name).trim() || '#3d8bff';
 }
 
 export default function Inicio({ data, onAsk, acciones = {} }) {

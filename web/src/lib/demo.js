@@ -35,10 +35,10 @@ export const demoInicio = {
 };
 
 export const TAG_COLORS = {
-  Contenido: ['rgba(139,92,246,.16)', '#b9a4ff'],
-  Idea: ['rgba(59,130,246,.16)', '#8fb8ff'],
-  Nota: ['rgba(34,197,94,.14)', '#7ee0a2'],
-  Tarea: ['rgba(245,158,11,.15)', '#fbc96a'],
-  Hermes: ['rgba(34,211,238,.13)', '#7fe6f5'],
-  'Análisis': ['rgba(34,197,94,.14)', '#7ee0a2'],
+  Contenido: ['rgba(139,92,246,.16)', 'var(--violeta-texto)'],
+  Idea: ['rgba(59,130,246,.16)', 'var(--azul-texto)'],
+  Nota: ['rgba(34,197,94,.14)', 'var(--verde-texto)'],
+  Tarea: ['rgba(245,158,11,.15)', 'var(--ambar-texto)'],
+  Hermes: ['rgba(34,211,238,.13)', 'var(--cian-texto)'],
+  'Análisis': ['rgba(34,197,94,.14)', 'var(--verde-texto)'],
 };

@@ -282,7 +282,7 @@ export function Pipeline({ piezas, onAbrir, onMover, onNuevaIdea }) {
                   {p.archivos[0] && <Miniatura p={p} className="tarjeta-mini" />}
                   <div className="tarjeta-titulo">{p.titulo}</div>
                   <div className="tarjeta-meta">
-                    {p.formato && <span className="tag" style={{ background: 'rgba(47,107,255,.14)', color: '#9cc0ff' }}>{textoTipo(p.formato)}</span>}
+                    {p.formato && <span className="tag" style={{ background: 'color-mix(in srgb, var(--accent) 14%, transparent)', color: 'var(--accent-texto)' }}>{textoTipo(p.formato)}</span>}
                     {p.plataformas && <span className="mini">{p.plataformas}</span>}
                     {p.fecha && <span className="mini"><Icon name="calendar" size={10} /> {p.fecha.slice(5).split('-').reverse().join('/')}</span>}
                     {p.origen === 'hermes' && <Icon name="telegram" size={11} color="var(--cyan)" />}
