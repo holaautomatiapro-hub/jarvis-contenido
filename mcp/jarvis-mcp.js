@@ -17,12 +17,13 @@ import { createCompetencia } from '../server/integrations/competencia.js';
 import { createAds } from '../server/integrations/ads.js';
 import { createPublicar, REDES } from '../server/publicar.js';
 import { createKit } from '../server/diseno/kit.js';
+import { createRecordatorios } from '../server/recordatorios.js';
 import { reglasDiseno } from '../server/diseno/reglas.js';
 import { readFileSync, statSync } from 'node:fs';
 
 dotenv.config({ path: path.join(ROOT, '.env'), quiet: true });
 
-export function buildServer(jarvis, { origen = 'claude', avisar = () => {}, instagram = null, competencia = null, ads = null, publicar = null, diseno = null } = {}) {
+export function buildServer(jarvis, { origen = 'claude', avisar = () => {}, instagram = null, competencia = null, ads = null, publicar = null, diseno = null, recordatorios = null } = {}) {
   const server = new McpServer({ name: 'jarvis', version: '0.2.0' });
 
   const tool = (name, description, inputSchema, fn, escribe = false) =>
@@ -51,6 +52,14 @@ export function buildServer(jarvis, { origen = 'claude', avisar = () => {}, inst
   tool('leer_nota', 'Lee una nota del vault por su ruta (por ejemplo "01-Ideas/Mi idea.md").',
     { ruta: z.string() },
     ({ ruta }) => jarvis.vault.read(ruta));
+
+  tool('editar_nota', 'Cambia una nota que ya existe: su contenido completo (léela antes con leer_nota y devuelve el texto entero ya cambiado) y/o su título (renombra el archivo).',
+    { ruta: z.string(), contenido: z.string().optional(), titulo: z.string().optional() },
+    ({ ruta, contenido, titulo }) => jarvis.editarNota(ruta, { contenido, titulo }), true);
+
+  tool('borrar_nota', 'Manda una nota a la papelera del vault (.trash; se puede recuperar desde Obsidian). Pide confirmación a la persona antes de usarla.',
+    { ruta: z.string() },
+    ({ ruta }) => jarvis.borrarNota(ruta), true);
 
   tool('listar_notas', 'Lista las notas más recientes, opcionalmente de una carpeta.',
     { carpeta: z.enum(CARPETAS).optional(), limite: z.number().int().min(1).max(200).optional() },
@@ -139,6 +148,20 @@ export function buildServer(jarvis, { origen = 'claude', avisar = () => {}, inst
   tool('tareas_de_hoy', 'Devuelve las tareas que vencen hoy o caen en esta semana/mes, y las atrasadas.', {}, () => jarvis.tareas());
 
   tool('resumen_del_dia', 'Resumen del día: tareas, estado del pipeline, piezas previstas para hoy e ideas recientes.', {}, () => jarvis.resumenDelDia());
+
+  if (recordatorios) {
+    const DIAS = 'dias: 0 = domingo, 1 = lunes … 6 = sábado; sin dias = todos los días';
+    tool('recordatorios_de_hoy', 'Recordatorios que se repiten y tocan hoy (salen en Inicio), con si ya están hechos.', {}, () => recordatorios.deHoy());
+    tool('listar_recordatorios', 'Todos los recordatorios que se repiten, con sus días y hora.', {}, () => recordatorios.listar());
+    tool('crear_recordatorio', `Crea un recordatorio que se repite (p. ej. «subir una story») y sale cada día en Inicio para marcarlo. ${DIAS}.`,
+      { texto: z.string(), dias: z.array(z.number().int().min(0).max(6)).optional(), hora: z.string().optional().describe('HH:MM') },
+      ({ texto, dias, hora }) => recordatorios.crear({ texto, dias: dias?.length ? dias : 'diario', hora, origen }), true);
+    tool('marcar_recordatorio', 'Marca como hecho hoy un recordatorio (o lo desmarca con hecho=false).',
+      { id: z.number().int(), hecho: z.boolean().optional() },
+      ({ id, hecho = true }) => recordatorios.marcar(id, { hecho }), true);
+    tool('borrar_recordatorio', 'Elimina un recordatorio. Pide confirmación a la persona antes de usarla.',
+      { id: z.number().int() }, ({ id }) => recordatorios.borrar(id), true);
+  }
 
   if (instagram) {
     // Resumen compacto para que el modelo no reciba cientos de filas
@@ -324,7 +347,8 @@ async function main() {
     return j;
   };
   const diseno = { kit: createKit({ vaultPath: cfg.vaultPath }), servidor };
-  await buildServer(jarvis, { origen, avisar, instagram, competencia, ads, publicar, diseno }).connect(new StdioServerTransport());
+  const recordatorios = createRecordatorios({ db });
+  await buildServer(jarvis, { origen, avisar, instagram, competencia, ads, publicar, diseno, recordatorios }).connect(new StdioServerTransport());
 }
 
 const esPrincipal = process.argv[1] && path.resolve(process.argv[1]) === fileURLToPath(import.meta.url);

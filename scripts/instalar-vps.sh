@@ -38,6 +38,14 @@ ok "Node $(node -v)"
 paso "JARVIS en $DIR"
 if [ -d "$DIR/.git" ]; then git -C "$DIR" pull --ff-only -q; ok "actualizado"
 else git clone -q "$REPO" "$DIR"; ok "descargado"; fi
+
+# Si este instalador es una copia antigua (la que se descargó el primer día), se actualiza y vuelve a empezar
+NUEVO="$DIR/scripts/instalar-vps.sh"
+if [ -z "${JARVIS_INSTALADOR_ACTUALIZADO:-}" ] && [ -f "$0" ] && [ -f "$NUEVO" ] && ! cmp -s "$0" "$NUEVO"; then
+  [ "$(readlink -f "$0")" != "$(readlink -f "$NUEVO")" ] && cp "$NUEVO" "$0" 2>/dev/null || true
+  ok "instalador actualizado: sigo con la versión nueva"
+  JARVIS_INSTALADOR_ACTUALIZADO=1 exec bash "$NUEVO" "$@"
+fi
 cd "$DIR"
 npm ci --no-audit --no-fund --loglevel=error
 npm run build --silent >/dev/null

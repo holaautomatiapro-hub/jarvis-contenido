@@ -3,6 +3,10 @@
 
 export const demoInicio = {
   demo: true,
+  // Agenda y recordatorios: siempre los reales (llegan de /api/inicio)
+  publicaHoy: [],
+  tareas: { hoy: [], semana: [], mes: [], atrasadas: [] },
+  recordatorios: [],
   kpis: [
     { id: 'tareas', label: 'Tareas hoy', value: 24, delta: -32, color: 'var(--orange)', icon: 'checkCircle', series: [9, 12, 10, 14, 11, 13, 17, 15, 18, 16, 20, 24] },
     { id: 'ideas', label: 'Ideas capturadas', value: 18, delta: 55, color: 'var(--blue)', icon: 'bulb', series: [4, 6, 5, 8, 7, 9, 8, 11, 10, 13, 15, 18] },

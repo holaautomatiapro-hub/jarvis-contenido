@@ -22,7 +22,7 @@ const initialTab = () => {
 
 export default function App() {
   const [tab, setTab] = useState(initialTab);
-  const [inicio] = useRecurso('/api/inicio', demoInicio);
+  const [inicio, recargarInicio] = useRecurso('/api/inicio', demoInicio);
   const [cfg] = useRecurso('/api/config', { vault: 'JARVIS-Vault' });
   const [captura, setCaptura] = useState(null);
   const [pendiente, setPendiente] = useState(null);
@@ -42,10 +42,11 @@ export default function App() {
     guion: () => go('skills'),
     dictar: () => go('voz'),
     vault: () => { window.location.href = obsidianUrl(cfg.vault); },
+    ir: go,
   };
 
   let vista;
-  if (tab === 'inicio') vista = <Inicio data={inicio} onAsk={(t) => { setPendiente(t); go('voz'); }} acciones={acciones} />;
+  if (tab === 'inicio') vista = <Inicio data={inicio} onAsk={(t) => { setPendiente(t); go('voz'); }} acciones={acciones} recargar={recargarInicio} />;
   else if (tab === 'tareas') vista = <Tareas />;
   else if (tab === 'contenido') vista = <Contenido onCaptura={setCaptura} />;
   else if (tab === 'notas') vista = <Notas onCaptura={setCaptura} />;

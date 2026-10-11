@@ -1,7 +1,7 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import Icon from '../components/Icon.jsx';
 import { api, useRecurso } from '../lib/api.js';
-import { diaCorto, finDeMes, hoyIso, lunesDe, mesDe, nombreMes, rangoSemana, sumarDias, sumarMeses, textoPlazo } from '../lib/fechas.js';
+import { celdasMes, diaCorto, finDeMes, hoyIso, lunesDe, mesDe, nombreMes, rangoSemana, sumarDias, sumarMeses, textoPlazo } from '../lib/fechas.js';
 
 export const ESTADOS_TAREA = [
   { id: 'sin_empezar', label: 'Sin empezar', color: 'var(--muted)', icon: 'clock' },
@@ -59,7 +59,7 @@ const FILTRO_VACIO = { estado: [], prioridad: [], fecha: '', desde: '', hasta: '
 const leerLocal = (k, d) => { try { return JSON.parse(localStorage.getItem(k)) ?? d; } catch { return d; } };
 const guardarLocal = (k, v) => { try { localStorage.setItem(k, JSON.stringify(v)); } catch { /* sin localStorage */ } };
 
-function Prioridad({ id, corta }) {
+export function Prioridad({ id, corta }) {
   const p = de(PRIORIDADES, id);
   return (
     <span className="prio" style={{ '--c': p.color }} title={`Prioridad ${p.label.toLowerCase()}`}>
@@ -68,7 +68,7 @@ function Prioridad({ id, corta }) {
   );
 }
 
-function Plazo({ t }) {
+export function Plazo({ t }) {
   if (!t.plazo_tipo) return <span className="plazo apagado"><Icon name="calendar" size={11} />Sin fecha</span>;
   return (
     <span className={`plazo${t.atrasada ? ' atrasada' : ''}`} title={t.atrasada ? 'Atrasada: la fecha límite ya pasó' : 'Fecha límite'}>
@@ -288,21 +288,110 @@ function FilaTarea({ t, onAbrir, onMover }) {
   );
 }
 
+// ---------- Calendario del mes: cada tarea, el día que vence ----------
+const DIAS_SEMANA = ['Lun', 'Mar', 'Mié', 'Jue', 'Vie', 'Sáb', 'Dom'];
+const MAX_TAREAS_DIA = 4;
+const ETIQUETA_PLAZO = { semana: 'Sem.', mes: 'Mes' };
+
+function CalendarioTareas({ mes, setMes, tareas, onAbrir, onNueva, onFecha, onMover }) {
+  const h = hoyIso();
+  const [sobre, setSobre] = useState(null);
+  const arrastrando = useRef(null);
+  const porDia = useMemo(() => {
+    const m = new Map();
+    for (const t of tareas) if (t.plazo_hasta) m.set(t.plazo_hasta, [...(m.get(t.plazo_hasta) || []), t]);
+    return m;
+  }, [tareas]);
+  const soltar = (f) => (e) => {
+    e.preventDefault();
+    setSobre(null);
+    const id = Number(e.dataTransfer.getData('text/plain') || arrastrando.current);
+    const t = tareas.find((x) => x.id === id);
+    if (t && !(t.plazo_tipo === 'dia' && t.plazo_desde === f)) onFecha(t, f);
+  };
+  return (
+    <div className="tareas-cal">
+      <div className="cal-cabecera">
+        <button className="icon-btn" onClick={() => setMes(sumarMeses(mes, -1))} aria-label="Mes anterior">‹</button>
+        <button className="icon-btn" onClick={() => setMes(sumarMeses(mes, 1))} aria-label="Mes siguiente">›</button>
+        <h2>{nombreMes(mes)}</h2>
+        <button className="chip" onClick={() => setMes(mesDe(h))}>Hoy</button>
+        <span className="ayuda cal-ayuda">Cada tarea sale el día que vence. Arrástrala a otro día para cambiarle la fecha; doble clic en un día para añadir una.</span>
+      </div>
+      <div className="cal-grid">
+        {DIAS_SEMANA.map((d) => <div key={d} className="cal-dia-nombre">{d}</div>)}
+        {celdasMes(mes).map((f) => {
+          const lista = porDia.get(f) || [];
+          const clase = ['cal-celda', mesDe(f) !== mes && 'fuera', sobre === f && 'sobre'].filter(Boolean).join(' ');
+          return (
+            <div
+              key={f} className={clase} tabIndex={0}
+              onDoubleClick={() => onNueva(f)}
+              onKeyDown={(e) => e.key === 'Enter' && e.target === e.currentTarget && onNueva(f)}
+              onDragOver={(e) => { e.preventDefault(); setSobre(f); }}
+              onDragLeave={() => setSobre(null)}
+              onDrop={soltar(f)}
+            >
+              <div className="cal-num-fila">
+                <span className={`cal-num${f === h ? ' hoy' : ''}`}>{Number(f.slice(8))}</span>
+                <button className="cal-mas" onClick={(e) => { e.stopPropagation(); onNueva(f); }} aria-label="Añadir tarea este día" title="Añadir tarea este día">+</button>
+              </div>
+              <div className="cal-puntos">{lista.slice(0, 4).map((t) => <i key={t.id} style={{ background: t.atrasada ? 'var(--red)' : de(PRIORIDADES, t.prioridad).color }} />)}</div>
+              <div className="cal-chips">
+                {lista.slice(0, MAX_TAREAS_DIA).map((t) => {
+                  const terminada = t.estado === 'terminada';
+                  return (
+                    <div
+                      key={t.id}
+                      className={`cal-chip cal-tarea${terminada ? ' terminada' : ''}${t.atrasada ? ' atrasada' : ''}`}
+                      style={{ '--c': t.atrasada ? 'var(--red)' : terminada ? 'var(--green)' : de(PRIORIDADES, t.prioridad).color }}
+                      draggable
+                      onDragStart={(e) => { e.dataTransfer.setData('text/plain', String(t.id)); arrastrando.current = t.id; }}
+                      onClick={(e) => { e.stopPropagation(); onAbrir(t); }}
+                      onDoubleClick={(e) => e.stopPropagation()}
+                      title={`${t.titulo} — ${de(ESTADOS_TAREA, t.estado).label}, prioridad ${de(PRIORIDADES, t.prioridad).label.toLowerCase()}${t.atrasada ? ' (atrasada)' : ''}`}
+                    >
+                      <button className="cal-check" onClick={(e) => { e.stopPropagation(); onMover(t, terminada ? 'sin_empezar' : 'terminada'); }} aria-label={terminada ? 'Marcar sin terminar' : 'Marcar terminada'}>
+                        {terminada ? <Icon name="check" size={8} stroke={3} /> : null}
+                      </button>
+                      {ETIQUETA_PLAZO[t.plazo_tipo] && <span className="cal-chip-tipo">{ETIQUETA_PLAZO[t.plazo_tipo]}</span>}
+                      <span className="cal-tarea-txt">{t.titulo}</span>
+                    </div>
+                  );
+                })}
+                {lista.length > MAX_TAREAS_DIA && <span className="cal-mas-n">+{lista.length - MAX_TAREAS_DIA} más</span>}
+              </div>
+            </div>
+          );
+        })}
+      </div>
+      <div className="cal-leyenda">
+        {PRIORIDADES.map((p) => <span key={p.id}><i style={{ background: p.color }} />Prioridad {p.label.toLowerCase()}</span>)}
+        <span><i className="atrasada-marca" />Atrasada</span>
+        <span><i style={{ background: 'var(--green)' }} />Terminada</span>
+      </div>
+    </div>
+  );
+}
+
 // ---------- Vista ----------
 export default function Tareas() {
   const [filtro, setFiltro] = useState(() => ({ ...FILTRO_VACIO, ...leerLocal('tareas_filtro', {}) }));
   const [vista, setVista] = useState(() => leerLocal('tareas_vista', 'tablero'));
   useEffect(() => guardarLocal('tareas_filtro', filtro), [filtro]);
   useEffect(() => guardarLocal('tareas_vista', vista), [vista]);
+  const [mesCal, setMesCal] = useState(() => mesDe(hoyIso()));
 
   const qs = useMemo(() => {
     const p = new URLSearchParams();
     if (filtro.estado.length) p.set('estado', filtro.estado.join(','));
     if (filtro.prioridad.length) p.set('prioridad', filtro.prioridad.join(','));
-    for (const [k, v] of Object.entries(rangoFiltro(filtro))) if (v) p.set(k, v);
+    // En el calendario manda el mes que se ve, no el filtro de fecha
+    const rango = vista === 'calendario' ? { desde: celdasMes(mesCal)[0], hasta: celdasMes(mesCal)[41] } : rangoFiltro(filtro);
+    for (const [k, v] of Object.entries(rango)) if (v) p.set(k, v);
     if (filtro.texto.trim()) p.set('texto', filtro.texto.trim());
     return p.toString();
-  }, [filtro]);
+  }, [filtro, vista, mesCal]);
   const [data, recargar, errorCarga, setData] = useRecurso(`/api/tareas/lista${qs ? `?${qs}` : ''}`, { tareas: [], resumen: null });
   const [abierta, setAbierta] = useState(null);
   const [rapida, setRapida] = useState({ titulo: '', prioridad: 'media', plazo: 'hoy' });
@@ -317,6 +406,14 @@ export default function Tareas() {
     if (t.estado === estado) return;
     setData((d) => ({ ...d, tareas: d.tareas.map((x) => (x.id === t.id ? { ...x, estado, atrasada: estado !== 'terminada' && x.atrasada } : x)) }));
     try { await api(`/api/tareas/${t.id}`, { method: 'PATCH', body: { estado } }); setError(''); }
+    catch (e) { setError(e.message); }
+    finally { recargar(); }
+  }, [recargar, setData]);
+
+  // Arrastrar en el calendario: la tarea pasa a vencer ese día
+  const cambiarFecha = useCallback(async (t, dia) => {
+    setData((d) => ({ ...d, tareas: d.tareas.map((x) => (x.id === t.id ? { ...x, plazo_tipo: 'dia', plazo_desde: dia, plazo_hasta: dia, atrasada: x.estado !== 'terminada' && dia < hoyIso() } : x)) }));
+    try { await api(`/api/tareas/${t.id}`, { method: 'PATCH', body: { plazo_tipo: 'dia', plazo: dia } }); setError(''); }
     catch (e) { setError(e.message); }
     finally { recargar(); }
   }, [recargar, setData]);
@@ -411,7 +508,7 @@ export default function Tareas() {
               </button>
             ))}
           </div>
-          <div className="filtro-grupo">
+          {vista !== 'calendario' && <div className="filtro-grupo">
             <span className="label">Fecha</span>
             <select className="campo filtro-select" value={filtro.fecha} onChange={(e) => setFiltro({ ...filtro, fecha: e.target.value })} aria-label="Filtrar por fecha">
               {FILTROS_FECHA.map((f) => <option key={f.id} value={f.id}>{f.label}</option>)}
@@ -423,7 +520,7 @@ export default function Tareas() {
                 <input type="date" className="campo filtro-select" value={filtro.hasta} onChange={(e) => setFiltro({ ...filtro, hasta: e.target.value })} aria-label="Hasta" />
               </>
             )}
-          </div>
+          </div>}
           <div className="filtro-grupo filtro-derecha">
             <div className="buscar-mini">
               <Icon name="search" size={13} />
@@ -433,12 +530,15 @@ export default function Tareas() {
             <div className="seg">
               <button className={vista === 'tablero' ? 'on' : ''} onClick={() => setVista('tablero')}><Icon name="skills" />Tablero</button>
               <button className={vista === 'lista' ? 'on' : ''} onClick={() => setVista('lista')}><Icon name="tasks" />Lista</button>
+              <button className={vista === 'calendario' ? 'on' : ''} onClick={() => setVista('calendario')}><Icon name="calendar" />Calendario</button>
             </div>
           </div>
         </div>
         {(error || errorCarga) && <div className="aviso-error">{error || errorCarga}</div>}
 
-        {vista === 'tablero' ? (
+        {vista === 'calendario' ? (
+          <CalendarioTareas mes={mesCal} setMes={setMesCal} tareas={data.tareas} onAbrir={setAbierta} onNueva={(f) => setAbierta({ plazo_tipo: 'dia', plazo_desde: f })} onFecha={cambiarFecha} onMover={mover} />
+        ) : vista === 'tablero' ? (
           <div className="kanban kanban-3">
             {ESTADOS_TAREA.map((c) => {
               const lista = data.tareas.filter((t) => t.estado === c.id);

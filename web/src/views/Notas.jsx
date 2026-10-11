@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState } from 'react';
+import { useEffect, useMemo, useRef, useState } from 'react';
 import { marked } from 'marked';
 import DOMPurify from 'dompurify';
 import Icon from '../components/Icon.jsx';
@@ -22,14 +22,64 @@ const frontmatter = (md) => {
 };
 const fechaCorta = (iso) => new Date(iso).toLocaleDateString('es-ES', { day: 'numeric', month: 'short' }).replace('.', '');
 
+// Editar una nota: título (nombre del archivo) y el Markdown tal cual, como en Obsidian
+function EditorNota({ nota: abierta, onGuardada, onCancelar }) {
+  // La versión con la que se abrió: si la nota cambia fuera mientras editas, al guardar se avisa en vez de pisarla
+  const [nota] = useState(abierta);
+  const [titulo, setTitulo] = useState(nota.titulo);
+  const [contenido, setContenido] = useState(nota.contenido);
+  const [error, setError] = useState('');
+  const [guardando, setGuardando] = useState(false);
+  const texto = useRef(null);
+  const cambiada = titulo !== nota.titulo || contenido !== nota.contenido;
+  useEffect(() => { texto.current?.focus(); }, []);
+
+  const guardar = async () => {
+    if (guardando) return;
+    if (!titulo.trim()) return setError('Ponle un título.');
+    if (!cambiada) return onCancelar();
+    setGuardando(true); setError('');
+    try {
+      const n = await api('/api/notas', { method: 'PUT', body: { ruta: nota.path, contenido, titulo, modificado: nota.modificado } });
+      onGuardada(n);
+    } catch (e) { setError(e.message); setGuardando(false); }
+  };
+  const cancelar = () => { if (!cambiada || window.confirm('¿Descartar los cambios?')) onCancelar(); };
+  const teclas = (e) => {
+    if ((e.ctrlKey || e.metaKey) && e.key.toLowerCase() === 's') { e.preventDefault(); guardar(); }
+    if (e.key === 'Escape') { e.preventDefault(); cancelar(); }
+  };
+
+  return (
+    <div className="nota-editor" onKeyDown={teclas}>
+      <header className="nota-cabecera">
+        <div className="nota-editor-titulo">
+          <div className="label">{nota.path.includes('/') ? nota.path.split('/')[0] : 'Raíz'} · editando</div>
+          <input className="campo" value={titulo} onChange={(e) => setTitulo(e.target.value)} maxLength={80} aria-label="Título de la nota" />
+        </div>
+        <div className="nota-acciones">
+          <button className="btn btn-sec" onClick={cancelar} disabled={guardando}>Cancelar</button>
+          <button className="btn" onClick={guardar} disabled={guardando}><Icon name="check" size={14} />{guardando ? 'Guardando…' : 'Guardar'}</button>
+        </div>
+      </header>
+      {error && <div className="aviso-error">{error}</div>}
+      <textarea ref={texto} className="campo nota-texto" value={contenido} onChange={(e) => setContenido(e.target.value)} spellCheck aria-label="Contenido de la nota" />
+      <div className="ayuda">Markdown, igual que en Obsidian. Ctrl+S guarda · Esc cancela.</div>
+    </div>
+  );
+}
+
 export default function Notas({ onCaptura }) {
-  const [notas] = useRecurso('/api/notas', []);
+  const [notas, recargarNotas] = useRecurso('/api/notas', []);
   const [cfg] = useRecurso('/api/config', { vault: 'JARVIS-Vault' });
   const [q, setQ] = useState('');
   const [resultados, setResultados] = useState(null);
   const [abierta, setAbierta] = useState(null);
   const [nota, setNota] = useState(null);
   const [plegadas, setPlegadas] = useState({});
+  const [editando, setEditando] = useState(false);
+  const [aviso, setAviso] = useState(null); // { texto, deshacer? }
+  const [error, setError] = useState('');
 
   // Búsqueda en el contenido (con un pequeño retardo mientras escribes)
   useEffect(() => {
@@ -44,6 +94,42 @@ export default function Notas({ onCaptura }) {
     if (!abierta) return;
     api(`/api/notas/leer?ruta=${encodeURIComponent(abierta)}`).then(setNota).catch(() => setNota(null));
   }, [abierta, notas]);
+  useEffect(() => { setEditando(false); setError(''); }, [abierta]);
+  useEffect(() => {
+    if (!aviso) return;
+    const id = setTimeout(() => setAviso(null), 8000);
+    return () => clearTimeout(id);
+  }, [aviso]);
+
+  const guardada = (n) => {
+    setEditando(false);
+    setNota(n);
+    if (n.path !== abierta) setAbierta(n.path);
+    setAviso({ texto: 'Nota guardada' });
+    recargarNotas();
+  };
+  const eliminar = async () => {
+    if (!window.confirm(`¿Eliminar la nota «${nota.titulo}»?\n\nVa a la papelera del vault (.trash): puedes recuperarla.`)) return;
+    try {
+      const r = await api(`/api/notas?ruta=${encodeURIComponent(nota.path)}`, { method: 'DELETE' });
+      setError('');
+      const siguiente = notas.find((x) => x.path !== nota.path);
+      setAbierta(siguiente?.path || null);
+      setNota(null);
+      setAviso({ texto: `«${nota.titulo}» enviada a la papelera`, deshacer: r });
+      recargarNotas();
+    } catch (e) { setError(e.message); }
+  };
+  const deshacer = async () => {
+    const r = aviso?.deshacer;
+    if (!r) return;
+    setAviso(null);
+    try {
+      const n = await api('/api/notas/restaurar', { method: 'POST', body: r });
+      setAbierta(n.path);
+      recargarNotas();
+    } catch (e) { setError(e.message); }
+  };
 
   const grupos = useMemo(() => {
     const g = new Map();
@@ -100,7 +186,17 @@ export default function Notas({ onCaptura }) {
       </aside>
 
       <article className="panel nota-visor">
-        {nota ? (
+        {aviso && (
+          <div className="nota-aviso" role="status">
+            <span>{aviso.texto}</span>
+            {aviso.deshacer && <button className="link-btn" onClick={deshacer}>Deshacer</button>}
+            <button className="icon-btn mini" onClick={() => setAviso(null)} aria-label="Cerrar aviso">✕</button>
+          </div>
+        )}
+        {error && <div className="aviso-error">{error}</div>}
+        {nota && editando ? (
+          <EditorNota key={nota.path} nota={nota} onGuardada={guardada} onCancelar={() => setEditando(false)} />
+        ) : nota ? (
           <>
             <header className="nota-cabecera">
               <div>
@@ -108,9 +204,13 @@ export default function Notas({ onCaptura }) {
                 <h1>{nota.titulo}</h1>
                 <div className="nota-fecha">Modificada el {new Date(nota.modificado).toLocaleString('es-ES', { dateStyle: 'medium', timeStyle: 'short' })}</div>
               </div>
-              <a className="btn btn-sec" href={obsidianUrl(cfg.vault, nota.path)}><Icon name="obsidian" size={14} />Abrir en Obsidian</a>
+              <div className="nota-acciones">
+                <button className="btn btn-sec" onClick={() => setEditando(true)}><Icon name="pen" size={14} />Editar</button>
+                <a className="btn btn-sec" href={obsidianUrl(cfg.vault, nota.path)}><Icon name="obsidian" size={14} />Obsidian</a>
+                <button className="icon-btn" onClick={eliminar} aria-label="Eliminar nota" title="Eliminar (va a la papelera)"><Icon name="trash" /></button>
+              </div>
             </header>
-            <div className="md" onClick={clickEnNota} dangerouslySetInnerHTML={{ __html: html }} />
+            <div className="md" onClick={clickEnNota} onDoubleClick={() => setEditando(true)} dangerouslySetInnerHTML={{ __html: html }} />
           </>
         ) : (
           <div className="vacio" style={{ padding: 40 }}>Elige una nota de la lista.</div>

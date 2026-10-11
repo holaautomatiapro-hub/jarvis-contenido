@@ -1,5 +1,5 @@
 import { CATEGORIAS, ESTADOS, row, rows } from './db.js';
-import { createTareas, TareaError } from './tareas.js';
+import { createTareas, TareaError, lunesDe, sumarDias } from './tareas.js';
 
 // Lógica de negocio compartida por la API del dashboard y por el MCP (Hermes / Claude Code).
 
@@ -38,6 +38,8 @@ export function createJarvis({ db, vault }) {
     actividadDe: db.prepare('SELECT * FROM actividad WHERE origen = ? ORDER BY id DESC LIMIT ?'),
     cuentaPorDia: (tabla, col, filtro = '') =>
       db.prepare(`SELECT substr(${col}, 1, 10) AS dia, COUNT(*) AS n FROM ${tabla} WHERE substr(${col}, 1, 10) >= ? ${filtro} GROUP BY dia`),
+    piezasDelDia: db.prepare('SELECT * FROM piezas WHERE fecha = ? ORDER BY hora, id'),
+    versionesDelDia: db.prepare('SELECT v.*, p.titulo AS pieza_titulo FROM pub_versiones v JOIN piezas p ON p.id = v.pieza_id WHERE v.fecha = ? ORDER BY v.hora, v.id'),
     totales: db.prepare('SELECT (SELECT COUNT(*) FROM tareas) AS t, (SELECT COUNT(*) FROM piezas) AS p, (SELECT COUNT(*) FROM actividad) AS a'),
   };
 
@@ -277,6 +279,67 @@ export function createJarvis({ db, vault }) {
     return { vacio, kpis, foco, actividad };
   }
 
+  // ---------- Editar, renombrar y borrar notas ----------
+  // Las piezas del pipeline guardan la ruta de su nota: al renombrar o restaurar se actualiza
+  const reenlazar = (antes, despues) => { if (antes !== despues) db.prepare('UPDATE piezas SET nota = ? WHERE nota = ?').run(despues, antes); };
+
+  function editarNota(ruta, { contenido, titulo, modificado } = {}) {
+    let actual = vault.read(ruta);
+    if (contenido != null && contenido !== actual.contenido) actual = vault.guardar(actual.path, contenido, { modificado });
+    if (titulo != null && String(titulo).trim() && String(titulo).trim() !== actual.titulo) {
+      const nueva = vault.renombrar(actual.path, String(titulo).trim());
+      reenlazar(actual.path, nueva);
+      actual = vault.read(nueva);
+    }
+    return actual;
+  }
+
+  function borrarNota(ruta) {
+    return vault.borrar(ruta);
+  }
+
+  function restaurarNota(enPapelera, rutaOriginal) {
+    const n = vault.restaurar(enPapelera);
+    if (rutaOriginal) reenlazar(rutaOriginal, n.path);
+    return n;
+  }
+
+  // Lo que pide la persona al abrir JARVIS: qué se publica hoy y qué tareas tiene hoy, esta semana y este mes
+  function agenda({ fecha = hoy() } = {}) {
+    const lunes = lunesDe(fecha), domingo = sumarDias(lunes, 6);
+    const finMes = new Date(Number(fecha.slice(0, 4)), Number(fecha.slice(5, 7)), 0, 12).toLocaleDateString('sv-SE');
+    const { tareas: todas } = listarTareas({});
+    // Las terminadas se quedan a la vista el día que se terminan (para poder desmarcarlas)
+    const visible = (t) => t.estado !== 'terminada' || String(t.completada || '').slice(0, 10) === fecha;
+    // Cada tarea va donde vence: hoy, esta semana o este mes (las de la semana también salen en el mes)
+    const en = (desde, hasta) => todas.filter((t) => visible(t) && !t.atrasada && t.plazo_hasta && t.plazo_hasta >= desde && t.plazo_hasta <= hasta);
+    const corta = ({ id, titulo, estado, prioridad, categoria, plazo_tipo, plazo_desde, plazo_hasta, hecha, atrasada }) =>
+      ({ id, titulo, estado, prioridad, categoria, plazo_tipo, plazo_desde, plazo_hasta, hecha: Boolean(hecha), atrasada });
+
+    const piezas = rows(q.piezasDelDia, fecha).map((p) => ({
+      tipo: 'pieza', id: p.id, titulo: p.titulo, formato: p.formato, hora: p.hora || null,
+      estado: p.estado, etiqueta: ETIQUETA_ESTADO[p.estado] || p.estado,
+      instagram: p.ig_estado === 'publicado' ? 'publicado' : p.ig_estado === 'error' ? 'error' : p.ig_estado === 'procesando' ? 'publicando' : p.publicar_ig ? 'programado' : null,
+      error: p.ig_estado === 'error' ? p.ig_error : null,
+    }));
+    const versiones = rows(q.versionesDelDia, fecha).map((v) => ({
+      tipo: 'version', id: v.id, piezaId: v.pieza_id, titulo: v.titulo || v.pieza_titulo, red: v.red, hora: v.hora || null,
+      estado: v.estado, etiqueta: v.estado === 'publicado' ? 'Publicado' : 'Pendiente', instagram: null, error: null,
+    }));
+    const publicaHoy = [...piezas, ...versiones].sort((a, b) => (a.hora || '99:99').localeCompare(b.hora || '99:99'));
+
+    return {
+      fecha,
+      publicaHoy,
+      tareas: {
+        hoy: en(fecha, fecha).map(corta),
+        semana: en(lunes, domingo).map(corta),
+        mes: en(`${fecha.slice(0, 7)}-01`, finMes).map(corta),
+        atrasadas: todas.filter((t) => t.atrasada).map(corta),
+      },
+    };
+  }
+
   // Lo último que ha llegado por un origen (p. ej. 'hermes' = Telegram)
   function actividadDe(origen, n = 8) {
     return rows(q.actividadDe, origen, n).map((a) => ({ ts: a.ts, tipo: a.tipo, texto: a.texto }));
@@ -285,7 +348,7 @@ export function createJarvis({ db, vault }) {
   return {
     capturarIdea, crearNota, crearPieza, listarPiezas, actualizarPieza, borrarPieza,
     duplicarPieza, carpetas, crearCarpeta, renombrarCarpeta, borrarCarpeta, moverACarpeta, juntarEnCarrusel,
-    crearTarea, actualizarTarea, marcarTarea, borrarTarea, listarTareas, tareas, resumenDelDia, inicio, registrar, actividadDe,
+    crearTarea, actualizarTarea, marcarTarea, borrarTarea, listarTareas, tareas, resumenDelDia, inicio, agenda, registrar, editarNota, borrarNota, restaurarNota, actividadDe,
     vault,
   };
 }

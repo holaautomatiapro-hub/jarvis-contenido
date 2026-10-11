@@ -2,7 +2,7 @@
 
 Sistema operativo de IA para creadores de contenido, para **Windows**. Dashboard local con voz, memoria en Obsidian, Claude Code como motor y Hermes por Telegram para usarlo desde el móvil.
 
-> Funcionan todas las pestañas: Inicio, **Tareas** (prioridad, estado y fecha límite de día, semana o mes, con tablero y filtros), **Contenido** (calendario, lista, biblioteca con tus vídeos y fotos, pipeline y **Diseño**: del guion al carrusel o las stories con tu sistema de diseño, en imagen o vídeo), Notas, **Voz**, **Skills** (100 skills y el chat para guiones), **Instagram** (dos dashboards y transcripción de reels), **Competencia**, **Meta Ads** (asistente, Ad Library y campañas siempre en pausa), **Publicar** (una pieza adaptada a cada red, con calendario) y **Apps** (Hermes por Telegram, tareas programadas y accesos rápidos), además del MCP `jarvis` que comparten Claude Code y Hermes, y el instalador de un solo prompt.
+> Funcionan todas las pestañas: **Inicio** (qué se publica hoy, tareas de hoy, la semana y el mes, atrasadas, recordatorios diarios y Meta Ads de los últimos 7 días), **Tareas** (prioridad, estado y fecha límite de día, semana o mes, con tablero, lista, calendario y filtros), **Contenido** (calendario, lista, biblioteca con tus vídeos y fotos, pipeline y **Diseño**: del guion al carrusel o las stories con tu sistema de diseño, en imagen o vídeo), **Notas** (leer, buscar, editar y borrar a la papelera `.trash`), **Voz**, **Skills** (100 skills y el chat para guiones), **Instagram** (dos dashboards y transcripción de reels), **Competencia**, **Meta Ads** (asistente, Ad Library y campañas siempre en pausa), **Publicar** (una pieza adaptada a cada red, con calendario) y **Apps** (Hermes por Telegram, tareas programadas y accesos rápidos), además del MCP `jarvis` que comparten Claude Code y Hermes, y el instalador de un solo prompt.
 
 ## Instalar (Windows)
 
@@ -116,11 +116,11 @@ Guía paso a paso: **[docs/HERMES.md](docs/HERMES.md)**. Hermes es JARVIS en el 
 - **Vídeos y fotos de la pestaña Contenido**: en `data\contenido\`, también en tu PC. Solo se ven desde el dashboard.
 - **Tu sistema de diseño**: en el vault, en `_diseno\`. Las vistas previas de los diseños, en `.jarvis\disenos\` dentro del vault.
 
-Mientras no hayas guardado nada, Inicio muestra datos de ejemplo (etiqueta "Demo" bajo el logo).
+Mientras no hayas guardado nada, los contadores de Inicio muestran datos de ejemplo (etiqueta "Demo" bajo el logo).
 
 ## MCP `jarvis` (puente con Claude Code y Hermes)
 
-`mcp/jarvis-mcp.js` da acceso a la memoria y al pipeline: `capturar_idea`, `crear_nota`, `buscar_notas`, `leer_nota`, `listar_notas`, `crear_pieza`, `mover_pieza`, `listar_pipeline`, `anadir_tarea`, `actualizar_tarea`, `completar_tarea`, `listar_tareas`, `borrar_tarea`, `tareas_de_hoy` y `resumen_del_dia`, además de las de Instagram, competencia, Meta Ads, publicar (`guardar_versiones`, `versiones_de_pieza`, `calendario_publicaciones`, `programar_version`) y diseño (`ver_kit_diseno`, `leer_archivo_kit`, `listar_medios`, `listar_disenos`, `ver_diseno`, `crear_diseno`, `guardar_diseno`). Lo que se guarda por el MCP aparece al momento en el dashboard.
+`mcp/jarvis-mcp.js` da acceso a la memoria y al pipeline: `capturar_idea`, `crear_nota`, `buscar_notas`, `leer_nota`, `editar_nota`, `borrar_nota`, `listar_notas`, `crear_pieza`, `mover_pieza`, `listar_pipeline`, `anadir_tarea`, `actualizar_tarea`, `completar_tarea`, `listar_tareas`, `borrar_tarea`, `tareas_de_hoy`, `resumen_del_dia` y los recordatorios diarios (`crear_recordatorio`, `recordatorios_de_hoy`, `marcar_recordatorio`…), además de las de Instagram, competencia, Meta Ads, publicar (`guardar_versiones`, `versiones_de_pieza`, `calendario_publicaciones`, `programar_version`) y diseño (`ver_kit_diseno`, `leer_archivo_kit`, `listar_medios`, `listar_disenos`, `ver_diseno`, `crear_diseno`, `guardar_diseno`). Lo que se guarda por el MCP aparece al momento en el dashboard.
 
 - **Claude Code**: el vault ya incluye `.mcp.json`, así que al abrir `claude` dentro del vault tiene el MCP conectado y lee `CLAUDE.md` (la personalidad de JARVIS).
 - **Hermes**: lo conecta **Configurar Hermes** (ver arriba), con `JARVIS_ORIGEN=hermes` para que lo que llegue por Telegram salga marcado como tal.
