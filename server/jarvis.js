@@ -1,5 +1,6 @@
-import { CATEGORIAS, ESTADOS, row, rows } from './db.js';
+import { CATEGORIAS, row, rows } from './db.js';
 import { createTareas, TareaError, lunesDe, sumarDias } from './tareas.js';
+import { createPipeline } from './pipeline.js';
 
 // Lógica de negocio compartida por la API del dashboard y por el MCP (Hermes / Claude Code).
 
@@ -45,6 +46,8 @@ export function createJarvis({ db, vault }) {
 
   const registrar = (tipo, txt, origen = 'dashboard') => q.insActividad.run(tipo, txt.slice(0, 300), origen);
   const tareasDb = createTareas({ db, registrar });
+  const pipeline = createPipeline({ db });
+  const etiquetaFase = (id) => pipeline.etiqueta(id);
 
   // ---------- Ideas, notas y piezas ----------
   function capturarIdea({ texto: t, origen = 'dashboard', formato = null }) {
@@ -95,7 +98,7 @@ export function createJarvis({ db, vault }) {
       else set[k] = typeof v === 'string' ? (k === 'caption' ? v : v.trim()) || null : v ?? null;
     }
     if ('titulo' in set) set.titulo = texto(set.titulo, 'titulo', 200);
-    if ('estado' in set && !ESTADOS.includes(set.estado)) throw new JarvisError(`Estado no válido. Usa: ${ESTADOS.join(', ')}`);
+    if ('estado' in set && !pipeline.existe(set.estado)) throw new JarvisError(`Fase no válida. Usa: ${pipeline.ids().join(', ')}`);
     if (set.fecha && !/^\d{4}-\d{2}-\d{2}$/.test(set.fecha)) throw new JarvisError('La fecha debe ser AAAA-MM-DD');
     if (set.hora && !/^\d{2}:\d{2}$/.test(set.hora)) throw new JarvisError('La hora debe ser HH:MM');
     if (set.caption) set.caption = set.caption.slice(0, 5000);
@@ -104,7 +107,8 @@ export function createJarvis({ db, vault }) {
   };
 
   function crearPieza({ estado = 'idea', origen = 'dashboard', registrarActividad = true, ...datos }) {
-    const set = camposPieza({ ...datos, estado, titulo: datos.titulo });
+    // Las fases que traía JARVIS de serie y ya no existen van a la primera fase de trabajo
+    const set = camposPieza({ ...datos, estado: pipeline.normalizar(estado), titulo: datos.titulo });
     set.orden = q.maxOrden.get(set.estado).m + 1;
     set.origen = origen;
     const claves = Object.keys(set);
@@ -114,7 +118,7 @@ export function createJarvis({ db, vault }) {
   }
 
   function listarPiezas({ estado } = {}) {
-    if (estado && !ESTADOS.includes(estado)) throw new JarvisError(`Estado no válido. Usa: ${ESTADOS.join(', ')}`);
+    if (estado && !pipeline.existe(estado)) throw new JarvisError(`Fase no válida. Usa: ${pipeline.ids().join(', ')}`);
     return (estado ? rows(q.piezasEstado, estado) : rows(q.piezas)).map(pieza);
   }
 
@@ -127,7 +131,7 @@ export function createJarvis({ db, vault }) {
     db.prepare(`UPDATE piezas SET ${claves.map((k) => `${k} = ?`).join(', ')}, actualizado = datetime('now','localtime') WHERE id = ?`)
       .run(...claves.map((k) => set[k] ?? null), actual.id);
     if (set.estado && set.estado !== actual.estado) {
-      registrar(set.estado === 'publicado' ? 'Contenido' : 'Tarea', `"${actual.titulo}" pasa a ${ETIQUETA_ESTADO[set.estado]}`, origen);
+      registrar(set.estado === 'publicado' ? 'Contenido' : 'Tarea', `"${actual.titulo}" pasa a ${etiquetaFase(set.estado)}`, origen);
     }
     return leerPieza(actual.id);
   }
@@ -221,13 +225,15 @@ export function createJarvis({ db, vault }) {
   function resumenDelDia() {
     const { tareas: lista, atrasadas } = tareas();
     const piezas = listarPiezas();
-    const porEstado = Object.fromEntries(ESTADOS.map((e) => [e, piezas.filter((p) => p.estado === e)]));
+    const fases = pipeline.ids();
+    const porEstado = Object.fromEntries(fases.map((e) => [e, piezas.filter((p) => p.estado === e)]));
     return {
       fecha: hoy(),
       tareas: { total: lista.length, hechas: lista.filter((t) => t.hecha).length, pendientes: lista.filter((t) => !t.hecha).map((t) => t.titulo), atrasadas: atrasadas.map((t) => `${t.titulo} (vencía ${t.plazo_hasta})`), altaPrioridad: lista.filter((t) => !t.hecha && t.prioridad === 'alta').map((t) => t.titulo) },
-      pipeline: Object.fromEntries(ESTADOS.map((e) => [e, porEstado[e].length])),
-      paraHoy: piezas.filter((p) => p.fecha === hoy() && p.estado !== 'publicado').map((p) => `${p.titulo} [${ETIQUETA_ESTADO[p.estado]}]`),
-      ideasRecientes: porEstado.idea.slice(0, 5).map((p) => p.titulo),
+      pipeline: Object.fromEntries(fases.map((e) => [e, porEstado[e].length])),
+      fases: pipeline.fases().map((f) => ({ id: f.id, nombre: f.label })),
+      paraHoy: piezas.filter((p) => p.fecha === hoy() && p.estado !== 'publicado').map((p) => `${p.titulo} [${etiquetaFase(p.estado)}]`),
+      ideasRecientes: (porEstado.idea || []).slice(0, 5).map((p) => p.titulo),
     };
   }
 
@@ -318,7 +324,7 @@ export function createJarvis({ db, vault }) {
 
     const piezas = rows(q.piezasDelDia, fecha).map((p) => ({
       tipo: 'pieza', id: p.id, titulo: p.titulo, formato: p.formato, hora: p.hora || null,
-      estado: p.estado, etiqueta: ETIQUETA_ESTADO[p.estado] || p.estado,
+      estado: p.estado, etiqueta: etiquetaFase(p.estado),
       instagram: p.ig_estado === 'publicado' ? 'publicado' : p.ig_estado === 'error' ? 'error' : p.ig_estado === 'procesando' ? 'publicando' : p.publicar_ig ? 'programado' : null,
       error: p.ig_estado === 'error' ? p.ig_error : null,
     }));
@@ -349,11 +355,10 @@ export function createJarvis({ db, vault }) {
     capturarIdea, crearNota, crearPieza, listarPiezas, actualizarPieza, borrarPieza,
     duplicarPieza, carpetas, crearCarpeta, renombrarCarpeta, borrarCarpeta, moverACarpeta, juntarEnCarrusel,
     crearTarea, actualizarTarea, marcarTarea, borrarTarea, listarTareas, tareas, resumenDelDia, inicio, agenda, registrar, editarNota, borrarNota, restaurarNota, actividadDe,
-    vault,
+    vault, pipeline,
   };
 }
 
-export const ETIQUETA_ESTADO = { idea: 'Idea', guion: 'Guion', grabar: 'Grabar', editar: 'Editar', listo: 'Listo', publicado: 'Publicado' };
 
 const FOCO = [
   { id: 'ideas', label: 'Ideas', color: 'var(--blue)', icon: 'bulb' },

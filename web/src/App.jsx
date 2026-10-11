@@ -14,6 +14,7 @@ import Publicar from './views/Publicar.jsx';
 import Apps from './views/Apps.jsx';
 import { demoInicio } from './lib/demo.js';
 import { obsidianUrl, useRecurso } from './lib/api.js';
+import { ponerFases } from './views/contenido/comun.jsx';
 
 const initialTab = () => {
   const h = window.location.hash.slice(1).split('?')[0];
@@ -24,6 +25,9 @@ export default function App() {
   const [tab, setTab] = useState(initialTab);
   const [inicio, recargarInicio] = useRecurso('/api/inicio', demoInicio);
   const [cfg] = useRecurso('/api/config', { vault: 'JARVIS-Vault' });
+  // Fases del pipeline (configurables): las comparten todas las vistas
+  const [fases] = useRecurso('/api/pipeline', null);
+  useEffect(() => ponerFases(fases), [fases]);
   const [captura, setCaptura] = useState(null);
   const [pendiente, setPendiente] = useState(null);
   const cerrar = useCallback(() => setCaptura(null), []);

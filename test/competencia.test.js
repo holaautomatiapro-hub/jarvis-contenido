@@ -152,3 +152,73 @@ describe('cálculo', () => {
     assert.equal(r.publicaciones[0].engagement, null);
   });
 });
+
+describe('mejores publicaciones, slides, transcripción y replicar', () => {
+  const json = (o, status = 200) => new Response(JSON.stringify(o), { status, headers: { 'content-type': 'application/json' } });
+  const jpg = () => new Response(Buffer.from([0xff, 0xd8, 0xff, 0xd9]), { status: 200 });
+  let c2, db2, vault2, pedidos;
+  before(async () => {
+    db2 = openDb(':memory:');
+    vault2 = createVault(path.join(dir, 'V2'));
+    pedidos = [];
+    const fetchImpl = async (url) => {
+      const u = String(url);
+      if (u.startsWith('https://cdn/')) return u.includes('caducado') ? new Response('', { status: 403 }) : jpg();
+      const campos = new URL(u).searchParams.get('fields') || '';
+      pedidos.push(campos.includes('view_count') ? 'con-vistas' : campos.includes('children') ? 'con-slides' : 'basico');
+      // Esta versión de la API no deja pedir view_count de otros perfiles
+      if (campos.includes('view_count')) return json({ error: { code: 100, message: '(#100) Tried accessing nonexisting field (view_count) on node type (ShadowIGMedia)' } }, 400);
+      return json({ business_discovery: { username: 'zerochats', followers_count: 1000, media: { data: [
+        { id: 'k1', caption: 'Carrusel top', like_count: 50, comments_count: 70, media_type: 'CAROUSEL_ALBUM', timestamp: hace(2), permalink: 'https://ig/k1', media_url: 'https://cdn/k1.jpg',
+          children: { data: [{ media_type: 'IMAGE', media_url: 'https://cdn/k1-1.jpg' }, { media_type: 'VIDEO', media_url: 'https://cdn/k1-2.mp4', thumbnail_url: 'https://cdn/k1-2.jpg' }] } },
+        { id: 'k2', caption: 'Reel con más likes', like_count: 300, comments_count: 5, media_type: 'VIDEO', media_product_type: 'REELS', timestamp: hace(1), media_url: 'https://cdn/k2.mp4', thumbnail_url: 'https://cdn/k2.jpg' },
+      ] } } });
+    };
+    const sttImpl = async () => 'Hola, esto es lo que dice el reel.';
+    c2 = createCompetencia({ db: db2, instagram: instagramFalso, vault: vault2, env: { COMPETIDORES: 'zerochats', ELEVENLABS_API_KEY: 'x' }, fetchImpl, sttImpl });
+    await c2.sincronizar();
+  });
+
+  test('si la API no deja pedir visualizaciones, baja un nivel de campos y lo recuerda', async () => {
+    assert.deepEqual(pedidos, ['con-vistas', 'con-slides']);
+    assert.equal(ajustes(db2).leer('comp_nivel_campos'), 1);
+    await c2.sincronizar();
+    assert.deepEqual(pedidos.slice(2), ['con-slides'], 'la segunda vez ya no pide view_count');
+  });
+
+  test('ordena por la métrica que elijas', () => {
+    assert.deepEqual(c2.mejores({ orden: 'likes' }).map((m) => m.id), ['k2', 'k1']);
+    assert.deepEqual(c2.mejores({ orden: 'comentarios' }).map((m) => m.id), ['k1', 'k2']);
+    assert.deepEqual(c2.mejores({ formato: 'Reels' }).map((m) => m.id), ['k2']);
+    const r = c2.resumen();
+    assert.equal(r.publicaciones.find((m) => m.id === 'k1').slides, 2);
+    assert.equal(r.publicaciones[0].transcripcion, undefined, 'la lista va sin textos largos');
+  });
+
+  test('slides del carrusel al vault (de un vídeo, su miniatura) y transcripción del reel a 04-Competencia', async () => {
+    const slides = await c2.descargarSlides('k1');
+    assert.deepEqual(slides.map((f) => path.basename(f)), ['01.jpg', '02.jpg']);
+    assert.equal(c2.detalle('k1').slides.length, 2);
+    assert.equal(c2.rutaSlide('k1', '../x.jpg'), null);
+    const t = await c2.transcribir('k2');
+    assert.match(t.nota, /^04-Competencia\/@zerochats /);
+    assert.match(vault2.read(t.nota).contenido, /lo que dice el reel/);
+    assert.equal(c2.detalle('k2').transcripcion, 'Hola, esto es lo que dice el reel.');
+    await assert.rejects(() => c2.transcribir('demo-c1'), /ejemplo/);
+  });
+
+  test('replicar: el prompt lleva caption, transcripción, slides y formatos', async () => {
+    const { promptReplicarCompetencia, promptReplicarPropia, normalizarFormatos } = await import('../server/replicar.js');
+    const { m, slides } = await c2.paraReplicar('k1');
+    const p = promptReplicarCompetencia(m, { formatos: { Carrusel: 2, Reel: 0, Inventado: 3 }, indicaciones: 'para clínicas', slides });
+    assert.match(p, /Carrusel × 2/);
+    assert.doesNotMatch(p, /Reel ×|Inventado/);
+    assert.match(p, /\.jarvis\/competencia\/k1\/01\.jpg/);
+    assert.match(p, /para clínicas/);
+    assert.match(p, /NO la copies/);
+    const r = await c2.paraReplicar('k2');
+    assert.match(promptReplicarCompetencia(r.m, { formatos: { Reel: 1 } }), /Transcripción del reel/);
+    assert.throws(() => normalizarFormatos({ Reel: 0 }), /al menos un formato/);
+    assert.match(promptReplicarPropia({ formato: 'Reels', caption: 'Mi reel', guardados: 90, nota: '03-Transcripciones/x.md' }, { formatos: { Story: 1 } }), /guardados: 90[\s\S]*leer_nota/);
+  });
+});

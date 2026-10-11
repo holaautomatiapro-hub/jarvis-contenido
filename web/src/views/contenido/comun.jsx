@@ -1,15 +1,33 @@
+import { useEffect, useState } from 'react';
 import Icon from '../../components/Icon.jsx';
 
-// Estados del pipeline (los mismos que usan Hermes y Claude Code por el MCP)
-export const ESTADOS = [
-  { id: 'idea', label: 'Idea', color: 'var(--blue)', icon: 'bulb', ayuda: 'Por desarrollar' },
+// Fases del pipeline (las mismas que usan Hermes y Claude Code por el MCP). Se pueden configurar:
+// las carga App desde /api/pipeline y cualquier vista las lee con useFases().
+const FASES_BASE = [
+  { id: 'idea', label: 'Idea', color: 'var(--blue)', icon: 'bulb', ayuda: 'Por desarrollar', sistema: true },
   { id: 'guion', label: 'Guion', color: 'var(--purple)', icon: 'pen', ayuda: 'Escribiendo el guion' },
   { id: 'grabar', label: 'Grabar', color: 'var(--orange)', icon: 'mic', ayuda: 'Listos para grabar' },
   { id: 'editar', label: 'Editar', color: 'var(--pink)', icon: 'layers', ayuda: 'Grabados, por editar' },
-  { id: 'listo', label: 'Listo', color: 'var(--cyan)', icon: 'calendar', ayuda: 'Listos para publicar' },
-  { id: 'publicado', label: 'Publicado', color: 'var(--green)', icon: 'checkCircle', ayuda: 'Ya están en redes' },
+  { id: 'listo', label: 'Listo', color: 'var(--cyan)', icon: 'calendar', ayuda: 'Listos para publicar', sistema: true },
+  { id: 'publicado', label: 'Publicado', color: 'var(--green)', icon: 'checkCircle', ayuda: 'Ya están en redes', sistema: true },
 ];
-export const estadoDe = (id) => ESTADOS.find((e) => e.id === id) || ESTADOS[0];
+let fases = FASES_BASE;
+const oyentesFases = new Set();
+export function ponerFases(lista) {
+  if (!Array.isArray(lista) || !lista.length) return;
+  fases = lista;
+  oyentesFases.forEach((f) => f());
+}
+export function useFases() {
+  const [, refrescar] = useState(0);
+  useEffect(() => {
+    const f = () => refrescar((n) => n + 1);
+    oyentesFases.add(f);
+    return () => oyentesFases.delete(f);
+  }, []);
+  return fases;
+}
+export const estadoDe = (id) => fases.find((e) => e.id === id) || { id, label: id || '—', color: 'var(--muted)', icon: 'layers', ayuda: '' };
 
 export const TIPOS = [
   { id: 'Reel', corto: 'Reel' },

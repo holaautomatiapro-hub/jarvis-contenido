@@ -30,6 +30,7 @@ import { createKit } from './diseno/kit.js';
 import { createMotor } from './diseno/motor.js';
 import { createDisenos } from './diseno/disenos.js';
 import { createRecordatorios } from './recordatorios.js';
+import { promptReplicarCompetencia, promptReplicarPropia } from './replicar.js';
 
 dotenv.config({ path: path.join(ROOT, '.env'), quiet: true });
 
@@ -120,6 +121,14 @@ export function createApp({ jarvis, archivos, publicadorIg, asistente, instagram
     const conMensaje = (fn) => async (req) => { try { return await fn(req); } catch (e) { if (!(e instanceof MetaError)) e.publico = true; throw e; } };
 
     app.get('/api/instagram/estado', h(() => instagram.estado()));
+    // Replicar una publicación tuya que funcionó en otros formatos (Claude escribe las versiones y crea las piezas)
+    app.post('/api/instagram/publicaciones/:id/replicar', h((req) => {
+      if (!asistente) throw Object.assign(new Error('JARVIS (Claude Code) no está disponible'), { publico: true });
+      const m = instagram.publicacion(req.params.id);
+      const texto = promptReplicarPropia(m, { formatos: req.body?.formatos, indicaciones: req.body?.indicaciones, medias: instagram.resumen({ dias: 90 }).medias });
+      const r = asistente.preguntar({ conversacion: 'replicar', texto });
+      return { ok: true, peticion: r.id };
+    }));
     app.get('/api/instagram/resumen', h((req) => instagram.resumen({ dias: Math.min(90, Math.max(7, Number(req.query.dias) || 30)) })));
     app.post('/api/instagram/token', h(conMensaje(async (req) => {
       const r = await instagram.conectarConToken(req.body?.token, { paginaId: req.body?.paginaId });
@@ -171,6 +180,23 @@ export function createApp({ jarvis, archivos, publicadorIg, asistente, instagram
     app.post('/api/competencia/analizar', h(() => {
       if (competencia.resumen().demo) { const e = new Error('Primero sincroniza a tus competidores: con datos de ejemplo no hay nada real que analizar'); e.publico = true; throw e; }
       return asistente.preguntar({ conversacion: 'sistema', modelo: process.env.JARVIS_MODELO_ANALISIS || 'sonnet', texto: PROMPT_ANALISIS });
+    }));
+    // Una publicación: detalle, slides (imágenes del carrusel), transcripción del reel y replicarla con tu estilo
+    app.get('/api/competencia/publicaciones/:id', h((req) => competencia.detalle(req.params.id)));
+    app.post('/api/competencia/publicaciones/:id/slides', h(async (req) => ({ slides: (await competencia.descargarSlides(req.params.id)).map((f) => path.basename(f)) })));
+    app.get('/api/competencia/publicaciones/:id/slides/:fichero', (req, res) => {
+      const f = competencia.rutaSlide(req.params.id, req.params.fichero);
+      if (!f) return res.status(404).end();
+      res.set('Cache-Control', 'private, max-age=86400').sendFile(f);
+    });
+    app.post('/api/competencia/publicaciones/:id/transcribir', h((req) => competencia.transcribir(req.params.id), true));
+    app.post('/api/competencia/publicaciones/:id/replicar', h(async (req) => {
+      if (!asistente) throw Object.assign(new Error('JARVIS (Claude Code) no está disponible'), { publico: true });
+      if (asistente.estado().ocupado) throw new OcupadoError('JARVIS está terminando otra petición. Espera un momento.');
+      const { m, slides } = await competencia.paraReplicar(req.params.id);
+      const texto = promptReplicarCompetencia(m, { formatos: req.body?.formatos, indicaciones: req.body?.indicaciones, slides, seguidores: m.seguidores });
+      const r = asistente.preguntar({ conversacion: 'replicar', texto });
+      return { ok: true, peticion: r.id, transcrita: Boolean(m.transcripcion), slides: slides.length };
     }));
   }
 
@@ -233,6 +259,9 @@ export function createApp({ jarvis, archivos, publicadorIg, asistente, instagram
   app.get('/api/config', (_req, res) => res.json({ vault: jarvis.vault.nombre, vaultPath: jarvis.vault.base }));
 
   // Tareas
+  // Fases del pipeline de contenido (configurables)
+  app.get('/api/pipeline', h(() => jarvis.pipeline.fases()));
+  app.put('/api/pipeline', h((req) => jarvis.pipeline.guardar(req.body?.fases, { mover: req.body?.mover || {} }), true));
   app.get('/api/tareas', h((req) => jarvis.tareas({ fecha: req.query.fecha || undefined })));
   app.get('/api/tareas/lista', h((req) => {
     const { estado, prioridad, categoria, desde, hasta, sinFecha, atrasadas, texto } = req.query;

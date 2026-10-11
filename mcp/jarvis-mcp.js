@@ -8,7 +8,7 @@ import { McpServer } from '@modelcontextprotocol/sdk/server/mcp.js';
 import { StdioServerTransport } from '@modelcontextprotocol/sdk/server/stdio.js';
 import { z } from 'zod';
 import { ROOT, getConfig } from '../server/config.js';
-import { openDb, ESTADOS, CATEGORIAS } from '../server/db.js';
+import { openDb, CATEGORIAS } from '../server/db.js';
 import { createVault, ensureVault, CARPETAS } from '../server/vault.js';
 import { createJarvis } from '../server/jarvis.js';
 import { ESTADOS_TAREA, PRIORIDADES, PLAZOS } from '../server/tareas.js';
@@ -68,7 +68,7 @@ export function buildServer(jarvis, { origen = 'claude', avisar = () => {}, inst
   tool('crear_pieza', 'Crea una pieza de contenido en el pipeline.',
     {
       titulo: z.string(),
-      estado: z.enum(ESTADOS).optional(),
+      estado: z.string().optional().describe('Fase del pipeline (id). Usa ver_pipeline para ver las fases'),
       formato: z.string().optional(),
       plataformas: z.array(z.string()).optional(),
       fecha: z.string().optional().describe('Fecha prevista de publicación, AAAA-MM-DD (sin fecha va a la biblioteca)'),
@@ -81,7 +81,7 @@ export function buildServer(jarvis, { origen = 'claude', avisar = () => {}, inst
   tool('mover_pieza', 'Mueve una pieza a otra columna del pipeline o cambia sus datos.',
     {
       id: z.number().int(),
-      estado: z.enum(ESTADOS).optional(),
+      estado: z.string().optional().describe('Fase del pipeline (id). Usa ver_pipeline para ver las fases'),
       titulo: z.string().optional(),
       formato: z.string().optional(),
       plataformas: z.array(z.string()).optional(),
@@ -92,8 +92,11 @@ export function buildServer(jarvis, { origen = 'claude', avisar = () => {}, inst
     },
     ({ id, ...cambios }) => jarvis.actualizarPieza(id, cambios, origen), true);
 
+  tool('ver_pipeline', 'Fases del pipeline de contenido en orden (id y nombre). La persona las puede cambiar en el dashboard: usa siempre estos ids.', {},
+    () => jarvis.pipeline.fases().map(({ id, label, ayuda, sistema }) => ({ id, nombre: label, ayuda, sistema })));
+
   tool('listar_pipeline', 'Lista las piezas del pipeline de contenido, opcionalmente filtradas por estado.',
-    { estado: z.enum(ESTADOS).optional() },
+    { estado: z.string().optional().describe('Fase del pipeline (id). Usa ver_pipeline para ver las fases') },
     ({ estado }) => jarvis.listarPiezas({ estado }));
 
   const plazo = {
@@ -192,6 +195,20 @@ export function buildServer(jarvis, { origen = 'claude', avisar = () => {}, inst
     tool('competencia_datos', 'Datos públicos de los competidores (Instagram): perfiles, frecuencia, formatos y publicaciones ordenadas por engagement (interacciones / seguidores, en %).',
       { usuario: z.string().optional().describe('Solo un competidor (sin @)') },
       ({ usuario }) => competencia.datosParaAnalisis({ usuario }));
+    tool('competencia_mejores', 'Las mejores publicaciones de la competencia ordenadas por la métrica que elijas (engagement, interacciones, vistas, likes, comentarios o fecha), con filtro por formato y perfil.',
+      {
+        orden: z.enum(['engagement', 'interacciones', 'vistas', 'likes', 'comentarios', 'fecha']).optional(),
+        formato: z.enum(['Reels', 'Carruseles', 'Imágenes']).optional(),
+        usuario: z.string().optional().describe('Solo un competidor (sin @)'),
+        limite: z.number().int().min(1).max(50).optional(),
+      },
+      (f) => competencia.mejores(f));
+    tool('ver_publicacion_competencia', 'Una publicación de la competencia completa: caption, métricas, transcripción (si es un reel, la hace si se puede) y rutas de las imágenes de los slides (si es un carrusel; léelas con Read para sacar títulos y textos).',
+      { id: z.string() },
+      async ({ id }) => {
+        const { m, slides } = await competencia.paraReplicar(id);
+        return { id: m.id, username: m.username, formato: m.formato, fecha: m.fecha, permalink: m.permalink, caption: m.caption, likes: m.likes, comentarios: m.comentarios, vistas: m.vistas, engagement: m.engagement, transcripcion: m.transcripcion || null, slides };
+      });
     tool('anadir_competidor', 'Añade un perfil de Instagram a la lista de competidores a analizar.',
       { usuario: z.string() },
       ({ usuario }) => competencia.anadir(usuario), true);
