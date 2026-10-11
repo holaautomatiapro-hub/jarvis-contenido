@@ -20,7 +20,7 @@ export const TAREAS_PROGRAMADAS = [
     titulo: 'Plan del día',
     cuando: 'Todos los días · 8:45',
     cron: '45 8 * * *',
-    prompt: 'Buenos días. Usa tareas_de_hoy y resumen_del_dia del MCP jarvis y escribe mi plan de hoy en 5 líneas como mucho: primero lo atrasado y la prioridad alta. Después mira listar_pipeline y propón 2 ideas de contenido para hoy a partir de lo que tengo en marcha (no las guardes, solo proponlas). No inventes datos.',
+    prompt: 'Buenos días. Usa tareas_de_hoy, recordatorios_de_hoy y resumen_del_dia del MCP jarvis y escribe mi plan de hoy en 5 líneas como mucho: primero lo atrasado y la prioridad alta. Después mira listar_pipeline y propón 2 ideas de contenido para hoy a partir de lo que tengo en marcha (no las guardes, solo proponlas). No inventes datos.',
   },
   {
     nombre: 'jarvis-informe-lunes',

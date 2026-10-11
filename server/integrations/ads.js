@@ -8,6 +8,8 @@ import { demoAds } from './ads-demo.js';
 
 const DIA = 86400000;
 const CACHE_MIN = 15;
+// Una caché por periodo (Inicio pide 7 días y la pestaña Meta Ads 30): así no se pisan
+const PERIODOS_CACHE = [7, 14, 30, 60, 90];
 export const OBJETIVOS = {
   interaccion: { objective: 'OUTCOME_ENGAGEMENT', optimization_goal: 'POST_ENGAGEMENT', destination_type: 'ON_POST', etiqueta: 'Interacción' },
   alcance: { objective: 'OUTCOME_AWARENESS', optimization_goal: 'REACH', etiqueta: 'Alcance' },
@@ -26,6 +28,7 @@ export function soloEnPausa(params) {
 
 export function createAds({ db, instagram, env = process.env, fetchImpl = fetch, alCambiar = () => {} }) {
   const aj = ajustes(db);
+  const borrarCache = () => { aj.borrar('ads_cache'); for (const d of PERIODOS_CACHE) aj.borrar(`ads_cache_${d}`); };
   const q = {
     upLib: db.prepare(`INSERT INTO ads_biblioteca (id, competidor, pagina_id, pagina, cuerpo, titulo, inicio, fin, snapshot, plataformas, alcance_ue)
       VALUES (@id, @competidor, @pagina_id, @pagina, @cuerpo, @titulo, @inicio, @fin, @snapshot, @plataformas, @alcance_ue)
@@ -62,7 +65,7 @@ export function createAds({ db, instagram, env = process.env, fetchImpl = fetch,
     const c = normalizarCuenta(id);
     if (!c || !/^act_\d+$/.test(c)) throw publico('El ID de la cuenta publicitaria debe ser un número (o act_ seguido del número)');
     aj.guardar('ads', { ...aj.leer('ads', {}), cuenta: c });
-    aj.borrar('ads_cache');
+    borrarCache();
     alCambiar();
     return { cuenta: c };
   }
@@ -76,7 +79,7 @@ export function createAds({ db, instagram, env = process.env, fetchImpl = fetch,
   async function rendimiento({ dias = 30, forzar = false } = {}) {
     const c = cuenta();
     if (!c) throw publico('Falta la cuenta publicitaria: elígela en la pestaña Meta Ads o pon META_AD_ACCOUNT_ID en .env');
-    const cache = aj.leer('ads_cache');
+    const cache = aj.leer(`ads_cache_${dias}`);
     if (!forzar && cache?.dias === dias && cache.cuenta === c && Date.now() - cache.ts < CACHE_MIN * 60000) return cache.datos;
     const g = graph();
     const since = new Date(Date.now() - (dias - 1) * DIA).toLocaleDateString('sv-SE');
@@ -110,7 +113,7 @@ export function createAds({ db, instagram, env = process.env, fetchImpl = fetch,
       campanas: filas,
       actualizado: new Date().toISOString(),
     };
-    aj.guardar('ads_cache', { ts: Date.now(), dias, cuenta: c, datos });
+    aj.guardar(`ads_cache_${dias}`, { ts: Date.now(), dias, cuenta: c, datos });
     return datos;
   }
 
@@ -259,7 +262,7 @@ export function createAds({ db, instagram, env = process.env, fetchImpl = fetch,
       creados.anuncio = ad.id;
       const resultado = { ...creados, enlace: `https://adsmanager.facebook.com/adsmanager/manage/campaigns?act=${c.replace('act_', '')}&selected_campaign_ids=${camp.id}` };
       q.setEstado.run('creada', JSON.stringify(resultado), b.id);
-      aj.borrar('ads_cache');
+      borrarCache();
       alCambiar();
       return { ok: true, estado: 'creada', ...resultado };
     } catch (e) {

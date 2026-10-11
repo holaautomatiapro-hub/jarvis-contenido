@@ -29,12 +29,13 @@ import { createHermes, TAREAS_PROGRAMADAS } from './integrations/hermes.js';
 import { createKit } from './diseno/kit.js';
 import { createMotor } from './diseno/motor.js';
 import { createDisenos } from './diseno/disenos.js';
+import { createRecordatorios } from './recordatorios.js';
 
 dotenv.config({ path: path.join(ROOT, '.env'), quiet: true });
 
 const DIST = path.join(ROOT, 'web', 'dist');
 
-export function createApp({ jarvis, archivos, publicadorIg, asistente, instagram, competencia, ads, publicar, hermes, jobs, kit, disenos, port, onChange = () => {}, status, tts = sintetizar }) {
+export function createApp({ jarvis, archivos, publicadorIg, asistente, instagram, competencia, ads, publicar, hermes, jobs, kit, disenos, recordatorios, port, onChange = () => {}, status, tts = sintetizar }) {
   const estadoSistema = status || (() => systemStatus({ vaultPath: jarvis.vault.base, instagram: Boolean(instagram?.estado().conectado), ads: Boolean(ads?.estado().conectado && ads?.estado().cuenta), hermes: Boolean(hermes?.estado().gateway.online) }));
   const app = express();
 
@@ -73,9 +74,39 @@ export function createApp({ jarvis, archivos, publicadorIg, asistente, instagram
   app.get('/api/inicio', h(async () => {
     const real = jarvis.inicio();
     const sistema = await estadoSistema();
-    // Hasta que haya datos propios se muestran los de ejemplo (el estado del sistema siempre es real)
-    return real.vacio ? { ...demoInicio, sistema } : { demo: false, ...real, sistema };
+    // La agenda y los recordatorios son siempre reales: se marcan desde aquí
+    const propio = { ...jarvis.agenda(), recordatorios: recordatorios ? recordatorios.deHoy() : [], conRecordatorios: Boolean(recordatorios), conAds: Boolean(ads) };
+    // Hasta que haya datos propios los KPIs son de ejemplo (el estado del sistema siempre es real)
+    return real.vacio ? { ...demoInicio, ...propio, sistema } : { demo: false, ...real, ...propio, sistema };
   }));
+
+  // Métricas de Meta Ads de los últimos 7 días para Inicio (aparte: tardan lo que tarde Meta)
+  // Si Meta da error, Inicio no vuelve a preguntar en 5 min (se refresca cada 30 s); «Actualizar» sí pregunta
+  let fallo = null;
+  if (ads) {
+    app.get('/api/inicio/ads', h(async () => {
+      const est = ads.estado();
+      if (!est.conectado || !est.cuenta) return { conectado: est.conectado, cuenta: est.cuenta, datos: null };
+      if (fallo?.cuenta === est.cuenta && Date.now() - fallo.ts < 5 * 60000) return { conectado: true, cuenta: est.cuenta, datos: null, error: fallo.error };
+      try {
+        const datos = await ads.rendimiento({ dias: 7 });
+        fallo = null;
+        return { conectado: true, cuenta: est.cuenta, datos };
+      } catch (e) {
+        fallo = { cuenta: est.cuenta, ts: Date.now(), error: e.message };
+        return { conectado: true, cuenta: est.cuenta, datos: null, error: e.message };
+      }
+    }));
+  }
+
+  // Recordatorios diarios (Inicio)
+  if (recordatorios) {
+    app.get('/api/recordatorios', h(() => ({ todos: recordatorios.listar(), hoy: recordatorios.deHoy() })));
+    app.post('/api/recordatorios', h((req) => recordatorios.crear({ ...(req.body || {}), origen: 'dashboard' }), true));
+    app.patch('/api/recordatorios/:id', h((req) => recordatorios.actualizar(req.params.id, req.body || {}), true));
+    app.delete('/api/recordatorios/:id', h((req) => recordatorios.borrar(req.params.id), true));
+    app.post('/api/recordatorios/:id/hecho', h((req) => recordatorios.marcar(req.params.id, { hecho: req.body?.hecho !== false, fecha: req.body?.fecha || undefined }), true));
+  }
 
   // Instagram: conexión, sincronización y dashboards
   if (instagram) {
@@ -149,7 +180,7 @@ export function createApp({ jarvis, archivos, publicadorIg, asistente, instagram
     app.get('/api/ads', h((req) => ads.resumen({ dias: Math.min(90, Math.max(7, Number(req.query.dias) || 30)) })));
     app.get('/api/ads/cuentas', h(() => ads.cuentas()));
     app.post('/api/ads/cuenta', h((req) => ads.elegirCuenta(req.body?.id), true));
-    app.post('/api/ads/actualizar', h((req) => ads.rendimiento({ dias: Number(req.body?.dias) || 30, forzar: true }), true));
+    app.post('/api/ads/actualizar', h((req) => { fallo = null; return ads.rendimiento({ dias: Number(req.body?.dias) || 30, forzar: true }); }, true));
     app.post('/api/ads/biblioteca/sincronizar', h(() => { if (!ads.estado().conectado) { const e = new Error('Conecta primero Instagram con Facebook (pestaña Instagram)'); e.publico = true; throw e; } enFondo(ads.sincronizarBiblioteca()); return { ok: true }; }));
     app.post('/api/ads/competidores/:usuario/pagina', h((req) => ads.paginaCompetidor(req.params.usuario, req.body?.pagina), true));
     app.post('/api/ads/borradores', h((req) => ads.proponer(req.body || {}, 'dashboard'), true));
@@ -290,6 +321,9 @@ export function createApp({ jarvis, archivos, publicadorIg, asistente, instagram
   app.get('/api/notas/leer', h((req) => jarvis.vault.read(String(req.query.ruta || ''))));
   app.get('/api/notas/buscar', h((req) => jarvis.vault.search(String(req.query.q || ''))));
   app.post('/api/notas', h((req) => jarvis.crearNota(req.body || {}), true));
+  app.put('/api/notas', h((req) => jarvis.editarNota(String(req.body?.ruta || ''), req.body || {}), true));
+  app.delete('/api/notas', h((req) => jarvis.borrarNota(String(req.query.ruta || '')), true));
+  app.post('/api/notas/restaurar', h((req) => jarvis.restaurarNota(req.body?.papelera, req.body?.ruta), true));
   app.post('/api/ideas', h((req) => jarvis.capturarIdea(req.body || {}), true));
 
   // JARVIS (Claude Code + JEV). La respuesta llega en directo por el WebSocket.
@@ -355,7 +389,8 @@ function main() {
   const motor = createMotor({ kit, archivos, log: (m) => console.log(`  [Diseño] ${m}`) });
   if (process.platform !== 'win32') setTimeout(() => motor.preparar(), 5000).unref();
   disenos = createDisenos({ db, jarvis, kit, motor, archivos, previasDir: path.join(cfg.vaultPath, '.jarvis', 'disenos'), asistente, emitir, alCambiar: onChange });
-  const server = createServer(createApp({ jarvis, archivos, publicadorIg, asistente, instagram, competencia, ads, publicar, hermes, jobs, kit, disenos, port: cfg.port, onChange }));
+  const recordatorios = createRecordatorios({ db });
+  const server = createServer(createApp({ jarvis, archivos, publicadorIg, asistente, instagram, competencia, ads, publicar, hermes, jobs, kit, disenos, recordatorios, port: cfg.port, onChange }));
   // Solo el propio dashboard puede escuchar los eventos (otra web abierta en el navegador, no)
   const local = hostsPermitidos(cfg.port);
   wss = new WebSocketServer({ server, path: '/ws', verifyClient: ({ origin, req }) => local.has(req.headers.host) && (!origin || local.has(origin.replace(/^https?:\/\//, ''))) });

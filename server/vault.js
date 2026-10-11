@@ -1,4 +1,4 @@
-import { cpSync, existsSync, mkdirSync, readdirSync, readFileSync, statSync, writeFileSync } from 'node:fs';
+import { cpSync, existsSync, mkdirSync, readdirSync, readFileSync, renameSync, statSync, writeFileSync } from 'node:fs';
 import path from 'node:path';
 
 // Acceso al vault de Obsidian: la "memoria" de JARVIS. Todo son archivos Markdown normales.
@@ -8,6 +8,8 @@ export const CARPETAS = [
 ];
 
 export class VaultError extends Error {}
+// Papelera de Obsidian: lo que se borra desde JARVIS va aquí y se puede recuperar (también desde Obsidian)
+export const PAPELERA = '.trash';
 
 export function createVault(root) {
   const base = path.resolve(root);
@@ -85,6 +87,63 @@ export function createVault(root) {
     return rel(abs);
   }
 
+  // Guarda los cambios de una nota que ya existe. Si se pasa "modificado" (la fecha con la que se abrió)
+  // y la nota cambió después (p. ej. en Obsidian), no se pisa.
+  function guardar(relPath, contenido, { modificado } = {}) {
+    const abs = resolve(relPath);
+    if (!existsSync(abs)) throw new VaultError('La nota no existe');
+    if (typeof contenido !== 'string') throw new VaultError('Falta el contenido');
+    if (modificado && statSync(abs).mtime.toISOString() !== modificado) {
+      throw new VaultError('La nota ha cambiado mientras la editabas (quizá en Obsidian). Copia tus cambios, recárgala y vuelve a editarla.');
+    }
+    writeFileSync(abs, contenido, 'utf8');
+    return read(rel(abs));
+  }
+
+  // Cambia el nombre de una nota sin moverla de carpeta y sin pisar otra
+  function renombrar(relPath, titulo) {
+    const abs = resolve(relPath);
+    if (!existsSync(abs)) throw new VaultError('La nota no existe');
+    const nombre = nombreArchivo(titulo);
+    const destino = path.join(path.dirname(abs), `${nombre}.md`);
+    if (destino === abs) return rel(abs);
+    // En Windows "nota.md" y "Nota.md" son el mismo archivo: cambiar solo mayúsculas sí se permite
+    if (existsSync(destino) && destino.toLowerCase() !== abs.toLowerCase()) throw new VaultError(`Ya hay una nota llamada «${nombre}» en esa carpeta`);
+    renameSync(abs, destino);
+    return rel(destino);
+  }
+
+  // Borra una nota moviéndola a la papelera (.trash), con la misma ruta, para poder recuperarla
+  function borrar(relPath) {
+    const abs = resolve(relPath);
+    if (!existsSync(abs)) throw new VaultError('La nota no existe');
+    const r = rel(abs);
+    const ext = path.extname(r), sin = r.slice(0, -ext.length);
+    let enPapelera = `${PAPELERA}/${r}`;
+    for (let n = 2; existsSync(path.join(base, enPapelera)); n++) enPapelera = `${PAPELERA}/${sin} ${n}${ext}`;
+    const destino = path.join(base, enPapelera);
+    mkdirSync(path.dirname(destino), { recursive: true });
+    renameSync(abs, destino);
+    return { ruta: r, papelera: enPapelera };
+  }
+
+  // Devuelve a su sitio una nota de la papelera (sin pisar otra con el mismo nombre)
+  function restaurar(enPapelera) {
+    const limpio = String(enPapelera || '').replace(/\\/g, '/');
+    if (!limpio.startsWith(`${PAPELERA}/`)) throw new VaultError('Esa nota no está en la papelera');
+    const origen = path.resolve(base, limpio);
+    if (!origen.startsWith(path.join(base, PAPELERA) + path.sep) || !origen.toLowerCase().endsWith('.md')) throw new VaultError('Ruta no permitida');
+    if (!existsSync(origen)) throw new VaultError('Esa nota ya no está en la papelera');
+    const r = limpio.slice(PAPELERA.length + 1);
+    const ext = path.extname(r), sin = r.slice(0, -ext.length);
+    let destino = `${sin}${ext}`;
+    for (let n = 2; existsSync(resolve(destino)); n++) destino = `${sin} ${n}${ext}`;
+    const abs = resolve(destino);
+    mkdirSync(path.dirname(abs), { recursive: true });
+    renameSync(origen, abs);
+    return read(rel(abs));
+  }
+
   function search(q, limit = 30) {
     const needle = normaliza(q.trim());
     if (!needle) return [];
@@ -102,7 +161,7 @@ export function createVault(root) {
     return res.sort((a, b) => b.puntuacion - a.puntuacion).slice(0, limit);
   }
 
-  return { base, nombre: path.basename(base), list, read, create, write, append, search, resolve };
+  return { base, nombre: path.basename(base), list, read, create, write, append, guardar, renombrar, borrar, restaurar, search, resolve };
 }
 
 // Copia la plantilla la primera vez (sin pisar nada) y deja configurado el MCP para Claude Code.
