@@ -34,7 +34,8 @@ Después, ábrelo con el acceso directo **JARVIS** del escritorio o en http://lo
 - **Lista**: próximos, sin fecha y anteriores, con buscador y filtros por tipo y estado.
 - **Biblioteca**: lo que aún no tiene día. Arrastra vídeos, fotos o **carpetas enteras** (eliges si son un carrusel, stories o piezas sueltas), ordénalas en carpetas, junta varias en un carrusel y **Programa** cada una.
 - **Pipeline**: el tablero idea → guion → grabar → editar → listo → publicado (el que antes estaba en Tareas).
-- La ficha de cada pieza guarda tipo, estado, fecha y hora, caption, enlace al vídeo y sus archivos. JARVIS no publica: cuando esté lista, la adaptas a cada red en **Publicar**.
+- La ficha de cada pieza guarda tipo, estado, fecha y hora, caption, enlace al vídeo y sus archivos.
+- **Publicar en Instagram** (con Instagram conectado con Facebook): marca «Publicar sola en Instagram» y se publica a su hora como foto, reel, carrusel o story, o pulsa «Publicar ahora». Solo lo activas tú desde el dashboard (Hermes y Claude Code no pueden) y JARVIS tiene que estar abierto. Para las demás redes, la adaptas en **Publicar** y la subes tú. Guía: [docs/INSTAGRAM.md](docs/INSTAGRAM.md#publicar-en-instagram-desde-jarvis).
 
 ## Hablar con JARVIS (pestaña Voz)
 

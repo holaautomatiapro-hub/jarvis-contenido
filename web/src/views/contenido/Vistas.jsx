@@ -152,6 +152,7 @@ export function Calendario({ piezas, dia, setDia, onAbrir, onNuevo, onMover, onP
                       onClick={(e) => { e.stopPropagation(); onAbrir(p); }}
                       title={`${textoTipo(p.formato)} · ${p.titulo} — ${estadoDe(p.estado).label}`}
                     >
+                      {(p.publicar_ig || p.ig_estado) ? <span className={`cal-chip-ig ${p.ig_estado || 'pendiente'}`}><Icon name="instagram" size={9} /></span> : null}
                       <span className="cal-chip-tipo">{tipoDe(p.formato)?.corto || ''}</span>{p.titulo || 'Sin título'}
                     </button>
                   ))}
@@ -186,7 +187,8 @@ export function Calendario({ piezas, dia, setDia, onAbrir, onNuevo, onMover, onP
 }
 
 function FilaDia({ p, onAbrir }) {
-  const extra = [textoTipo(p.formato), p.hora, p.archivos.length ? `🎞 ${p.archivos.length}` : null].filter(Boolean).join(' · ');
+  const ig = p.ig_estado === 'publicado' ? 'publicado en Instagram' : p.ig_estado === 'error' ? 'error al publicar en Instagram' : p.publicar_ig ? 'se publica sola en Instagram' : null;
+  const extra = [textoTipo(p.formato), p.hora, ig, p.archivos.length ? `🎞 ${p.archivos.length}` : null].filter(Boolean).join(' · ');
   return (
     <div className="fila-c" tabIndex={0} onClick={() => onAbrir(p)} onKeyDown={(e) => e.key === 'Enter' && onAbrir(p)}>
       <Miniatura p={p} className="peque" />
@@ -217,6 +219,11 @@ export function Lista({ piezas, cargando, onAbrir, onMover }) {
           <span className="fila-fecha">{p.fecha ? `${diaCorto(p.fecha)}${p.hora ? ` · ${p.hora}` : ''}` : 'Sin fecha'}</span>
           <span className="fila-ind">
             {p.archivos.length > 0 && <span title="Archivos subidos">🎞 {p.archivos.length}</span>}
+            {(p.publicar_ig || p.ig_estado) ? (
+              p.ig_permalink
+                ? <a href={p.ig_permalink} target="_blank" rel="noreferrer" onClick={(e) => e.stopPropagation()} className="ig-ind publicado" title="Publicado en Instagram"><Icon name="instagram" size={13} /></a>
+                : <span className={`ig-ind ${p.ig_estado || 'pendiente'}`} title={p.ig_estado === 'error' ? `Error al publicar: ${p.ig_error}` : p.ig_estado === 'procesando' ? 'Publicándose en Instagram…' : 'Se publicará sola en Instagram'}><Icon name="instagram" size={13} /></span>
+            ) : null}
             {p.video_url && <a href={p.video_url} target="_blank" rel="noreferrer" onClick={(e) => e.stopPropagation()} title="Abrir URL del vídeo"><Icon name="link" size={13} /></a>}
             {p.origen === 'hermes' && <Icon name="telegram" size={12} color="var(--cyan)" />}
           </span>

@@ -205,6 +205,16 @@ export function openDb(file) {
     'ALTER TABLE piezas ADD COLUMN video_url TEXT',
     'ALTER TABLE piezas ADD COLUMN carpeta TEXT',
   ]) migrar(sql);
+  // Publicar en Instagram: lo marca la persona en el dashboard; el resto lo rellena el publicador
+  for (const sql of [
+    'ALTER TABLE piezas ADD COLUMN publicar_ig INTEGER NOT NULL DEFAULT 0',
+    'ALTER TABLE piezas ADD COLUMN ig_estado TEXT',
+    'ALTER TABLE piezas ADD COLUMN ig_error TEXT',
+    'ALTER TABLE piezas ADD COLUMN ig_contenedor TEXT',
+    'ALTER TABLE piezas ADD COLUMN ig_media_id TEXT',
+    'ALTER TABLE piezas ADD COLUMN ig_permalink TEXT',
+    'ALTER TABLE piezas ADD COLUMN ig_publicado_en TEXT',
+  ]) migrar(sql);
   // Windsor: todas las métricas de cada publicación (JSON) e historias
   migrar('ALTER TABLE ig_media ADD COLUMN extra TEXT');
   db.exec(`CREATE TABLE IF NOT EXISTS ig_historias (

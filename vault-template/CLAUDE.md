@@ -28,7 +28,7 @@ Tienes el MCP **jarvis** conectado (ver `.mcp.json`). Úsalo SIEMPRE para guarda
 - `resumen_del_dia`: para saber cómo va el día.
 
 ## Reglas que no se rompen
-1. **Nunca publicas nada** en redes: preparas el contenido y la persona lo publica.
+1. **Nunca publicas nada** en redes: preparas el contenido y la persona lo publica. Solo se publica en Instagram lo que ella marca en el dashboard (pestaña Contenido); tú no puedes activarlo.
 2. **Nunca gastas dinero.** Las campañas de Meta Ads se crean SIEMPRE en pausa, y solo se activan cuando la persona lo confirme en el dashboard.
 3. No borras notas. Si algo sobra, lo mueves a `00-Inbox/` y lo dices.
 4. Si te falta un dato, lo preguntas en una sola frase en vez de inventarlo.

@@ -10,6 +10,8 @@ import { openDb } from './db.js';
 import { createVault, ensureVault, VaultError } from './vault.js';
 import { createJarvis, JarvisError, TareaError } from './jarvis.js';
 import { createArchivos, ArchivoError } from './archivos.js';
+import { createAlmacen } from './integrations/almacen.js';
+import { createPublicadorIg, PublicarError } from './integrations/publicar-ig.js';
 import { systemStatus } from './status.js';
 import { createAsistente, OcupadoError } from './asistente.js';
 import { sintetizar, vozConfigurada } from './tts.js';
@@ -29,7 +31,7 @@ dotenv.config({ path: path.join(ROOT, '.env'), quiet: true });
 
 const DIST = path.join(ROOT, 'web', 'dist');
 
-export function createApp({ jarvis, archivos, asistente, instagram, competencia, ads, publicar, hermes, jobs, port, onChange = () => {}, status, tts = sintetizar }) {
+export function createApp({ jarvis, archivos, publicadorIg, asistente, instagram, competencia, ads, publicar, hermes, jobs, port, onChange = () => {}, status, tts = sintetizar }) {
   const estadoSistema = status || (() => systemStatus({ vaultPath: jarvis.vault.base, instagram: Boolean(instagram?.estado().conectado), ads: Boolean(ads?.estado().conectado && ads?.estado().cuenta), hermes: Boolean(hermes?.estado().gateway.online) }));
   const app = express();
 
@@ -55,7 +57,7 @@ export function createApp({ jarvis, archivos, asistente, instagram, competencia,
       res.json(out);
     } catch (e) {
       if (e instanceof OcupadoError) return res.status(409).json({ error: e.message });
-      if (e instanceof JarvisError || e instanceof TareaError || e instanceof ArchivoError || e instanceof VaultError || /^Falta /.test(e.message)) return res.status(400).json({ error: e.message });
+      if (e instanceof JarvisError || e instanceof TareaError || e instanceof ArchivoError || e instanceof PublicarError || e instanceof VaultError || /^Falta /.test(e.message)) return res.status(400).json({ error: e.message });
       if (e instanceof MetaError) return res.status(502).json({ error: e.message });
       if (e.publico) return res.status(400).json({ error: e.message });
       console.error(e);
@@ -210,10 +212,20 @@ export function createApp({ jarvis, archivos, asistente, instagram, competencia,
     for (const a of lista.flatMap((p) => p.archivos)) if (a.path && !enUso.has(a.path)) archivos.borrar(a.path);
   };
   app.get('/api/piezas', h((req) => jarvis.listarPiezas({ estado: req.query.estado || undefined })));
-  app.post('/api/piezas', h((req) => jarvis.crearPieza({ ...(req.body || {}), origen: 'dashboard' }), true));
-  app.patch('/api/piezas/:id', h((req) => jarvis.actualizarPieza(req.params.id, req.body || {}), true));
+  // «Publicar sola en Instagram» solo se puede marcar desde aquí (un clic de la persona), nunca desde el MCP
+  const conInstagram = (p, body) => {
+    if (!('publicar_ig' in (body || {}))) return p;
+    if (!publicadorIg) { if (body.publicar_ig) throw new PublicarError('La publicación en Instagram no está disponible'); return p; }
+    return publicadorIg.marcar(p.id, Boolean(body.publicar_ig));
+  };
+  app.post('/api/piezas', h((req) => conInstagram(jarvis.crearPieza({ ...(req.body || {}), origen: 'dashboard' }), req.body), true));
+  app.patch('/api/piezas/:id', h((req) => conInstagram(jarvis.actualizarPieza(req.params.id, req.body || {}), req.body), true));
+  app.post('/api/piezas/:id/instagram/ahora', h((req) => {
+    if (!publicadorIg) throw new PublicarError('La publicación en Instagram no está disponible');
+    return publicadorIg.publicarAhora(req.params.id);
+  }, true));
   app.delete('/api/piezas/:id', h((req) => { const r = jarvis.borrarPieza(req.params.id); borrarArchivosDe([r.pieza]); return { ok: true }; }, true));
-  app.get('/api/contenido', h(() => ({ piezas: jarvis.listarPiezas(), carpetas: jarvis.carpetas(), archivos: Boolean(archivos) })));
+  app.get('/api/contenido', h(() => ({ piezas: jarvis.listarPiezas(), carpetas: jarvis.carpetas(), archivos: Boolean(archivos), instagram: publicadorIg?.estado() || { disponible: false, motivo: 'La publicación en Instagram no está disponible' } })));
   app.post('/api/contenido/carpetas', h((req) => jarvis.crearCarpeta(req.body?.nombre), true));
   app.patch('/api/contenido/carpetas', h((req) => jarvis.renombrarCarpeta(req.body?.de, req.body?.a), true));
   app.delete('/api/contenido/carpetas', h((req) => jarvis.borrarCarpeta(req.query.nombre), true));
@@ -308,7 +320,9 @@ function main() {
   const jobs = createJobs({ instagram, competencia, ads, asistente, skills: createSkills(cfg.vaultPath), vault: jarvis.vault, ajustesDb: ajustes(db) });
   jobs.iniciar();
   const hermes = createHermes({ vaultPath: cfg.vaultPath, mcpScript: cfg.mcpScript });
-  const server = createServer(createApp({ jarvis, archivos, asistente, instagram, competencia, ads, publicar, hermes, jobs, port: cfg.port, onChange }));
+  const publicadorIg = createPublicadorIg({ db, jarvis, instagram, almacen: createAlmacen({}), archivos, alCambiar: onChange });
+  publicadorIg.iniciar();
+  const server = createServer(createApp({ jarvis, archivos, publicadorIg, asistente, instagram, competencia, ads, publicar, hermes, jobs, port: cfg.port, onChange }));
   // Solo el propio dashboard puede escuchar los eventos (otra web abierta en el navegador, no)
   const local = new Set([`localhost:${cfg.port}`, `127.0.0.1:${cfg.port}`, `[::1]:${cfg.port}`, 'localhost:5173', '127.0.0.1:5173']);
   wss = new WebSocketServer({ server, path: '/ws', verifyClient: ({ origin, req }) => local.has(req.headers.host) && (!origin || local.has(origin.replace(/^https?:\/\//, ''))) });

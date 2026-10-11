@@ -71,6 +71,31 @@ Si además tienes `META_APP_ID` y `META_APP_SECRET` en `.env`, JARVIS lo convier
 
 ---
 
+## Publicar en Instagram desde JARVIS
+
+Con Instagram conectado con Facebook (opción A o B, con el permiso `instagram_content_publish`), JARVIS publica las piezas que **tú** marcas en la pestaña **Contenido**. Nadie más puede activarlo: ni Hermes por Telegram ni Claude Code.
+
+**Antes, una vez:** Instagram no puede entrar en tu PC, así que descarga cada vídeo o foto de un enlace público. JARVIS los sube justo antes a Supabase (un bucket público llamado `contenido`, carpeta `jarvis/`, que permita subir con la clave anon) y los borra al publicarse. Pon la conexión con `npm run claves` → `CRM_SUPABASE_URL` y `CRM_SUPABASE_ANON_KEY` (Supabase → Project Settings → API) y reinicia JARVIS.
+
+**Cómo se usa**
+1. Abre la pieza (o créala), sube el vídeo o las fotos y ponle día, hora y caption.
+2. Marca **«Publicar sola en Instagram el día y la hora de arriba»** y guarda. JARVIS te dice al momento si falta algo.
+3. A esa hora se publica sola y la pieza pasa a *Publicado*, con el enlace a la publicación. O pulsa **«Publicar ahora en Instagram»** (te pide confirmación).
+
+**Qué se publica como qué**
+| Tipo de la pieza | En Instagram |
+|---|---|
+| Reel, Reel split, B-roll, Short | Reel (1 vídeo MP4 o MOV) |
+| Post | Foto (1 JPG) o reel si es un vídeo |
+| Carrusel | Carrusel (de 2 a 10 fotos o vídeos) |
+| Story | Historia (1 foto o vídeo, sin caption) |
+
+**A tener en cuenta**
+- **JARVIS tiene que estar abierto** a la hora de publicar. Si el PC está apagado, publica en cuanto lo abras.
+- Instagram solo publica **fotos en JPG**. Las PNG o WebP que subes ahora se convierten solas; para las antiguas, el editor tiene el botón **«Convertir las imágenes a JPG»**.
+- Si algo falla, la pieza lo dice («No se pudo publicar: …»). Corrígelo y guarda: se vuelve a intentar.
+- El plan gratis de Supabase admite archivos de hasta **50 MB**: exporta los reels más ligeros si te pasas.
+
 ## Qué hace JARVIS después
 - **Sincroniza cada 6 horas** (cámbialo con `IG_SYNC_HORAS`) tus últimas 150 publicaciones: alcance, visualizaciones, interacciones, guardados, compartidos y tiempo medio de visualización de los reels. También guarda el alcance diario y los seguidores nuevos de la cuenta.
 - **Transcribe tus reels** con ElevenLabs (si tienes `ELEVENLABS_API_KEY`) y los guarda en `03-Transcripciones/` con sus métricas. Como mucho transcribe 10 por sincronización (`IG_TRANSCRIBIR_MAX`) para no gastar créditos de golpe.

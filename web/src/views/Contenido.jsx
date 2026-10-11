@@ -117,8 +117,8 @@ export default function Contenido({ onCaptura }) {
       {vista === 'biblioteca' && <Biblioteca piezas={biblioteca} carpetas={carpetas} onAbrir={setEditando} onProgramar={(p) => setProgramando({ p })} recargar={recargar} />}
       {vista === 'pipeline' && <Pipeline piezas={piezas} onAbrir={setEditando} onMover={mover} onNuevaIdea={() => onCaptura('idea')} />}
 
-      {editando && <EditorContenido key={editando.id || 'nuevo'} pieza={editando} carpetas={carpetas} onClose={() => setEditando(null)} onGuardado={recargar} onVisor={abrirVisor} />}
-      {programando && <ProgramarContenido pieza={programando.p} fecha={programando.f} onClose={() => setProgramando(null)} onGuardado={recargar} />}
+      {editando && <EditorContenido key={editando.id || 'nuevo'} pieza={editando} carpetas={carpetas} ig={data?.instagram} onClose={() => setEditando(null)} onGuardado={recargar} onVisor={abrirVisor} />}
+      {programando && <ProgramarContenido pieza={programando.p} fecha={programando.f} ig={data?.instagram} onClose={() => setProgramando(null)} onGuardado={recargar} />}
       {visor && <Visor archivos={visor.archivos} inicio={visor.inicio} onClose={() => setVisor(null)} />}
     </section>
   );

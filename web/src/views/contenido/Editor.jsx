@@ -2,6 +2,7 @@ import { useEffect, useRef, useState } from 'react';
 import Icon from '../../components/Icon.jsx';
 import { api } from '../../lib/api.js';
 import { diaLargo, hoyIso, sumarDias } from '../../lib/fechas.js';
+import { NOMBRE_TIPO_IG, planDePublicacion } from '../../lib/planIg.js';
 import { ESTADOS, MAX_CAPTION, Miniatura, Modal, TIPOS, borrarArchivo, esMedio, esStory, esVideo, subirArchivo, tamanoLegible, tipoDe } from './comun.jsx';
 
 // ---------- Visor a pantalla completa ----------
@@ -52,12 +53,39 @@ function Pildoras({ opciones, valor, onCambio, color }) {
   );
 }
 
+// ---------- Publicar en Instagram (solo si tú marcas la casilla) ----------
+function CajaInstagram({ ig, pieza, plan, marcado, onMarcar, onAhora, onConvertir, ocupado, texto = 'Publicar sola en Instagram el día y la hora de arriba' }) {
+  if (pieza.ig_estado === 'publicado') {
+    return (
+      <div className="caja-ig ok">
+        <Icon name="instagram" size={14} /> Publicada en Instagram{pieza.ig_permalink && <> · <a href={pieza.ig_permalink} target="_blank" rel="noreferrer">verla ↗</a></>}
+      </div>
+    );
+  }
+  if (!ig?.disponible || ig.motivo) return <div className="caja-ig apagada"><Icon name="instagram" size={14} /><span>{ig?.motivo || 'Conecta Instagram con Facebook para publicar desde JARVIS.'}</span></div>;
+  return (
+    <div className={`caja-ig${marcado ? ' on' : ''}`}>
+      <label className="caja-ig-check">
+        <input type="checkbox" checked={marcado} onChange={(e) => onMarcar(e.target.checked)} disabled={ocupado} />
+        <span><b>{texto}</b><small>en @{ig.cuenta} · JARVIS tiene que estar abierto a esa hora</small></span>
+      </label>
+      {pieza.ig_estado === 'procesando' && <div className="caja-ig-linea">Instagram está procesando el vídeo. Se publica en cuanto termine.</div>}
+      {pieza.ig_estado === 'error' && <div className="caja-ig-linea error">No se pudo publicar: {pieza.ig_error}. Corrige lo que haga falta y guarda: se vuelve a intentar.</div>}
+      {marcado && plan.problemas.length > 0 && <ul className="caja-ig-problemas">{plan.problemas.map((x) => <li key={x}>{x}</li>)}</ul>}
+      {marcado && onConvertir && plan.problemas.some((x) => /no es JPG/.test(x)) && <button type="button" className="btn btn-sec caja-ig-convertir" onClick={onConvertir} disabled={ocupado}>Convertir las imágenes a JPG</button>}
+      {marcado && !plan.problemas.length && <div className="caja-ig-linea ok">Se publicará como {NOMBRE_TIPO_IG[plan.tipo]}.</div>}
+      {onAhora && <button type="button" className="link-btn caja-ig-ahora" onClick={onAhora} disabled={ocupado}>Publicar ahora en Instagram</button>}
+    </div>
+  );
+}
+
 // ---------- Ficha de una pieza: nueva o para editar ----------
-export function EditorContenido({ pieza, carpetas, onClose, onGuardado, onVisor }) {
+export function EditorContenido({ pieza, carpetas, ig, onClose, onGuardado, onVisor }) {
   const nueva = !pieza.id;
   const [d, setD] = useState(() => ({
     titulo: pieza.titulo || '', carpeta: pieza.carpeta || '', formato: tipoDe(pieza.formato)?.id || pieza.formato || 'Reel',
     estado: pieza.estado || 'idea', fecha: pieza.fecha || '', hora: pieza.hora || '', caption: pieza.caption || '', video_url: pieza.video_url || '',
+    publicar_ig: Boolean(pieza.publicar_ig),
   }));
   const [archivos, setArchivos] = useState(pieza.archivos || []);
   const subidos = useRef(new Set()); // subidos en esta edición: si se cancela, se borran
@@ -106,17 +134,46 @@ export function EditorContenido({ pieza, carpetas, onClose, onGuardado, onVisor 
     return y;
   });
 
-  const guardar = async (e) => {
-    e?.preventDefault();
+  const plan = planDePublicacion({ ...d, archivos });
+  const conIg = ig?.disponible && !ig.motivo && pieza.ig_estado !== 'publicado';
+  // Vuelve a subir como JPG las fotos que no lo son (Instagram solo publica JPG)
+  const convertirAJpg = async () => {
+    setError('');
+    const malas = archivos.filter((a) => /^image\//.test(a.mime) && !/^image\/jpe?g$/.test(a.mime));
+    setSubiendo(malas.length);
+    for (const a of malas) {
+      try {
+        const blob = await (await fetch(a.url)).blob();
+        const nuevo = await subirArchivo(new File([blob], a.nombre, { type: blob.type || a.mime }));
+        if (!/^image\/jpe?g$/.test(nuevo.mime)) { borrarArchivo(nuevo); throw new Error(`«${a.nombre}» no se ha podido convertir en este navegador`); }
+        subidos.current.add(nuevo.path);
+        setArchivos((x) => x.map((y) => (y === a ? nuevo : y)));
+        if (subidos.current.has(a.path)) { subidos.current.delete(a.path); borrarArchivo(a); } else setQuitados((x) => [...x, a]);
+      } catch (e) { setError((x) => (x ? `${x}\n` : '') + e.message); }
+      setSubiendo((n) => n - 1);
+    }
+  };
+  const marcarIg = (v) => setD((x) => ({ ...x, publicar_ig: v, estado: v && x.estado !== 'publicado' ? 'listo' : x.estado }));
+
+  // ahora = true: guarda y publica en Instagram sin esperar a la fecha
+  const guardar = async (e, { ahora = false } = {}) => {
+    e?.preventDefault?.();
     if (ocupado) return;
     if (!d.titulo.trim()) return setError('Ponle un título.');
+    if (d.publicar_ig && conIg && plan.problemas.length) return setError(`Para publicarla en Instagram falta: ${plan.problemas.join(' ')}`);
+    if (ahora) {
+      const p = planDePublicacion({ ...d, archivos }, { conFecha: false });
+      if (p.problemas.length) return setError(`Para publicarla en Instagram falta: ${p.problemas.join(' ')}`);
+      if (!window.confirm(`¿Publicar «${d.titulo}» en Instagram ahora, en @${ig.cuenta}? Se publica como ${NOMBRE_TIPO_IG[p.tipo]} y no se puede deshacer desde JARVIS.`)) return;
+    }
     setGuardando(true); setError('');
-    const body = { ...d, carpeta: d.carpeta || null, fecha: d.fecha || null, hora: d.hora || null, archivos };
+    const body = { ...d, carpeta: d.carpeta || null, fecha: d.fecha || null, hora: d.hora || null, archivos, publicar_ig: ahora ? false : conIg ? d.publicar_ig : false };
+    if (!conIg) delete body.publicar_ig;
     try {
-      if (nueva) await api('/api/piezas', { method: 'POST', body });
-      else await api(`/api/piezas/${pieza.id}`, { method: 'PATCH', body });
+      const r = nueva ? await api('/api/piezas', { method: 'POST', body }) : await api(`/api/piezas/${pieza.id}`, { method: 'PATCH', body });
       subidos.current.clear();
       for (const a of quitados) borrarArchivo(a);
+      if (ahora) await api(`/api/piezas/${r.id}/instagram/ahora`, { method: 'POST' });
       onGuardado(); onClose();
     } catch (err) { setError(err.message); setGuardando(false); }
   };
@@ -167,9 +224,10 @@ export function EditorContenido({ pieza, carpetas, onClose, onGuardado, onVisor 
             <input className="campo" value={d.video_url} onChange={cambia('video_url')} placeholder="https://drive.google.com/… o el enlace de la publicación" />
             {/^https?:\/\//i.test(d.video_url) && <a className="btn btn-sec" href={d.video_url} target="_blank" rel="noreferrer">↗ Abrir</a>}
           </div>
+          <CajaInstagram ig={ig} pieza={pieza} plan={plan} marcado={d.publicar_ig} onMarcar={marcarIg} ocupado={ocupado} onAhora={conIg ? () => guardar(null, { ahora: true }) : null} onConvertir={convertirAJpg} />
           <div className="aviso-publicar">
             <Icon name="publish" size={14} color="var(--accent-2)" />
-            <span>JARVIS no publica por ti. Cuando esté lista, adapta el texto a cada red en <a href="#publicar" onClick={cerrar}>Publicar</a> y súbela tú.</span>
+            <span>{conIg ? 'Si no marcas la casilla, JARVIS no publica nada.' : 'JARVIS no publica por ti.'} Para las demás redes, adapta el texto en <a href="#publicar" onClick={cerrar}>Publicar</a> y súbela tú.</span>
           </div>
         </div>
 
@@ -217,23 +275,27 @@ export function EditorContenido({ pieza, carpetas, onClose, onGuardado, onVisor 
 }
 
 // ---------- Programar: elegir día (y hora) y pasarla al calendario ----------
-export function ProgramarContenido({ pieza, fecha, onClose, onGuardado }) {
+export function ProgramarContenido({ pieza, fecha, ig, onClose, onGuardado }) {
   const [d, setD] = useState({
     formato: tipoDe(pieza.formato)?.id || pieza.formato || 'Reel',
     fecha: fecha || pieza.fecha || sumarDias(hoyIso(), 1),
     hora: pieza.hora || '18:00',
     caption: pieza.caption || '',
+    publicar_ig: Boolean(pieza.publicar_ig),
   });
   const [error, setError] = useState('');
   const [guardando, setGuardando] = useState(false);
   const story = esStory({ formato: d.formato });
   const n = pieza.archivos?.length || 0;
 
+  const conIg = ig?.disponible && !ig.motivo && pieza.ig_estado !== 'publicado';
+  const plan = planDePublicacion({ ...pieza, ...d });
   const guardar = async () => {
     if (!d.fecha) return setError('Elige el día.');
+    if (d.publicar_ig && plan.problemas.length) return setError('Corrige lo que falta para Instagram o desmarca la publicación automática.');
     setGuardando(true);
     try {
-      await api(`/api/piezas/${pieza.id}`, { method: 'PATCH', body: { formato: d.formato, fecha: d.fecha, hora: d.hora || null, ...(story ? {} : { caption: d.caption }) } });
+      await api(`/api/piezas/${pieza.id}`, { method: 'PATCH', body: { formato: d.formato, fecha: d.fecha, hora: d.hora || null, ...(story ? {} : { caption: d.caption }), ...(conIg ? { publicar_ig: d.publicar_ig } : {}) } });
       onGuardado(); onClose();
     } catch (e) { setError(e.message); setGuardando(false); }
   };
@@ -262,13 +324,14 @@ export function ProgramarContenido({ pieza, fecha, onClose, onGuardado }) {
           <textarea className="campo" rows={5} value={d.caption} onChange={(e) => setD({ ...d, caption: e.target.value })} placeholder="El texto que acompaña a la publicación…" />
         </>
       )}
-      {d.fecha && <div className="aviso ok" style={{ marginTop: 10 }}>Quedará en el calendario el {diaLargo(d.fecha).toLowerCase()}{d.hora ? ` a las ${d.hora}` : ''}. La publicas tú.</div>}
+      <CajaInstagram ig={ig} pieza={pieza} plan={plan} marcado={d.publicar_ig} onMarcar={(v) => setD({ ...d, publicar_ig: v })} texto="Publicar automáticamente en Instagram" />
+      {d.fecha && <div className="aviso ok" style={{ marginTop: 10 }}>{d.publicar_ig && conIg && !plan.problemas.length ? `Se publicará como ${NOMBRE_TIPO_IG[plan.tipo]} el ${diaLargo(d.fecha).toLowerCase()} a las ${d.hora}.` : `Quedará en el calendario el ${diaLargo(d.fecha).toLowerCase()}${d.hora ? ` a las ${d.hora}` : ''}. La publicas tú.`}</div>}
       {error && <div className="caja-error">{error}</div>}
       <div className="modal-pie">
         <span />
         <div style={{ display: 'flex', gap: 8 }}>
           <button className="btn btn-sec" onClick={onClose}>Cancelar</button>
-          <button className="btn" onClick={guardar} disabled={guardando}>{guardando ? 'Guardando…' : 'Pasar al calendario'}</button>
+          <button className="btn" onClick={guardar} disabled={guardando}>{guardando ? 'Guardando…' : d.publicar_ig && conIg ? 'Programar en Instagram' : 'Pasar al calendario'}</button>
         </div>
       </div>
     </Modal>

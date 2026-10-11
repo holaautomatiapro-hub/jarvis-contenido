@@ -36,8 +36,25 @@ const EXT = { jpg: 'image/jpeg', jpeg: 'image/jpeg', png: 'image/png', webp: 'im
 export const mimeDe = (f) => (/^(image|video)\//.test(f.type) ? f.type : EXT[f.name.split('.').pop().toLowerCase()] || '');
 export const esMedio = (f) => !f.name.startsWith('.') && Boolean(mimeDe(f));
 
+// La API de Instagram solo publica fotos en JPG: PNG y WebP se convierten en el navegador al subirlas.
+// Si el navegador no puede leer la imagen (p. ej. HEIC), se sube tal cual.
+async function aJpg(f) {
+  if (!/^image\/(png|webp)$/.test(f.type)) return f;
+  try {
+    const img = await createImageBitmap(f);
+    const c = document.createElement('canvas');
+    c.width = img.width; c.height = img.height;
+    const ctx = c.getContext('2d');
+    ctx.fillStyle = '#fff'; ctx.fillRect(0, 0, c.width, c.height);
+    ctx.drawImage(img, 0, 0);
+    const blob = await new Promise((ok) => c.toBlob(ok, 'image/jpeg', 0.92));
+    return blob ? new File([blob], f.name.replace(/\.[^.]+$/, '') + '.jpg', { type: 'image/jpeg' }) : f;
+  } catch { return f; }
+}
+
 // Sube un archivo al PC (data/contenido) tal cual, sin formularios
-export async function subirArchivo(f) {
+export async function subirArchivo(original) {
+  const f = await aJpg(original);
   const r = await fetch(`/api/contenido/archivos?nombre=${encodeURIComponent(f.name)}&mime=${encodeURIComponent(mimeDe(f))}`, {
     method: 'POST', headers: { 'content-type': 'application/octet-stream' }, body: f,
   });
