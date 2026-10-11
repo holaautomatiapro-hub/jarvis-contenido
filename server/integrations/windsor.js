@@ -134,6 +134,41 @@ export function createWindsor({ env = process.env, fetchImpl = fetch, ajustesDb,
     return campos;
   }
 
+  // Algunas métricas solo se pueden pedir para los últimos N días (p. ej. follower_count: 30). Windsor lo dice
+  // en el error: se aprende el límite, esas métricas se piden aparte con su rango y las filas se juntan.
+  async function pedirConLimites(grupo, campos, rango) {
+    const fijos = GRUPOS[grupo].base.filter((c) => campos.includes(c));
+    const claves = [...fijos, ...['account_name', 'username'].filter((c) => campos.includes(c))];
+    for (let intento = 0; intento < 6; intento++) {
+      const limites = ajustesDb.leer('windsor_limites', {});
+      const tramos = new Map(); // días de límite (0 = sin límite) → campos
+      for (const c of campos.filter((x) => !claves.includes(x))) {
+        const d = limites[c] || 0;
+        tramos.set(d, [...(tramos.get(d) || []), c]);
+      }
+      if (!tramos.size) tramos.set(0, []);
+      try {
+        const juntas = new Map();
+        for (const [d, lista] of tramos) {
+          const desde = d ? [rango.desde, fecha(hoy() - (d - 1) * DIA)].sort().at(-1) : rango.desde;
+          for (const f of await pedir([...claves, ...lista], { desde, hasta: rango.hasta })) {
+            const k = claves.map((c) => f[c] ?? '').join('|');
+            juntas.set(k, { ...(juntas.get(k) || {}), ...f });
+          }
+        }
+        return [...juntas.values()];
+      } catch (e) {
+        const nuevos = {};
+        for (const m of String(e.message).matchAll(/\(([\w,\s]+)\)\s*supports? the last (\d+) days?/gi)) {
+          for (const c of m[1].split(',').map((x) => x.trim()).filter(Boolean)) nuevos[c] = Number(m[2]);
+        }
+        if (!e.campos || !Object.keys(nuevos).length) throw e;
+        ajustesDb.guardar('windsor_limites', { ...ajustesDb.leer('windsor_limites', {}), ...nuevos });
+      }
+    }
+    throw new WindsorError('Windsor sigue rechazando el rango de fechas de algunas métricas');
+  }
+
   // Trae todo y lo entrega a quien guarda (instagram.js), que es el dueño de las tablas
   async function sincronizar({ guardarMedia, guardarSerie, guardarHistoria, dias }) {
     if (!configurado()) throw new WindsorError('Falta WINDSOR_API_KEY en .env (npm run claves)');
@@ -147,18 +182,20 @@ export function createWindsor({ env = process.env, fetchImpl = fetch, ajustesDb,
     // Publicaciones
     const camposMedia = await camposValidos('media');
     if (!camposMedia) throw new WindsorError('Windsor no tiene datos de publicaciones de Instagram. Comprueba en onboard.windsor.ai que tu cuenta de Instagram está conectada.');
-    for (const f of await pedir(camposMedia, rango)) {
+    for (const f of await pedirConLimites('media', camposMedia, rango)) {
       if (!f.media_id || !f.timestamp) continue; // filas agregadas
       guardarMedia(f);
       res.publicaciones++;
     }
 
-    // Cuenta, día a día
-    const camposCuenta = await camposValidos('cuenta');
+    // Cuenta, día a día (si falla, las publicaciones ya están guardadas: se avisa y se sigue)
+    const camposCuenta = await camposValidos('cuenta').catch((e) => { res.avisos.push(`Métricas de la cuenta: ${e.message}`); return undefined; });
     if (camposCuenta && camposCuenta.length > 1) {
       const cuentas = new Set();
       const ultimo = {};
-      for (const f of (await pedir(camposCuenta, rango)).filter(deMiCuenta)) {
+      let filasCuenta = [];
+      try { filasCuenta = await pedirConLimites('cuenta', camposCuenta, rango); } catch (e) { res.avisos.push(`Métricas de la cuenta: ${e.message}`); }
+      for (const f of filasCuenta.filter(deMiCuenta)) {
         if (!f.date) continue;
         const dia = String(f.date).slice(0, 10);
         if (f.account_name || f.username) cuentas.add(f.username || f.account_name);
@@ -177,17 +214,19 @@ export function createWindsor({ env = process.env, fetchImpl = fetch, ajustesDb,
       res.metricas = Object.keys(ultimo);
       res.cuentas = [...cuentas];
       if (res.cuentas.length > 1 && !filtroCuenta) res.avisos.push(`Windsor tiene ${res.cuentas.length} cuentas (${res.cuentas.join(', ')}): se mezclan. Pon WINDSOR_CUENTA=tu_usuario en .env para quedarte solo con la tuya.`);
-    } else res.avisos.push('Windsor no devuelve métricas diarias de la cuenta con tu plan.');
+    } else if (camposCuenta !== undefined) res.avisos.push('Windsor no devuelve métricas diarias de la cuenta con tu plan.');
 
     // Historias (solo duran 24 h en Instagram: Windsor guarda las que ha visto)
-    const camposHist = await camposValidos('historias');
-    if (camposHist) {
-      for (const f of (await pedir(camposHist, rango)).filter(deMiCuenta)) {
-        if (!f.story_id) continue;
-        guardarHistoria(f);
-        res.historias++;
+    try {
+      const camposHist = await camposValidos('historias');
+      if (camposHist) {
+        for (const f of (await pedirConLimites('historias', camposHist, rango)).filter(deMiCuenta)) {
+          if (!f.story_id) continue;
+          guardarHistoria(f);
+          res.historias++;
+        }
       }
-    }
+    } catch (e) { res.avisos.push(`Historias: ${e.message}`); }
 
     ajustesDb.guardar('windsor_sync', { fin: new Date(hoy()).toISOString(), ...res, error: null, cuenta: res.cuentas[0] || previo.cuenta || null });
     return res;

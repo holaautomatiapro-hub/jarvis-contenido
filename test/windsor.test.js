@@ -95,3 +95,48 @@ test('una clave mala da un error claro', async () => {
   await assert.rejects(ig.sincronizar({ transcribir: false }), /no acepta la clave/);
   assert.match(ig.estado().error, /no acepta la clave/);
 });
+
+test('métricas que solo admiten los últimos 30 días se piden aparte y se juntan', async () => {
+  const peticiones = [];
+  const fetchImpl = async (u) => {
+    const url = new URL(u);
+    const campos = url.searchParams.get('fields').split(',');
+    const desde = url.searchParams.get('date_from');
+    peticiones.push({ campos, desde });
+    const conocidos = new Set(['media_id', 'timestamp', 'media_views', 'date', 'reach', 'follower_count', 'followers_count']);
+    const malos = campos.filter((c) => !conocidos.has(c));
+    if (malos.length) return new Response(JSON.stringify({ error: `Unknown field(s): ${malos.join(', ')}` }), { status: 400 });
+    if (campos.includes('follower_count') && desde < dia(30)) {
+      return new Response(JSON.stringify({ error: '(follower_count) supports the last 30 days only. Use date_preset=last_30d, or a date_from within the last 30 days. [Error pulling data for account 123]' }), { status: 400 });
+    }
+    if (campos.includes('media_id')) return new Response(JSON.stringify({ data: [{ media_id: 'a', timestamp: `${dia(3)}T10:00:00+0000`, media_views: 10 }] }));
+    const dias = [dia(1), dia(2), dia(200)];
+    return new Response(JSON.stringify({ data: dias.filter((d) => d >= desde).map((d) => Object.fromEntries(campos.map((c) => [c, c === 'date' ? d : c === 'follower_count' ? 5 : 100]))) }));
+  };
+  const db = openDb(':memory:');
+  const ig = createInstagram({ db, vault: null, env: { WINDSOR_API_KEY: 'clave-windsor-123456' }, fetchImpl });
+  const r = await ig.sincronizar({ transcribir: false });
+  assert.deepEqual(r.avisos, []);
+  assert.equal(r.dias, 3);
+  const nuevos = db.prepare("SELECT fecha, valor FROM ig_serie WHERE metrica = 'nuevos' ORDER BY fecha").all();
+  assert.deepEqual(nuevos.map((x) => x.fecha), [dia(2), dia(1)], 'seguidores nuevos solo de los últimos 30 días');
+  assert.equal(db.prepare("SELECT COUNT(*) AS n FROM ig_serie WHERE metrica = 'alcance'").get().n, 3, 'el alcance sí trae todo el año');
+  // La segunda vez ya sabe el límite: no vuelve a fallar
+  const n = peticiones.length;
+  await ig.sincronizar({ transcribir: false });
+  const nuevas = peticiones.slice(n);
+  assert.equal(nuevas.length, 3, 'publicaciones + cuenta (sin límite) + cuenta (follower_count, 30 días)');
+});
+
+test('si fallan las métricas de la cuenta, las publicaciones se guardan y se avisa', async () => {
+  const fetchImpl = async (u) => {
+    const campos = new URL(u).searchParams.get('fields').split(',');
+    if (campos.includes('media_id')) return new Response(JSON.stringify({ data: campos.length > 2 ? [] : [{ media_id: 'a', timestamp: `${dia(1)}T10:00:00+0000` }] }));
+    if (campos.length === 1) return new Response(JSON.stringify({ data: [] }));
+    return new Response(JSON.stringify({ error: 'Something odd for account 1' }), { status: 400 });
+  };
+  const ig = createInstagram({ db: openDb(':memory:'), vault: null, env: { WINDSOR_API_KEY: 'clave-windsor-123456' }, fetchImpl });
+  const r = await ig.sincronizar({ transcribir: false });
+  assert.equal(r.ok, true);
+  assert.equal(ig.estado().error, null);
+});
