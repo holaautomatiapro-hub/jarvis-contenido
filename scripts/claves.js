@@ -14,6 +14,7 @@ export const CLAVES = [
   { grupo: 'Instagram y Meta Ads', id: 'META_CONFIG_ID', ayuda: 'Solo si usas "Inicio de sesión con Facebook para empresas": el ID de la Configuración que creaste con los permisos.', validar: (v) => /^\d{6,20}$/.test(v) || 'Debe ser un número' },
   { grupo: 'Instagram y Meta Ads', id: 'META_AD_ACCOUNT_ID', ayuda: 'Administrador de anuncios → el número de la cuenta publicitaria (también se elige luego en la pestaña Meta Ads).', normalizar: (v) => (/^\d+$/.test(v) ? `act_${v}` : v), validar: (v) => /^act_\d+$/.test(v) || 'Es un número, o act_ seguido del número' },
   { grupo: 'Competencia', id: 'COMPETIDORES', ayuda: 'Usuarios de Instagram separados por comas (sin @).', normalizar: (v) => v.split(',').map((x) => x.trim().replace(/^@/, '')).filter(Boolean).join(',') },
+  { grupo: 'Métricas de Instagram con Windsor', id: 'WINDSOR_API_KEY', secreto: true, ayuda: 'onboard.windsor.ai → tu API key (con tu Instagram ya conectado en Windsor). Sirve en lugar de la app de Meta para las métricas.', validar: (v) => /^[A-Za-z0-9_-]{16,}$/.test(v) || 'La API key de Windsor son letras y números, sin espacios' },
 ];
 
 export const enmascarar = (v, secreto) => (!v ? '(vacío)' : secreto ? `••••${v.slice(-4)}` : v);

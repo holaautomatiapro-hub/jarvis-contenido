@@ -43,12 +43,12 @@ export function createJobs({ instagram, competencia, ads, asistente, skills, vau
   async function sincronizarAhora() {
     try {
       const r = await instagram.sincronizar();
-      log.log?.(`  Instagram: ${r.publicaciones ?? 0} publicaciones sincronizadas, ${r.transcritas ?? 0} reels transcritos`);
+      log.log?.(`  Instagram${r.fuente === 'windsor' ? ' (Windsor)' : ''}: ${r.publicaciones ?? 0} publicaciones sincronizadas, ${r.transcritas ?? 0} reels transcritos`);
     } catch (e) {
       log.warn?.(`  Instagram: ${e.message}`);
     }
     // Competidores: una vez al día
-    if (competencia) {
+    if (competencia && instagram.estado().conectadoMeta) {
       const ultima = ajustesDb.leer('comp_sync', {}).fin;
       if (!ultima || Date.now() - new Date(ultima).getTime() > 20 * HORA) {
         try { const r = await competencia.sincronizar(); log.log?.(`  Competencia: ${r.perfiles ?? 0} perfiles, ${r.publicaciones ?? 0} publicaciones`); } catch (e) { log.warn?.(`  Competencia: ${e.message}`); }

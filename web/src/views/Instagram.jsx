@@ -33,6 +33,38 @@ function Kpi({ k }) {
   );
 }
 
+// Todas las métricas que trae Windsor: de la cuenta (día a día) y de las historias
+function TodasLasMetricas({ todas, dias }) {
+  if (!todas || (!todas.cuenta.length && !todas.historias.total)) return null;
+  return (
+    <div className="panel panel-pad">
+      <div className="panel-head">
+        <span className="label">Todas las métricas de la cuenta · {dias} días</span>
+        <span className="ayuda">Vía Windsor</span>
+      </div>
+      <div className="todas-grid">
+        {todas.cuenta.map((m) => (
+          <div key={m.id} className="todas-item" title={m.instantanea ? 'Último valor del periodo' : `Suma de los ${dias} días`}>
+            <span className="todas-label">{m.label}</span>
+            <b>{num(m.valor)}{m.delta != null && <span className={`delta ${m.delta >= 0 ? 'up' : 'down'}`}>{m.delta >= 0 ? '▲' : '▼'} {Math.abs(m.delta)}%</span>}</b>
+            {!m.instantanea && <Sparkline data={m.series.length > 1 ? m.series : [0, 0]} color="#3d8bff" height={20} />}
+          </div>
+        ))}
+      </div>
+      {todas.historias.total > 0 && (
+        <>
+          <div className="label" style={{ margin: '16px 0 8px' }}>Historias · {todas.historias.total} en el periodo</div>
+          <div className="todas-grid">
+            {todas.historias.metricas.map((m) => (
+              <div key={m.id} className="todas-item"><span className="todas-label">{m.label}</span><b>{num(m.valor)}</b></div>
+            ))}
+          </div>
+        </>
+      )}
+    </div>
+  );
+}
+
 function Conectar({ estado, onHecho }) {
   const [token, setToken] = useState('');
   const [error, setError] = useState('');
@@ -54,7 +86,7 @@ function Conectar({ estado, onHecho }) {
       <div className="ig-conectar-acciones">
         {estado.appConfigurada
           ? <a className="btn" href="/api/instagram/conectar"><Icon name="link" size={14} />Conectar con Facebook</a>
-          : <span className="ayuda">Para el botón de conexión, añade META_APP_ID y META_APP_SECRET en .env (guía en docs/INSTAGRAM.md).</span>}
+          : <span className="ayuda">Para el botón de conexión, añade META_APP_ID y META_APP_SECRET en .env (guía en docs/INSTAGRAM.md). O, sin app de Meta, pon tu WINDSOR_API_KEY con npm run claves.</span>}
         <form className="fila" onSubmit={pegar} style={{ margin: 0 }}>
           <input className="campo" value={token} onChange={(e) => setToken(e.target.value)} placeholder="…o pega un token de acceso de Meta" aria-label="Token de acceso de Meta" />
           <button className="btn btn-sec" disabled={!token.trim() || enviando}>{enviando ? 'Conectando…' : 'Conectar'}</button>
@@ -186,8 +218,8 @@ export default function Instagram() {
           <div>
             <div className="label">Cuenta de Instagram</div>
             <div className="ig-user">
-              {estado.conectado ? `@${estado.username}` : 'Sin conectar'}
-              <span className={`chip-estado ${estado.conectado ? 'on' : 'demo'}`}><span className={`dot ${estado.conectado ? 'on' : 'warn'}`} />{estado.conectado ? 'Conectada' : 'Datos de ejemplo'}</span>
+              {estado.conectado ? (estado.username ? `@${estado.username}` : 'Tu cuenta') : 'Sin conectar'}
+              <span className={`chip-estado ${estado.conectado && !data.demo ? 'on' : 'demo'}`}><span className={`dot ${estado.conectado && !data.demo ? 'on' : 'warn'}`} />{!estado.conectado ? 'Datos de ejemplo' : data.demo ? 'Pendiente de sincronizar' : estado.fuente === 'windsor' ? 'Conectada vía Windsor' : 'Conectada'}</span>
             </div>
           </div>
         </div>
@@ -204,7 +236,7 @@ export default function Instagram() {
               <button className="btn btn-sec" onClick={sincronizar} disabled={estado.sincronizando}>
                 <Icon name="refresh" size={14} />{estado.sincronizando ? 'Sincronizando…' : 'Sincronizar'}
               </button>
-              <button className="link-btn" onClick={desconectar}>Desconectar</button>
+              {estado.conectadoMeta && <button className="link-btn" onClick={desconectar}>Desconectar</button>}
             </>
           )}
         </div>
@@ -213,9 +245,12 @@ export default function Instagram() {
       {aviso && <div className={`aviso ${aviso.tipo}`} role="status">{aviso.texto}<button className="link-btn" onClick={() => setAviso(null)}>Cerrar</button></div>}
       {estado.error && <div className="aviso error">Última sincronización con error: {estado.error}</div>}
       {!estado.conectado && <Conectar estado={estado} onHecho={() => { setAviso({ tipo: 'ok', texto: 'Instagram conectado. Sincronizando…' }); recargar(); }} />}
+      {estado.conectado && data.demo && <div className="aviso ok">Windsor está configurado. Pulsa <b>Sincronizar</b> para traer tus publicaciones y todas las métricas (la primera vez trae un año y tarda un poco). Mientras, ves datos de ejemplo.</div>}
+      {estado.windsor?.avisos?.map((a) => <div key={a} className="aviso">{a}</div>)}
       {estado.conectado && (
         <div className="ig-meta">
           Última sincronización: {hace(estado.ultimaSync)} · {estado.publicaciones} publicaciones
+          {estado.windsor?.ultimaSync ? ` · Windsor: ${estado.windsor.metricas} métricas de cuenta${estado.windsor.historias ? `, ${estado.windsor.historias} historias` : ''}` : ''}
           {estado.transcripcion.activa
             ? ` · ${estado.transcripcion.hechas} reels transcritos${estado.transcripcion.pendientes ? ` (${estado.transcripcion.pendientes} pendientes)` : ''}`
             : ' · Transcripción desactivada (falta ELEVENLABS_API_KEY)'}
@@ -277,6 +312,7 @@ export default function Instagram() {
               {insight === 'formatos' && <div className="ayuda" style={{ marginTop: 8 }}>Alcance medio por pieza.</div>}
             </div>
           </div>
+          <TodasLasMetricas todas={data.todas} dias={dias} />
           <TablaContenido piezas={data.piezas.slice(0, 6)} medias={data.medias} />
         </>
       ) : (

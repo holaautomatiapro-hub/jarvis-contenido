@@ -11,6 +11,24 @@ JARVIS lee tus métricas con la **API oficial de Instagram** (Graph API de Meta)
 
 ---
 
+## Opción rápida · Windsor.ai (sin app de Meta)
+
+Si ya tienes tu Instagram conectado en [Windsor.ai](https://onboard.windsor.ai), JARVIS lee de ahí tus métricas:
+
+1. Copia tu API key en onboard.windsor.ai.
+2. En la carpeta de JARVIS: `npm run claves` y pégala en `WINDSOR_API_KEY` (al final de la lista).
+3. Reinicia JARVIS (`powershell -ExecutionPolicy Bypass -File instalar.ps1 -Reiniciar`) y pulsa **Sincronizar** en la pestaña Instagram.
+
+La primera vez trae un año de publicaciones y tarda un poco: además comprueba qué métricas tiene tu plan de Windsor (las pide todas y se queda con las que existen). Después se actualiza sola cada 6 horas. Trae:
+
+- **Cada publicación**: alcance, visualizaciones, me gusta, comentarios, guardados, compartidos, interacciones, tiempo medio de visualización de los reels y el resto de métricas que dé Windsor.
+- **La cuenta, día a día**: seguidores, seguidores nuevos, alcance, impresiones, visitas al perfil, cuentas que interactúan, clics en la web y en los botones de contacto, toques en enlaces…
+- **Historias**: alcance, visualizaciones, respuestas, toques para avanzar o volver y salidas.
+
+Si en Windsor tienes varias cuentas de Instagram, pon la tuya en `.env`: `WINDSOR_CUENTA=tu_usuario`.
+
+Lo que Windsor **no** sustituye: la pestaña **Competencia** y la Ad Library de **Meta Ads** necesitan la conexión con Facebook (opción A), porque Windsor no da datos de otros perfiles. Puedes tener las dos: entonces JARVIS usa la de Meta y Windsor completa las métricas que faltan.
+
 ## Opción A · Botón "Conectar con Facebook" (recomendada)
 
 ### 1. Crea la app de Meta

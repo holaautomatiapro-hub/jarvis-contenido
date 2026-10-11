@@ -1,4 +1,5 @@
-import { useMemo, useRef, useState } from 'react';
+import { useEffect, useMemo, useRef, useState } from 'react';
+import { normaliza } from '../../lib/api.js';
 import Icon from '../../components/Icon.jsx';
 import { celdasMes, diaCorto, diaLargo, hoyIso, mesDe, nombreMes, sumarMeses } from '../../lib/fechas.js';
 import { ChipEstado, ESTADOS, Miniatura, Modal, esStory, estadoDe, textoTipo, tipoDe } from './comun.jsx';
@@ -8,10 +9,90 @@ const DIAS = ['Lun', 'Mar', 'Mié', 'Jue', 'Vie', 'Sáb', 'Dom'];
 const ordenDia = (a, b) => (a.hora || '').localeCompare(b.hora || '') || a.id - b.id;
 
 // ---------- Calendario del mes ----------
-export function Calendario({ piezas, biblioteca, dia, setDia, onAbrir, onNuevo, onMover, onProgramar }) {
+// Menú que sale al pulsar un día: lo que hay ese día, elegir una pieza ya creada o crear una
+function MenuDia({ menu, lista, onCerrar, onAbrir, onElegir, onNuevo }) {
+  const ref = useRef(null);
+  const [pos, setPos] = useState({ left: menu.x, top: menu.y, visible: false });
+  useEffect(() => {
+    // Se coloca debajo del día y, si no cabe, encima; nunca fuera de la pantalla
+    const el = ref.current;
+    const w = el.offsetWidth, h = el.offsetHeight;
+    const left = Math.max(8, Math.min(menu.x, window.innerWidth - w - 8));
+    const top = menu.y + h + 8 > window.innerHeight ? Math.max(8, menu.arriba - h - 6) : menu.y;
+    setPos({ left, top, visible: true });
+  }, [menu]);
+  useEffect(() => {
+    const fuera = (e) => { if (!ref.current?.contains(e.target)) onCerrar(); };
+    const esc = (e) => e.key === 'Escape' && onCerrar();
+    const t = setTimeout(() => document.addEventListener('mousedown', fuera), 0);
+    window.addEventListener('keydown', esc);
+    window.addEventListener('scroll', onCerrar, true);
+    return () => { clearTimeout(t); document.removeEventListener('mousedown', fuera); window.removeEventListener('keydown', esc); window.removeEventListener('scroll', onCerrar, true); };
+  }, [onCerrar]);
+  return (
+    <div ref={ref} className="menu-dia panel" style={{ left: pos.left, top: pos.top, visibility: pos.visible ? 'visible' : 'hidden' }} role="menu">
+      <div className="menu-dia-titulo">{diaLargo(menu.fecha)}</div>
+      {lista.map((p) => (
+        <button key={p.id} className="menu-dia-pieza" onClick={() => { onCerrar(); onAbrir(p); }} role="menuitem">
+          <i style={{ background: estadoDe(p.estado).color }} /><span>{p.titulo || 'Sin título'}</span>{p.hora && <small>{p.hora}</small>}
+        </button>
+      ))}
+      {!lista.length && <div className="menu-dia-vacio">Nada planificado este día.</div>}
+      <div className="menu-dia-acciones">
+        <button className="btn btn-sec" onClick={() => { onCerrar(); onElegir(menu.fecha); }} role="menuitem"><Icon name="book" size={13} />Elegir uno ya creado</button>
+        <button className="btn" onClick={() => { onCerrar(); onNuevo(menu.fecha); }} role="menuitem"><Icon name="plus" size={13} />Crear uno nuevo</button>
+      </div>
+    </div>
+  );
+}
+
+// Elegir una pieza ya creada para un día: primero las de la biblioteca (sin fecha), o cualquiera
+function ElegirPieza({ fecha, piezas, onCerrar, onElegida, onNuevo }) {
+  const sinFecha = piezas.filter((p) => !p.fecha);
+  const [ambito, setAmbito] = useState(sinFecha.length ? 'biblioteca' : 'todas');
+  const [busca, setBusca] = useState('');
+  const b = normaliza(busca.trim());
+  const lista = (ambito === 'biblioteca' ? sinFecha : piezas.filter((p) => p.fecha !== fecha))
+    .filter((p) => !b || normaliza(`${p.titulo}\n${p.caption || ''}`).includes(b))
+    .sort((x, y) => y.id - x.id);
+  return (
+    <Modal titulo={`¿Qué publicas el ${diaLargo(fecha).toLowerCase()}?`} onClose={onCerrar} ancho={760}>
+      <div className="elegir-barra">
+        <div className="seg">
+          <button className={ambito === 'biblioteca' ? 'on' : ''} onClick={() => setAmbito('biblioteca')}><Icon name="book" />Biblioteca · {sinFecha.length}</button>
+          <button className={ambito === 'todas' ? 'on' : ''} onClick={() => setAmbito('todas')}><Icon name="layers" />Todas</button>
+        </div>
+        <div className="buscar-mini"><Icon name="search" size={13} /><input autoFocus placeholder="Buscar por título o caption" value={busca} onChange={(e) => setBusca(e.target.value)} /></div>
+      </div>
+      {ambito === 'todas' && <div className="ayuda" style={{ marginBottom: 10 }}>Si eliges una que ya tiene día, se mueve a este.</div>}
+      <div className="elegir-grid">
+        {lista.map((p) => (
+          <button key={p.id} className="elegir-item" onClick={() => { onCerrar(); onElegida(p, fecha); }}>
+            <Miniatura p={p} />
+            <span>{p.titulo || 'Sin título'}</span>
+            <small>{textoTipo(p.formato)}{p.fecha ? ` · ${diaCorto(p.fecha)}` : ''}</small>
+          </button>
+        ))}
+      </div>
+      {!lista.length && <div className="vacio">{b ? 'Nada coincide con la búsqueda.' : ambito === 'biblioteca' ? 'La biblioteca está vacía.' : 'No hay más piezas.'}</div>}
+      <div className="modal-pie">
+        <span className="ayuda">¿No está? Créala ahora.</span>
+        <button className="btn" onClick={() => { onCerrar(); onNuevo(fecha); }}><Icon name="plus" size={13} />Crear uno nuevo</button>
+      </div>
+    </Modal>
+  );
+}
+
+export function Calendario({ piezas, dia, setDia, onAbrir, onNuevo, onMover, onProgramar }) {
   const [mes, setMes] = useState(() => mesDe(dia));
   const [sobre, setSobre] = useState(null);
-  const [eligiendo, setEligiendo] = useState(false);
+  const [eligiendo, setEligiendo] = useState(null); // fecha para la que se elige una pieza
+  const [menu, setMenu] = useState(null);
+  const abrirMenu = (f, el) => {
+    const r = el.getBoundingClientRect();
+    setDia(f);
+    setMenu({ fecha: f, x: r.left, y: r.bottom + 6, arriba: r.top });
+  };
   const arrastrando = useRef(null);
   const h = hoyIso();
   const porDia = useMemo(() => {
@@ -48,9 +129,9 @@ export function Calendario({ piezas, biblioteca, dia, setDia, onAbrir, onNuevo, 
             return (
               <div
                 key={f} className={clase} tabIndex={0}
-                onClick={() => setDia(f)}
-                onDoubleClick={() => onNuevo(f)}
-                onKeyDown={(e) => e.key === 'Enter' && setDia(f)}
+                onClick={(e) => abrirMenu(f, e.currentTarget)}
+                onDoubleClick={() => { setMenu(null); onNuevo(f); }}
+                onKeyDown={(e) => e.key === 'Enter' && abrirMenu(f, e.currentTarget)}
                 onDragOver={(e) => { e.preventDefault(); setSobre(f); }}
                 onDragLeave={() => setSobre(null)}
                 onDrop={soltar(f)}
@@ -90,7 +171,7 @@ export function Calendario({ piezas, biblioteca, dia, setDia, onAbrir, onNuevo, 
         <div className="panel-head">
           <span className="dia-titulo">{diaLargo(dia)}</span>
           <div style={{ display: 'flex', gap: 6 }}>
-            {biblioteca.length > 0 && <button className="chip" onClick={() => setEligiendo(true)}><Icon name="book" />De la biblioteca</button>}
+            {piezas.length > 0 && <button className="chip" onClick={() => setEligiendo(dia)}><Icon name="book" />Elegir uno ya creado</button>}
             <button className="chip" onClick={() => onNuevo(dia)}><Icon name="plus" />Nuevo</button>
           </div>
         </div>
@@ -98,18 +179,8 @@ export function Calendario({ piezas, biblioteca, dia, setDia, onAbrir, onNuevo, 
         {delDia.map((p) => <FilaDia key={p.id} p={p} onAbrir={onAbrir} />)}
       </div>
 
-      {eligiendo && (
-        <Modal titulo={`¿Qué publicas el ${diaLargo(dia).toLowerCase()}?`} onClose={() => setEligiendo(false)} ancho={720}>
-          <div className="elegir-grid">
-            {biblioteca.map((p) => (
-              <button key={p.id} className="elegir-item" onClick={() => { setEligiendo(false); onProgramar(p, dia); }}>
-                <Miniatura p={p} />
-                <span>{p.titulo}</span>
-              </button>
-            ))}
-          </div>
-        </Modal>
-      )}
+      {menu && <MenuDia menu={menu} lista={porDia.get(menu.fecha) || []} onCerrar={() => setMenu(null)} onAbrir={onAbrir} onElegir={setEligiendo} onNuevo={onNuevo} />}
+      {eligiendo && <ElegirPieza fecha={eligiendo} piezas={piezas} onCerrar={() => setEligiendo(null)} onElegida={onProgramar} onNuevo={onNuevo} />}
     </>
   );
 }

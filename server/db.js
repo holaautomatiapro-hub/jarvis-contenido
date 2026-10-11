@@ -205,6 +205,14 @@ export function openDb(file) {
     'ALTER TABLE piezas ADD COLUMN video_url TEXT',
     'ALTER TABLE piezas ADD COLUMN carpeta TEXT',
   ]) migrar(sql);
+  // Windsor: todas las métricas de cada publicación (JSON) e historias
+  migrar('ALTER TABLE ig_media ADD COLUMN extra TEXT');
+  db.exec(`CREATE TABLE IF NOT EXISTS ig_historias (
+    id TEXT PRIMARY KEY,
+    fecha TEXT,
+    datos TEXT NOT NULL,
+    actualizado TEXT NOT NULL DEFAULT (datetime('now','localtime'))
+  );`);
   db.exec(`CREATE TABLE IF NOT EXISTS contenido_carpetas (
     nombre TEXT PRIMARY KEY,
     creado TEXT NOT NULL DEFAULT (datetime('now','localtime'))

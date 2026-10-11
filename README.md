@@ -58,10 +58,11 @@ Necesitas **Claude Code** instalado y con tu sesión iniciada: abre una terminal
 
 ## Instagram (pestaña Instagram)
 
-Conecta tu cuenta siguiendo **[docs/INSTAGRAM.md](docs/INSTAGRAM.md)**: es una app de Meta en modo desarrollo, sin revisión. Hasta entonces verás datos de ejemplo.
+Conecta tu cuenta siguiendo **[docs/INSTAGRAM.md](docs/INSTAGRAM.md)**: con una app de Meta en modo desarrollo (sin revisión) o, más fácil, con **Windsor.ai** (`WINDSOR_API_KEY` con `npm run claves`). Hasta entonces verás datos de ejemplo.
 
 - **Rendimiento de la cuenta**: alcance, visualizaciones, interacción, seguidores, guardados y compartidos frente al periodo anterior; evolución diaria; distribución por formato; y los temas, ganchos y formatos que mejor funcionan.
 - **Análisis de contenido**: cada pieza con sus métricas, su tema y su alcance frente a tu media. Se puede ordenar y buscar.
+- Con Windsor, además, **todas las métricas de la cuenta** día a día (visitas al perfil, clics en la web, cuentas que interactúan, impresiones…) y las de tus **historias**.
 - Cada 6 horas JARVIS **sincroniza**, **transcribe tus reels** en `03-Transcripciones` (con ElevenLabs), **clasifica los temas** y, con 5 transcripciones o más, **crea tu perfil de voz**.
 - Por MCP (Claude Code y Hermes) pregunta con `metricas_instagram`: "¿qué contenido funcionó mejor este mes?".
 

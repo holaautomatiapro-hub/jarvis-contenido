@@ -2,6 +2,7 @@ import { ajustes, row, rows } from '../db.js';
 import { createGraph, MetaError, VERSION } from './meta.js';
 import { transcribir as transcribirElevenLabs, sttConfigurado } from '../stt.js';
 import { demoInstagram } from './instagram-demo.js';
+import { createWindsor, mediaDeWindsor, normalizarFecha, ETIQUETAS, INSTANTANEAS } from './windsor.js';
 
 // Instagram: conexión (OAuth de Meta o token pegado), sincronización de métricas,
 // transcripción automática de reels y los datos de los dos dashboards.
@@ -24,16 +25,19 @@ export const primeraFrase = (t) => {
   return (m ? m[1] : s.slice(0, 120)).trim() || null;
 };
 
-export function createInstagram({ db, vault, env = process.env, fetchImpl = fetch, sttImpl = transcribirElevenLabs, alCambiar = () => {} }) {
+export function createInstagram({ db, vault, env = process.env, fetchImpl = fetch, sttImpl = transcribirElevenLabs, alCambiar = () => {}, windsor: windsorInyectado }) {
   const aj = ajustes(db);
+  const windsor = windsorInyectado || createWindsor({ env, fetchImpl, ajustesDb: aj });
   const q = {
-    upsert: db.prepare(`INSERT INTO ig_media (id, tipo, formato, caption, permalink, miniatura, media_url, fecha, likes, comentarios, alcance, views, guardados, compartidos, interacciones, ver_medio_ms, gancho)
-      VALUES (@id, @tipo, @formato, @caption, @permalink, @miniatura, @media_url, @fecha, @likes, @comentarios, @alcance, @views, @guardados, @compartidos, @interacciones, @ver_medio_ms, @gancho)
-      ON CONFLICT(id) DO UPDATE SET caption = excluded.caption, permalink = excluded.permalink, miniatura = excluded.miniatura, media_url = excluded.media_url,
+    upsert: db.prepare(`INSERT INTO ig_media (id, tipo, formato, caption, permalink, miniatura, media_url, fecha, likes, comentarios, alcance, views, guardados, compartidos, interacciones, ver_medio_ms, gancho, extra)
+      VALUES (@id, @tipo, @formato, @caption, @permalink, @miniatura, @media_url, @fecha, @likes, @comentarios, @alcance, @views, @guardados, @compartidos, @interacciones, @ver_medio_ms, @gancho, @extra)
+      ON CONFLICT(id) DO UPDATE SET caption = excluded.caption, permalink = excluded.permalink, miniatura = COALESCE(excluded.miniatura, miniatura), media_url = COALESCE(excluded.media_url, media_url), extra = COALESCE(excluded.extra, extra),
         likes = excluded.likes, comentarios = excluded.comentarios, alcance = COALESCE(excluded.alcance, alcance), views = COALESCE(excluded.views, views),
         guardados = COALESCE(excluded.guardados, guardados), compartidos = COALESCE(excluded.compartidos, compartidos),
         interacciones = COALESCE(excluded.interacciones, interacciones), ver_medio_ms = COALESCE(excluded.ver_medio_ms, ver_medio_ms),
         gancho = COALESCE(gancho, excluded.gancho), actualizado = datetime('now','localtime')`),
+    historia: db.prepare("INSERT INTO ig_historias (id, fecha, datos) VALUES (?, ?, ?) ON CONFLICT(id) DO UPDATE SET datos = excluded.datos, fecha = COALESCE(excluded.fecha, fecha), actualizado = datetime('now','localtime')"),
+    historias: db.prepare('SELECT * FROM ig_historias WHERE fecha >= ? ORDER BY fecha DESC'),
     serie: db.prepare('INSERT INTO ig_serie (fecha, metrica, valor) VALUES (?, ?, ?) ON CONFLICT(fecha, metrica) DO UPDATE SET valor = excluded.valor'),
     media: db.prepare('SELECT * FROM ig_media ORDER BY fecha DESC'),
     series: db.prepare('SELECT * FROM ig_serie WHERE fecha >= ? ORDER BY fecha'),
@@ -54,9 +58,15 @@ export function createInstagram({ db, vault, env = process.env, fetchImpl = fetc
     const c = conexion();
     const sync = aj.leer('instagram_sync', {});
     const cnt = row(q.cuenta);
+    const conectadoMeta = Boolean(c?.igUserId && c?.token);
+    const w = windsor.estado();
     return {
-      conectado: Boolean(c?.igUserId && c?.token),
-      username: c?.username || null,
+      // Conectado = hay de dónde sacar datos: la app de Meta o Windsor
+      conectado: conectadoMeta || windsor.configurado(),
+      conectadoMeta,
+      fuente: conectadoMeta ? (windsor.configurado() ? 'meta+windsor' : 'meta') : windsor.configurado() ? 'windsor' : null,
+      windsor: { configurado: windsor.configurado(), ultimaSync: w.fin || null, historias: w.historias || 0, metricas: w.metricas?.length || 0, avisos: w.avisos || [] },
+      username: c?.username || w.cuenta || null,
       foto: c?.foto || null,
       pagina: c?.paginaNombre || null,
       appConfigurada: appConfigurada(),
@@ -157,9 +167,45 @@ export function createInstagram({ db, vault, env = process.env, fetchImpl = fetc
     }
   }
 
-  async function sincronizar({ transcribir = true, max = Number(env.IG_MAX_PUBLICACIONES) || 150 } = {}) {
+  // Windsor entrega las filas y aquí se guardan en las mismas tablas que usa la app de Meta
+  const guardarWindsor = {
+    guardarMedia: (f) => { const m = mediaDeWindsor(f); q.upsert.run({ ...m, gancho: primeraFrase(m.caption) }); },
+    guardarSerie: (dia, metrica, valor) => q.serie.run(dia, metrica, valor),
+    guardarHistoria: (f) => q.historia.run(String(f.story_id), normalizarFecha(f.story_timestamp || f.timestamp || f.date), JSON.stringify(f)),
+  };
+
+  async function sincronizar(opciones = {}) {
     const c = conexion();
+    if (!c?.token && windsor.configurado()) return sincronizarWindsor(opciones);
     if (!c?.token) throw new Error('Instagram no está conectado');
+    const r = await sincronizarMeta(opciones);
+    // Con las dos fuentes, Windsor completa las métricas que la app de Meta no trae
+    if (windsor.configurado()) { try { await windsor.sincronizar(guardarWindsor); } catch (e) { aj.guardar('windsor_sync', { ...windsor.estado(), error: e.message }); } alCambiar(); }
+    return r;
+  }
+
+  async function sincronizarWindsor({ transcribir = true } = {}) {
+    if (sincronizando) return { ok: false, motivo: 'Ya hay una sincronización en marcha' };
+    sincronizando = true;
+    const inicio = new Date().toISOString();
+    aj.guardar('instagram_sync', { ...aj.leer('instagram_sync', {}), inicio, error: null });
+    alCambiar();
+    try {
+      const r = await windsor.sincronizar(guardarWindsor);
+      const trans = transcribir ? await transcribirPendientes() : { hechas: 0 };
+      aj.guardar('instagram_sync', { inicio, fin: new Date().toISOString(), publicaciones: r.publicaciones, transcritas: trans.hechas, error: null, fuente: 'windsor' });
+      return { ok: true, fuente: 'windsor', publicaciones: r.publicaciones, dias: r.dias, historias: r.historias, metricas: r.metricas.length, transcritas: trans.hechas, avisos: r.avisos };
+    } catch (e) {
+      aj.guardar('instagram_sync', { ...aj.leer('instagram_sync', {}), inicio, error: e.message });
+      throw e;
+    } finally {
+      sincronizando = false;
+      alCambiar();
+    }
+  }
+
+  async function sincronizarMeta({ transcribir = true, max = Number(env.IG_MAX_PUBLICACIONES) || 150 } = {}) {
+    const c = conexion();
     if (sincronizando) return { ok: false, motivo: 'Ya hay una sincronización en marcha' };
     sincronizando = true;
     const inicio = new Date().toISOString();
@@ -184,7 +230,7 @@ export function createInstagram({ db, vault, env = process.env, fetchImpl = fetc
           miniatura: m.thumbnail_url || (m.media_type === 'IMAGE' ? m.media_url : null) || null,
           media_url: m.media_type === 'VIDEO' ? m.media_url || null : null,
           fecha: m.timestamp, likes: m.like_count ?? null, comentarios: m.comments_count ?? null, ...ins,
-          gancho: primeraFrase(m.caption),
+          gancho: primeraFrase(m.caption), extra: null,
         });
         n++;
       }
@@ -244,12 +290,43 @@ export function createInstagram({ db, vault, env = process.env, fetchImpl = fetc
   // ---------- Datos de los dashboards ----------
   function resumen({ dias = 30 } = {}) {
     const est = estado();
-    if (!est.conectado) return { ...agregar({ ...demoInstagram(), dias }), estado: est, demo: true };
+    // Con Windsor recién puesto y sin sincronizar aún, se siguen viendo los datos de ejemplo
+    const hayDatos = est.conectadoMeta || Boolean(est.ultimaSync || est.publicaciones);
+    if (!est.conectado || !hayDatos) return { ...agregar({ ...demoInstagram(), dias }), estado: est, demo: true, todas: null };
     const desde = fechaLocal(Date.now() - dias * 2 * DIA);
-    return { ...agregar({ media: rows(q.media), serie: rows(q.series, desde), dias }), estado: est, demo: false };
+    const serie = rows(q.series, desde);
+    return { ...agregar({ media: rows(q.media), serie, dias }), estado: est, demo: false, todas: todasLasMetricas({ serie, historias: rows(q.historias, fechaLocal(Date.now() - dias * DIA)), dias }) };
   }
 
   return { estado, urlConexion, canjearCodigo, conectarConToken, desconectar, sincronizar, transcribirPendientes, sinTema, etiquetar, temas, resumen, conexion };
+}
+
+// Todas las métricas de cuenta e historias que trae Windsor, para el periodo (función pura)
+export function todasLasMetricas({ serie, historias = [], dias = 30, hoy = Date.now() }) {
+  const diasLista = Array.from({ length: dias }, (_, i) => fechaLocal(hoy - (dias - 1 - i) * DIA));
+  const ini = diasLista[0], iniPrev = fechaLocal(hoy - (dias * 2 - 1) * DIA);
+  const nombres = [...new Set(serie.filter((s) => s.metrica.startsWith('w:')).map((s) => s.metrica.slice(2)))];
+  const cuenta = nombres.map((id) => {
+    const l = serie.filter((s) => s.metrica === `w:${id}`);
+    const m = new Map(l.map((s) => [s.fecha, s.valor]));
+    const instantanea = INSTANTANEAS.has(id);
+    const actual = l.filter((s) => s.fecha >= ini), previo = l.filter((s) => s.fecha >= iniPrev && s.fecha < ini);
+    const total = (x) => (instantanea ? [...x].sort((a, b) => a.fecha.localeCompare(b.fecha)).at(-1)?.valor ?? null : x.reduce((a, s) => a + s.valor, 0));
+    const valor = total(actual), antes = total(previo);
+    return {
+      id, label: ETIQUETAS[id] || id.replace(/_/g, ' '), valor, instantanea,
+      delta: !instantanea && antes ? Math.round(((valor - antes) / antes) * 100) : null,
+      series: diasLista.map((d) => m.get(d) ?? 0),
+    };
+  }).filter((x) => x.valor !== null).sort((a, b) => a.label.localeCompare(b.label, 'es'));
+  // Historias: se suman sus métricas numéricas
+  const sumas = {};
+  for (const h of historias) {
+    let d; try { d = JSON.parse(h.datos); } catch { continue; }
+    for (const [k, v] of Object.entries(d)) { const n = Number(v); if (k.startsWith('story_') && k !== 'story_id' && v !== '' && v !== null && Number.isFinite(n)) sumas[k] = (sumas[k] || 0) + n; }
+  }
+  const hist = Object.entries(sumas).map(([id, valor]) => ({ id, label: ETIQUETAS[id] || id.replace(/_/g, ' '), valor })).sort((a, b) => a.label.localeCompare(b.label, 'es'));
+  return { cuenta, historias: { total: historias.length, metricas: hist } };
 }
 
 // Agrega publicaciones y series en los KPIs y tablas de los dos dashboards (función pura).

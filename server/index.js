@@ -113,13 +113,13 @@ export function createApp({ jarvis, archivos, asistente, instagram, competencia,
     app.get('/api/competencia', h(() => ({ ...competencia.resumen(), analizando: Boolean(asistente?.estado({ conversacion: 'sistema' }).ocupadoAqui) })));
     app.post('/api/competencia/perfiles', h((req) => {
       const p = competencia.anadir(req.body?.usuario);
-      if (instagram?.estado().conectado) enFondo(competencia.sincronizar({ soloUsuario: p.username }));
+      if (instagram?.estado().conectadoMeta) enFondo(competencia.sincronizar({ soloUsuario: p.username }));
       return p;
     }));
     app.delete('/api/competencia/perfiles/:usuario', h((req) => competencia.quitar(req.params.usuario)));
     app.patch('/api/competencia/perfiles/:usuario', h((req) => competencia.activar(req.params.usuario, Boolean(req.body?.activo))));
     app.post('/api/competencia/sincronizar', h(() => {
-      if (!instagram?.estado().conectado) { const e = new Error('Conecta tu Instagram primero (pestaña Instagram): la API solo deja ver otros perfiles desde tu cuenta profesional'); e.publico = true; throw e; }
+      if (!instagram?.estado().conectadoMeta) { const e = new Error('Para espiar a la competencia hace falta conectar Instagram con Facebook (pestaña Instagram): Windsor no da datos de otros perfiles'); e.publico = true; throw e; }
       enFondo(competencia.sincronizar());
       return { ok: true };
     }));
