@@ -8,7 +8,7 @@ import { createWindsor, mediaDeWindsor, normalizarFecha, ETIQUETAS, INSTANTANEAS
 // transcripción automática de reels y los datos de los dos dashboards.
 
 export const PERMISOS = [
-  'instagram_basic', 'instagram_manage_insights', 'pages_show_list', 'pages_read_engagement',
+  'instagram_basic', 'instagram_manage_insights', 'instagram_content_publish', 'pages_show_list', 'pages_read_engagement',
   'business_management', 'ads_read', 'ads_management',
 ];
 

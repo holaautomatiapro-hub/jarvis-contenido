@@ -44,7 +44,8 @@ Lo que Windsor **no** sustituye: la pestaña **Competencia** y la Ad Library de 
    http://localhost:3333/api/instagram/callback
    ```
 3. Si el producto es **para empresas**, crea una **Configuración** con estos permisos y copia su **ID de configuración**:
-   `instagram_basic`, `instagram_manage_insights`, `pages_show_list`, `pages_read_engagement`, `business_management`, `ads_read`, `ads_management`.
+   `instagram_basic`, `instagram_manage_insights`, `instagram_content_publish`, `pages_show_list`, `pages_read_engagement`, `business_management`, `ads_read`, `ads_management`.
+   (`instagram_content_publish` es para publicar desde JARVIS más adelante: pedirlo ahora evita tener que reconectar.)
 
 ### 3. Copia las claves en `.env`
 Ejecuta `npm run claves` en la carpeta de JARVIS y pega el **Identificador de la app** y la **Clave secreta** (en **Configuración de la app → Básica**) y, si usas "para empresas", el **ID de configuración**. Si prefieres editar `.env` a mano:

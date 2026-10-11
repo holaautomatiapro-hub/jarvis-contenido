@@ -79,14 +79,24 @@ function Conectar({ estado, onHecho }) {
       <div className="ig-conectar-txt">
         <span className="ig-logo"><Icon name="instagram" size={22} /></span>
         <div>
-          <b>Conecta tu Instagram para ver tus datos reales</b>
-          <p>Mientras tanto ves datos de ejemplo. Al conectar, JARVIS sincroniza tus publicaciones cada 6 horas{estado.transcripcion.activa ? ' y transcribe tus reels para aprender cómo hablas.' : '. Con ElevenLabs configurado, además transcribe tus reels.'}</p>
+          {estado.conectado ? (
+            // Con Windsor ya hay métricas: Facebook añade Competencia, Meta Ads y (más adelante) publicar
+            <>
+              <b>Conecta también con Facebook</b>
+              <p>Tus métricas ya llegan por Windsor. Con la conexión de Meta se activan además Competencia, la Ad Library y Meta Ads.</p>
+            </>
+          ) : (
+            <>
+              <b>Conecta tu Instagram para ver tus datos reales</b>
+              <p>Mientras tanto ves datos de ejemplo. Al conectar, JARVIS sincroniza tus publicaciones cada 6 horas{estado.transcripcion.activa ? ' y transcribe tus reels para aprender cómo hablas.' : '. Con ElevenLabs configurado, además transcribe tus reels.'}</p>
+            </>
+          )}
         </div>
       </div>
       <div className="ig-conectar-acciones">
         {estado.appConfigurada
           ? <a className="btn" href="/api/instagram/conectar"><Icon name="link" size={14} />Conectar con Facebook</a>
-          : <span className="ayuda">Para el botón de conexión, añade META_APP_ID y META_APP_SECRET en .env (guía en docs/INSTAGRAM.md). O, sin app de Meta, pon tu WINDSOR_API_KEY con npm run claves.</span>}
+          : <span className="ayuda">Para el botón de conexión, añade META_APP_ID y META_APP_SECRET en .env (guía en docs/INSTAGRAM.md).{estado.windsor?.configurado ? '' : ' O, sin app de Meta, pon tu WINDSOR_API_KEY con npm run claves.'}</span>}
         <form className="fila" onSubmit={pegar} style={{ margin: 0 }}>
           <input className="campo" value={token} onChange={(e) => setToken(e.target.value)} placeholder="…o pega un token de acceso de Meta" aria-label="Token de acceso de Meta" />
           <button className="btn btn-sec" disabled={!token.trim() || enviando}>{enviando ? 'Conectando…' : 'Conectar'}</button>
@@ -244,7 +254,7 @@ export default function Instagram() {
 
       {aviso && <div className={`aviso ${aviso.tipo}`} role="status">{aviso.texto}<button className="link-btn" onClick={() => setAviso(null)}>Cerrar</button></div>}
       {estado.error && <div className="aviso error">Última sincronización con error: {estado.error}</div>}
-      {!estado.conectado && <Conectar estado={estado} onHecho={() => { setAviso({ tipo: 'ok', texto: 'Instagram conectado. Sincronizando…' }); recargar(); }} />}
+      {!estado.conectadoMeta && <Conectar estado={estado} onHecho={() => { setAviso({ tipo: 'ok', texto: 'Conectado con Facebook. Sincronizando…' }); recargar(); }} />}
       {estado.conectado && data.demo && <div className="aviso ok">Windsor está configurado. Pulsa <b>Sincronizar</b> para traer tus publicaciones y todas las métricas (la primera vez trae un año y tarda un poco). Mientras, ves datos de ejemplo.</div>}
       {estado.windsor?.avisos?.map((a) => <div key={a} className="aviso">{a}</div>)}
       {estado.conectado && (

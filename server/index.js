@@ -80,7 +80,11 @@ export function createApp({ jarvis, archivos, asistente, instagram, competencia,
 
     app.get('/api/instagram/estado', h(() => instagram.estado()));
     app.get('/api/instagram/resumen', h((req) => instagram.resumen({ dias: Math.min(90, Math.max(7, Number(req.query.dias) || 30)) })));
-    app.post('/api/instagram/token', h(conMensaje((req) => instagram.conectarConToken(req.body?.token, { paginaId: req.body?.paginaId })), true));
+    app.post('/api/instagram/token', h(conMensaje(async (req) => {
+      const r = await instagram.conectarConToken(req.body?.token, { paginaId: req.body?.paginaId });
+      jobs?.sincronizarAhora(); // como al volver del botón de Facebook: empieza a sincronizar ya
+      return r;
+    }), true));
     app.post('/api/instagram/desconectar', h(() => instagram.desconectar(), true));
     app.post('/api/instagram/sincronizar', h(conMensaje(() => {
       if (!instagram.estado().conectado) throw new Error('Instagram no está conectado');
