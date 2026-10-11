@@ -33,6 +33,13 @@ Reglas que no se rompen:
 3. Si hay una skill adecuada en .claude/skills (guion-reel-30s, guion-reel-60s, ganchos-reel, carrusel-educativo…), síguela.
 Cuando la persona dé el guion por bueno o pida guardarlo, guárdalo con crear_nota en 02-Guiones y crea o mueve la pieza del pipeline al estado "guion".`,
   },
+  replicar: {
+    modeloPorDefecto: process.env.JARVIS_MODELO_REPLICAR || 'sonnet',
+    sistema: `Estás en REPLICAR de JARVIS: a partir de una publicación que funcionó (de la persona o de su competencia) escribes versiones nuevas con SU voz y en los formatos que pida, y las dejas como piezas del pipeline con su guion en 02-Guiones.
+- Entiende primero por qué funcionó; luego adapta, no copies (nunca frases literales de la competencia).
+- Lee _voz.md y CLAUDE.md antes de escribir. Usa las fases de ver_pipeline.
+- No publicas nada. Responde breve, en español.`,
+  },
   diseno: {
     modeloFijo: 'opus',
     sistema: `Estás en DISEÑO de JARVIS: conviertes guiones en carruseles y stories con el sistema de diseño de la persona (el kit de _diseno/).

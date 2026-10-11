@@ -3,7 +3,7 @@ import Icon from '../../components/Icon.jsx';
 import { api } from '../../lib/api.js';
 import { diaLargo, hoyIso, sumarDias } from '../../lib/fechas.js';
 import { NOMBRE_TIPO_IG, planDePublicacion } from '../../lib/planIg.js';
-import { ESTADOS, MAX_CAPTION, Miniatura, Modal, TIPOS, borrarArchivo, esMedio, esStory, esVideo, subirArchivo, tamanoLegible, tipoDe } from './comun.jsx';
+import { useFases, MAX_CAPTION, Miniatura, Modal, TIPOS, borrarArchivo, esMedio, esStory, esVideo, subirArchivo, tamanoLegible, tipoDe } from './comun.jsx';
 
 // ---------- Visor a pantalla completa ----------
 export function Visor({ archivos, inicio = 0, onClose }) {
@@ -82,6 +82,7 @@ function CajaInstagram({ ig, pieza, plan, marcado, onMarcar, onAhora, onConverti
 
 // ---------- Ficha de una pieza: nueva o para editar ----------
 export function EditorContenido({ pieza, carpetas, ig, onClose, onGuardado, onVisor, onRepublicar }) {
+  const ESTADOS = useFases();
   const nueva = !pieza.id;
   const [d, setD] = useState(() => ({
     titulo: pieza.titulo || '', carpeta: pieza.carpeta || '', formato: tipoDe(pieza.formato)?.id || pieza.formato || 'Reel',

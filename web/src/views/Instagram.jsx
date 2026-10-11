@@ -5,6 +5,7 @@ import LineChart from '../components/charts/LineChart.jsx';
 import Donut from '../components/charts/Donut.jsx';
 import { api, normaliza, useRecurso } from '../lib/api.js';
 import { fechaCorta, hace, num, numLargo, segundos } from '../lib/formato.js';
+import Replicar, { FORMATO_DE_IG } from '../components/Replicar.jsx';
 
 // Colores de formato validados para el fondo oscuro (separación para daltonismo y contraste)
 const COLOR_FORMATO = { Reels: '#3987e5', Carruseles: '#d95926', 'Imágenes': '#199e70' };
@@ -106,8 +107,9 @@ function Conectar({ estado, onHecho }) {
   );
 }
 
-function TablaContenido({ piezas, medias }) {
+function TablaContenido({ piezas, medias, demo }) {
   const [q, setQ] = useState('');
+  const [replicando, setReplicando] = useState(null);
   const [orden, setOrden] = useState({ campo: 'fecha', desc: true });
   const filas = useMemo(() => {
     const n = normaliza(q.trim());
@@ -150,10 +152,13 @@ function TablaContenido({ piezas, medias }) {
               {th('alcance', 'Alcance')}
               {th('views', 'Visualiz.')}
               {th('interacciones', 'Interacc.')}
+              {th('likes', 'Me gusta')}
+              {th('comentarios', 'Coment.')}
               {th('guardados', 'Guardados')}
               {th('compartidos', 'Compart.')}
               {th('ver_medio_ms', 'T. medio')}
               {th('tasa', '% Interacción')}
+              <th aria-label="Replicar" />
             </tr>
           </thead>
           <tbody>
@@ -177,16 +182,28 @@ function TablaContenido({ piezas, medias }) {
                 <td className="n">{numLargo(p.alcance)} {delta(p.vsMedia)}</td>
                 <td className="n">{numLargo(p.views)}</td>
                 <td className="n">{numLargo(p.interacciones)}</td>
+                <td className="n">{numLargo(p.likes)}</td>
+                <td className="n">{numLargo(p.comentarios)}</td>
                 <td className="n">{numLargo(p.guardados)}</td>
                 <td className="n">{numLargo(p.compartidos)}</td>
                 <td className="n">{segundos(p.ver_medio_ms)}</td>
                 <td className="n">{p.tasa}%</td>
+                <td><button className="chip replicar-btn" onClick={() => setReplicando(p)} disabled={demo} title={demo ? 'Conecta Instagram para replicar tus publicaciones' : 'Replicar en más versiones u otros formatos'}><Icon name="sparkle" />Replicar</button></td>
               </tr>
             ))}
           </tbody>
         </table>
         {!filas.length && <div className="vacio">No hay publicaciones en este periodo{q ? ` con "${q}"` : ''}.</div>}
       </div>
+      {replicando && (
+        <Replicar
+          titulo={(replicando.gancho || replicando.caption || 'Publicación').slice(0, 140)}
+          detalle={`${replicando.formato} · ${fechaCorta(replicando.fecha)} · ${numLargo(replicando.alcance)} de alcance · ${numLargo(replicando.guardados)} guardados · ${numLargo(replicando.compartidos)} compartidos`}
+          url={`/api/instagram/publicaciones/${encodeURIComponent(replicando.id)}/replicar`}
+          inicial={Object.fromEntries(['Reel', 'Carrusel', 'Story'].filter((f) => f !== FORMATO_DE_IG[replicando.formato]).map((f) => [f, 1]))}
+          onClose={() => setReplicando(null)}
+        />
+      )}
     </div>
   );
 }
@@ -322,10 +339,10 @@ export default function Instagram() {
             </div>
           </div>
           <TodasLasMetricas todas={data.todas} dias={dias} />
-          <TablaContenido piezas={data.piezas.slice(0, 6)} medias={data.medias} />
+          <TablaContenido piezas={data.piezas.slice(0, 6)} medias={data.medias} demo={data.demo} />
         </>
       ) : (
-        <TablaContenido piezas={data.piezas} medias={data.medias} />
+        <TablaContenido piezas={data.piezas} medias={data.medias} demo={data.demo} />
       )}
     </section>
   );

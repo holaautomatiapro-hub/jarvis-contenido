@@ -2,11 +2,11 @@ import { useEffect, useMemo, useState } from 'react';
 import Icon from '../components/Icon.jsx';
 import { api, useMensajes, useRecurso } from '../lib/api.js';
 import { fechaCorta } from '../lib/formato.js';
+import { estadoDe, useFases } from './contenido/comun.jsx';
 
 const DIA = 86400000;
 const lunes = (d = new Date()) => { const x = new Date(d); x.setHours(12, 0, 0, 0); x.setTime(x.getTime() - ((x.getDay() + 6) % 7) * DIA); return x; };
 const iso = (d) => d.toLocaleDateString('sv-SE');
-const ESTADOS = { idea: 'Idea', guion: 'Guion', grabar: 'Grabar', editar: 'Editar', listo: 'Listo', publicado: 'Publicado' };
 
 function Insignia({ red, size = 30, apagada }) {
   return (
@@ -132,6 +132,7 @@ function Calendario({ data, redes, semana, setSemana, onElegir }) {
 }
 
 export default function Publicar() {
+  useFases();
   const [semana, setSemana] = useState(lunes);
   const desde = iso(semana), hasta = iso(new Date(semana.getTime() + 6 * DIA));
   const [data, recargar] = useRecurso(`/api/publicar?desde=${desde}&hasta=${hasta}`, null);
@@ -191,7 +192,7 @@ export default function Publicar() {
           <label className="pub-campo">
             <span className="label">Pieza</span>
             <select className="campo" value={piezaId ?? ''} onChange={(e) => { setPiezaId(e.target.value === 'nueva' ? 'nueva' : Number(e.target.value)); setRedSel(null); }}>
-              {data.piezas.map((p) => <option key={p.id} value={p.id}>{p.titulo} · {ESTADOS[p.estado]}{p.versiones ? ` · ${p.versiones} versiones` : ''}</option>)}
+              {data.piezas.map((p) => <option key={p.id} value={p.id}>{p.titulo} · {estadoDe(p.estado).label}{p.versiones ? ` · ${p.versiones} versiones` : ''}</option>)}
               <option value="nueva">+ Nueva idea…</option>
             </select>
           </label>

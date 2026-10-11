@@ -298,7 +298,14 @@ export function createInstagram({ db, vault, env = process.env, fetchImpl = fetc
     return { ...agregar({ media: rows(q.media), serie, dias }), estado: est, demo: false, todas: todasLasMetricas({ serie, historias: rows(q.historias, fechaLocal(Date.now() - dias * DIA)), dias }) };
   }
 
-  return { estado, urlConexion, canjearCodigo, conectarConToken, desconectar, sincronizar, transcribirPendientes, sinTema, etiquetar, temas, resumen, conexion };
+  // Una publicación tuya (para replicarla)
+  function publicacion(id) {
+    const m = row(db.prepare('SELECT * FROM ig_media WHERE id = ?'), String(id));
+    if (!m) throw Object.assign(new Error(String(id).startsWith('demo') ? 'Es una publicación de ejemplo: conecta Instagram para replicar las tuyas' : 'Esa publicación no está: sincroniza Instagram'), { publico: true });
+    return m;
+  }
+
+  return { publicacion, estado, urlConexion, canjearCodigo, conectarConToken, desconectar, sincronizar, transcribirPendientes, sinTema, etiquetar, temas, resumen, conexion };
 }
 
 // Todas las métricas de cuenta e historias que trae Windsor, para el periodo (función pura)

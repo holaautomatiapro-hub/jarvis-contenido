@@ -2,7 +2,7 @@ import { useCallback, useEffect, useMemo, useState } from 'react';
 import Icon from '../components/Icon.jsx';
 import { api, normaliza, useRecurso } from '../lib/api.js';
 import { hoyIso } from '../lib/fechas.js';
-import { ESTADOS, TIPOS, tipoDe } from './contenido/comun.jsx';
+import { TIPOS, tipoDe, useFases } from './contenido/comun.jsx';
 import { Calendario, Lista, Pipeline } from './contenido/Vistas.jsx';
 import { Biblioteca } from './contenido/Biblioteca.jsx';
 import { EditorContenido, ProgramarContenido, Visor } from './contenido/Editor.jsx';
@@ -19,6 +19,7 @@ const vistaGuardada = () => { try { const v = localStorage.getItem('contenido_vi
 
 // Todo el contenido en un sitio: guárdalo en la biblioteca, ponle día en el calendario y muévelo por el pipeline.
 export default function Contenido({ onCaptura }) {
+  const ESTADOS = useFases();
   const [data, recargar, errorCarga, setData] = useRecurso('/api/contenido', null);
   const [vista, setVistaEstado] = useState(vistaGuardada);
   const [dia, setDia] = useState(hoyIso);

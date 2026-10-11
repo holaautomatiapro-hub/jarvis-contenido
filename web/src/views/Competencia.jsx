@@ -2,6 +2,7 @@ import { useState } from 'react';
 import Icon from '../components/Icon.jsx';
 import { api, useRecurso } from '../lib/api.js';
 import { fechaCorta, hace, num } from '../lib/formato.js';
+import MejoresCompetencia from './CompetenciaMejores.jsx';
 
 const COLOR_FORMATO = { Reels: '#3987e5', Carruseles: '#d95926', 'Imágenes': '#199e70' };
 
@@ -69,6 +70,7 @@ export default function Competencia() {
   };
 
   return (
+    <>
     <section className="comp-vista">
       <Perfiles data={data} recargar={recargar} setAviso={setAviso} />
 
@@ -177,5 +179,7 @@ export default function Competencia() {
         {a?.nota && <div className="ayuda" style={{ marginTop: 10 }}>Análisis completo en tu vault: {a.nota}{a.fecha ? ` (${fechaCorta(a.fecha.replace(' ', 'T'))})` : ''}</div>}
       </aside>
     </section>
+    <MejoresCompetencia data={data} />
+    </>
   );
 }

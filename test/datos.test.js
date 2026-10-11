@@ -70,7 +70,7 @@ describe('ideas y pipeline', () => {
     assert.equal(p.plataformas, 'instagram, linkedin');
     const m = jarvis.actualizarPieza(p.id, { estado: 'guion' });
     assert.equal(m.estado, 'guion');
-    assert.throws(() => jarvis.actualizarPieza(p.id, { estado: 'viral' }), /Estado no válido/);
+    assert.throws(() => jarvis.actualizarPieza(p.id, { estado: 'viral' }), /Fase no válida/);
     assert.throws(() => jarvis.actualizarPieza(9999, { estado: 'guion' }), /no existe/);
   });
 

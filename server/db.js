@@ -184,6 +184,14 @@ export function openDb(file) {
   // Migraciones de columnas añadidas después (se ignoran si ya existen)
   const migrar = (sql) => { try { db.exec(sql); return true; } catch { return false; /* ya existe */ } };
   migrar('ALTER TABLE comp_perfiles ADD COLUMN fb_pagina TEXT');
+  // Competencia: vídeo y slides de cada publicación, visualizaciones (si Instagram las da) y transcripción
+  for (const sql of [
+    'ALTER TABLE comp_media ADD COLUMN media_url TEXT',
+    'ALTER TABLE comp_media ADD COLUMN hijos TEXT',
+    'ALTER TABLE comp_media ADD COLUMN vistas INTEGER',
+    'ALTER TABLE comp_media ADD COLUMN transcripcion TEXT',
+    'ALTER TABLE comp_media ADD COLUMN nota TEXT',
+  ]) migrar(sql);
   // Tareas con estado, prioridad y fecha límite (día, semana o mes)
   for (const sql of [
     'ALTER TABLE tareas ADD COLUMN descripcion TEXT',

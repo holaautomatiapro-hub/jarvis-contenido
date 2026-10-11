@@ -2,7 +2,8 @@ import { useEffect, useMemo, useRef, useState } from 'react';
 import { normaliza } from '../../lib/api.js';
 import Icon from '../../components/Icon.jsx';
 import { celdasMes, diaCorto, diaLargo, hoyIso, mesDe, nombreMes, sumarMeses } from '../../lib/fechas.js';
-import { ChipEstado, ESTADOS, Miniatura, Modal, esStory, estadoDe, textoTipo, tipoDe } from './comun.jsx';
+import { EditorFases } from './Fases.jsx';
+import { ChipEstado, Miniatura, useFases, Modal, esStory, estadoDe, textoTipo, tipoDe } from './comun.jsx';
 
 const MAX_POR_DIA = 4;
 const DIAS = ['Lun', 'Mar', 'Mié', 'Jue', 'Vie', 'Sáb', 'Dom'];
@@ -84,6 +85,7 @@ function ElegirPieza({ fecha, piezas, onCerrar, onElegida, onNuevo }) {
 }
 
 export function Calendario({ piezas, dia, setDia, onAbrir, onNuevo, onMover, onProgramar }) {
+  const ESTADOS = useFases();
   const [mes, setMes] = useState(() => mesDe(dia));
   const [sobre, setSobre] = useState(null);
   const [eligiendo, setEligiendo] = useState(null); // fecha para la que se elige una pieza
@@ -200,6 +202,7 @@ function FilaDia({ p, onAbrir }) {
 
 // ---------- Lista: próximos, sin fecha y anteriores ----------
 export function Lista({ piezas, cargando, onAbrir, onMover }) {
+  const ESTADOS = useFases();
   const h = hoyIso();
   const orden = (a, b) => a.fecha.localeCompare(b.fecha) || ordenDia(a, b);
   const grupos = [
@@ -241,7 +244,9 @@ export function Lista({ piezas, cargando, onAbrir, onMover }) {
 
 // ---------- Pipeline (tablero por estados) ----------
 export function Pipeline({ piezas, onAbrir, onMover, onNuevaIdea }) {
+  const ESTADOS = useFases();
   const [sobre, setSobre] = useState(null);
+  const [editandoFases, setEditandoFases] = useState(false);
   const arrastrando = useRef(null);
   const soltar = (estado) => (e) => {
     e.preventDefault();
@@ -254,9 +259,13 @@ export function Pipeline({ piezas, onAbrir, onMover, onNuevaIdea }) {
     <div className="panel panel-pad pipeline">
       <div className="panel-head">
         <span className="label">Pipeline de contenido</span>
-        <button className="chip" onClick={onNuevaIdea}><Icon name="plus" />Nueva idea</button>
+        <div style={{ display: 'flex', gap: 6 }}>
+          <button className="chip" onClick={() => setEditandoFases(true)}><Icon name="layers" />Editar fases</button>
+          <button className="chip" onClick={onNuevaIdea}><Icon name="plus" />Nueva idea</button>
+        </div>
       </div>
-      <div className="kanban">
+      {editandoFases && <EditorFases piezas={piezas} onClose={() => setEditandoFases(false)} />}
+      <div className="kanban" style={{ gridTemplateColumns: `repeat(${ESTADOS.length}, minmax(148px, 1fr))` }}>
         {ESTADOS.map((c, idx) => {
           const lista = piezas.filter((p) => p.estado === c.id).sort((a, b) => b.orden - a.orden || b.id - a.id);
           return (
