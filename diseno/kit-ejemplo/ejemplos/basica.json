@@ -1,0 +1,37 @@
+{
+ "titulo": "3 errores que frenan tu cuenta",
+ "formato": "carrusel",
+ "plantilla": "basica",
+ "caption": "3 errores que frenan tu cuenta 👇\n\n1️⃣ Publicar sin plan\n2️⃣ …\n\nComenta PLAN y te envío mi plantilla 👇",
+ "slides": [
+  {
+   "bg": "black",
+   "glow": "top",
+   "blocks": [
+    {
+     "html": "<div class=\"titular\" id=\"s1-h\">3 errores que <span class=\"acento\">frenan</span> tu cuenta</div>\n<div class=\"cuerpo\" id=\"s1-c\">Y cómo evitarlos desde hoy.</div>",
+     "js": "tl.fromTo(\"#s1-h\", { opacity: 0, y: 40 }, { opacity: 1, y: 0, duration: 0.6, ease: O }, 0.3);\ntl.fromTo(\"#s1-c\", { opacity: 0, y: 30 }, { opacity: 1, y: 0, duration: 0.55, ease: O }, 0.9);\n"
+    }
+   ]
+  },
+  {
+   "bg": "grey",
+   "blocks": [
+    {
+     "html": "<div class=\"etiqueta\" id=\"s2-e\">→ Error 1</div>\n<div class=\"titular\" id=\"s2-h\">Publicar sin <span class=\"acento\">plan</span></div>\n<div class=\"tarjeta\" id=\"s2-t\"><div class=\"fila\">✕ Un día sí, tres no</div><div class=\"fila\">✕ Temas al azar</div></div>",
+     "js": "tl.fromTo(\"#s2-e\", { opacity: 0, x: -40 }, { opacity: 1, x: 0, duration: 0.45, ease: O }, 0.2);\ntl.fromTo(\"#s2-h\", { opacity: 0, y: 40 }, { opacity: 1, y: 0, duration: 0.6, ease: O }, 0.5);\ntl.fromTo(\"#s2-t\", { opacity: 0, y: 70 }, { opacity: 1, y: 0, duration: 0.6, ease: \"back.out(1.5)\" }, 1.2);\n"
+    }
+   ]
+  },
+  {
+   "bg": "black",
+   "glow": "mid",
+   "blocks": [
+    {
+     "html": "<div class=\"cuerpo\" id=\"s3-a\" style=\"text-align:center\">Comenta la palabra</div>\n<div class=\"palabra\" id=\"s3-p\">PLAN</div>\n<div class=\"cuerpo\" id=\"s3-b\" style=\"text-align:center;color:#fff\">y te envío mi plantilla de calendario.</div>",
+     "js": "tl.fromTo(\"#s3-a\", { opacity: 0, y: 30 }, { opacity: 1, y: 0, duration: 0.55, ease: O }, 0.3);\ntl.fromTo(\"#s3-p\", { opacity: 0, scale: 0.6 }, { opacity: 1, scale: 1, duration: 0.6, ease: \"back.out(2)\" }, 0.8);\ntl.fromTo(\"#s3-b\", { opacity: 0, y: 30 }, { opacity: 1, y: 0, duration: 0.55, ease: O }, 1.5);\n"
+    }
+   ]
+  }
+ ]
+}

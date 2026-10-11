@@ -1,0 +1,21 @@
+{
+  "nombre": "Kit de ejemplo de JARVIS",
+  "handle": "@tucuenta",
+  "verificado": false,
+  "duracion": 7,
+  "fps": 30,
+  "guia": "GUIA.md",
+  "css": ["estilos.css"],
+  "zonaSeguraStory": [250, 300],
+  "plantillas": [
+    {
+      "id": "basica",
+      "nombre": "Básica",
+      "descripcion": "Limpia y directa: fondo oscuro o claro con rejilla suave, Inter muy gruesa y un color de acento.",
+      "formatos": ["carrusel", "story"],
+      "cabecera": true,
+      "paginacion": true,
+      "ejemplo": "ejemplos/basica.json"
+    }
+  ]
+}

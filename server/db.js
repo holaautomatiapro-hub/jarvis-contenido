@@ -228,6 +228,27 @@ export function openDb(file) {
     creado TEXT NOT NULL DEFAULT (datetime('now','localtime'))
   );
   CREATE INDEX IF NOT EXISTS tareas_plazo ON tareas(plazo_desde, plazo_hasta);
+  -- Diseños (carruseles y stories) hechos con el sistema de diseño del vault
+  CREATE TABLE IF NOT EXISTS disenos (
+    id INTEGER PRIMARY KEY,
+    titulo TEXT NOT NULL,
+    formato TEXT NOT NULL DEFAULT 'carrusel',
+    plantilla TEXT,
+    guion TEXT,
+    nota TEXT,
+    pieza_origen INTEGER,
+    datos TEXT,
+    caption TEXT,
+    estado TEXT NOT NULL DEFAULT 'nuevo',
+    version INTEGER NOT NULL DEFAULT 0,
+    previas TEXT NOT NULL DEFAULT '[]',
+    avisos TEXT NOT NULL DEFAULT '[]',
+    error TEXT,
+    progreso INTEGER,
+    exportado TEXT,
+    creado TEXT NOT NULL DEFAULT (datetime('now','localtime')),
+    actualizado TEXT NOT NULL DEFAULT (datetime('now','localtime'))
+  );
   CREATE INDEX IF NOT EXISTS piezas_fecha ON piezas(fecha);`);
   return db;
 }

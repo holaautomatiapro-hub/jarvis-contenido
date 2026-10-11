@@ -6,12 +6,14 @@ import { ESTADOS, TIPOS, tipoDe } from './contenido/comun.jsx';
 import { Calendario, Lista, Pipeline } from './contenido/Vistas.jsx';
 import { Biblioteca } from './contenido/Biblioteca.jsx';
 import { EditorContenido, ProgramarContenido, Visor } from './contenido/Editor.jsx';
+import { Diseno } from './contenido/Diseno.jsx';
 
 const VISTAS = [
   { id: 'calendario', label: 'Calendario', icon: 'calendar' },
   { id: 'lista', label: 'Lista', icon: 'tasks' },
   { id: 'biblioteca', label: 'Biblioteca', icon: 'book' },
   { id: 'pipeline', label: 'Pipeline', icon: 'skills' },
+  { id: 'diseno', label: 'Diseño', icon: 'sparkle' },
 ];
 const vistaGuardada = () => { try { const v = localStorage.getItem('contenido_vista'); return VISTAS.some((x) => x.id === v) ? v : 'calendario'; } catch { return 'calendario'; } };
 
@@ -130,6 +132,7 @@ export default function Contenido({ onCaptura }) {
       {vista === 'calendario' && <Calendario piezas={piezas} dia={dia} setDia={setDia} onAbrir={setEditando} onNuevo={nuevo} onMover={mover} onProgramar={(p, f) => setProgramando({ p, f })} />}
       {vista === 'lista' && <Lista piezas={filtradas} cargando={!data} onAbrir={setEditando} onMover={mover} />}
       {vista === 'biblioteca' && <Biblioteca piezas={biblioteca} publicados={publicados} carpetas={carpetas} onAbrir={setEditando} onProgramar={(p) => setProgramando({ p })} onRepublicar={republicar} recargar={recargar} />}
+      {vista === 'diseno' && <Diseno piezas={piezas} ig={data?.instagram} onAbrir={setEditando} onProgramar={(p) => setProgramando({ p })} />}
       {vista === 'pipeline' && <Pipeline piezas={piezas} onAbrir={setEditando} onMover={mover} onNuevaIdea={() => onCaptura('idea')} />}
 
       {editando && <EditorContenido key={editando.id || 'nuevo'} pieza={editando} carpetas={carpetas} ig={data?.instagram} onClose={() => setEditando(null)} onGuardado={recargar} onVisor={abrirVisor} onRepublicar={republicar} />}

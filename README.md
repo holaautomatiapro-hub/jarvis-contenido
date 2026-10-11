@@ -2,7 +2,7 @@
 
 Sistema operativo de IA para creadores de contenido, para **Windows**. Dashboard local con voz, memoria en Obsidian, Claude Code como motor y Hermes por Telegram para usarlo desde el móvil.
 
-> Funcionan todas las pestañas: Inicio, **Tareas** (prioridad, estado y fecha límite de día, semana o mes, con tablero y filtros), **Contenido** (calendario, lista, biblioteca con tus vídeos y fotos, y pipeline), Notas, **Voz**, **Skills** (100 skills y el chat para guiones), **Instagram** (dos dashboards y transcripción de reels), **Competencia**, **Meta Ads** (asistente, Ad Library y campañas siempre en pausa), **Publicar** (una pieza adaptada a cada red, con calendario) y **Apps** (Hermes por Telegram, tareas programadas y accesos rápidos), además del MCP `jarvis` que comparten Claude Code y Hermes, y el instalador de un solo prompt.
+> Funcionan todas las pestañas: Inicio, **Tareas** (prioridad, estado y fecha límite de día, semana o mes, con tablero y filtros), **Contenido** (calendario, lista, biblioteca con tus vídeos y fotos, pipeline y **Diseño**: del guion al carrusel o las stories con tu sistema de diseño, en imagen o vídeo), Notas, **Voz**, **Skills** (100 skills y el chat para guiones), **Instagram** (dos dashboards y transcripción de reels), **Competencia**, **Meta Ads** (asistente, Ad Library y campañas siempre en pausa), **Publicar** (una pieza adaptada a cada red, con calendario) y **Apps** (Hermes por Telegram, tareas programadas y accesos rápidos), además del MCP `jarvis` que comparten Claude Code y Hermes, y el instalador de un solo prompt.
 
 ## Instalar (Windows)
 
@@ -36,6 +36,7 @@ Después, ábrelo con el acceso directo **JARVIS** del escritorio o en http://lo
 - **Lista**: próximos, sin fecha y anteriores, con buscador y filtros por tipo y estado.
 - **Biblioteca**: lo que aún no tiene día. Arrastra vídeos, fotos o **carpetas enteras** (eliges si son un carrusel, stories o piezas sueltas), ordénalas en carpetas, junta varias en un carrusel y **Programa** cada una.
 - **Pipeline**: el tablero idea → guion → grabar → editar → listo → publicado (el que antes estaba en Tareas).
+- **Diseño**: elige un guion y una plantilla de **tu sistema de diseño** y Claude te prepara el carrusel o las stories. JARVIS revisa que nada se salga ni se pise, lo ajustas en el chat y lo exportas a la biblioteca en **JPG o vídeo MP4** (7 s por diapositiva) para programarlo o publicarlo. Tu sistema (marca, fuentes, plantillas y ejemplos) se importa en un .zip y se queda en tu vault. Guía: [docs/DISENO.md](docs/DISENO.md).
 - La ficha de cada pieza guarda tipo, estado, fecha y hora, caption, enlace al vídeo y sus archivos.
 - **Publicar en Instagram** (con Instagram conectado con Facebook): marca «Publicar sola en Instagram» y se publica a su hora como foto, reel, carrusel o story, o pulsa «Publicar ahora». Solo lo activas tú desde el dashboard (Hermes y Claude Code no pueden) y JARVIS tiene que estar abierto. Para las demás redes, la adaptas en **Publicar** y la subes tú. Guía: [docs/INSTAGRAM.md](docs/INSTAGRAM.md#publicar-en-instagram-desde-jarvis).
 
@@ -113,12 +114,13 @@ Guía paso a paso: **[docs/HERMES.md](docs/HERMES.md)**. Hermes es JARVIS en el 
 - **Notas, ideas y guiones**: en tu vault de Obsidian, por defecto `Documentos\JARVIS-Vault`. Se crea solo la primera vez que arrancas JARVIS. Ábrelo en Obsidian con "Abrir carpeta como vault". Puedes cambiar la ruta con `VAULT_PATH` en `.env`.
 - **Tareas, pipeline, actividad, métricas de Instagram y la conexión con Meta**: en `data\jarvis.db` (SQLite), dentro de la carpeta de JARVIS. No la compartas: contiene el token de tu página.
 - **Vídeos y fotos de la pestaña Contenido**: en `data\contenido\`, también en tu PC. Solo se ven desde el dashboard.
+- **Tu sistema de diseño**: en el vault, en `_diseno\`. Las vistas previas de los diseños, en `.jarvis\disenos\` dentro del vault.
 
 Mientras no hayas guardado nada, Inicio muestra datos de ejemplo (etiqueta "Demo" bajo el logo).
 
 ## MCP `jarvis` (puente con Claude Code y Hermes)
 
-`mcp/jarvis-mcp.js` da acceso a la memoria y al pipeline: `capturar_idea`, `crear_nota`, `buscar_notas`, `leer_nota`, `listar_notas`, `crear_pieza`, `mover_pieza`, `listar_pipeline`, `anadir_tarea`, `actualizar_tarea`, `completar_tarea`, `listar_tareas`, `borrar_tarea`, `tareas_de_hoy` y `resumen_del_dia`, además de las de Instagram, competencia, Meta Ads y publicar (`guardar_versiones`, `versiones_de_pieza`, `calendario_publicaciones`, `programar_version`). Lo que se guarda por el MCP aparece al momento en el dashboard.
+`mcp/jarvis-mcp.js` da acceso a la memoria y al pipeline: `capturar_idea`, `crear_nota`, `buscar_notas`, `leer_nota`, `listar_notas`, `crear_pieza`, `mover_pieza`, `listar_pipeline`, `anadir_tarea`, `actualizar_tarea`, `completar_tarea`, `listar_tareas`, `borrar_tarea`, `tareas_de_hoy` y `resumen_del_dia`, además de las de Instagram, competencia, Meta Ads, publicar (`guardar_versiones`, `versiones_de_pieza`, `calendario_publicaciones`, `programar_version`) y diseño (`ver_kit_diseno`, `leer_archivo_kit`, `listar_medios`, `listar_disenos`, `ver_diseno`, `crear_diseno`, `guardar_diseno`). Lo que se guarda por el MCP aparece al momento en el dashboard.
 
 - **Claude Code**: el vault ya incluye `.mcp.json`, así que al abrir `claude` dentro del vault tiene el MCP conectado y lee `CLAUDE.md` (la personalidad de JARVIS).
 - **Hermes**: lo conecta **Configurar Hermes** (ver arriba), con `JARVIS_ORIGEN=hermes` para que lo que llegue por Telegram salga marcado como tal.
@@ -138,6 +140,8 @@ npm test         # tests de datos, API y MCP
 ```
 web/             interfaz (Vite + React). Tokens de color en web/src/theme.css
 server/          servidor local (Express + WebSocket), base de datos, vault y lógica de JARVIS
+server/diseno/   Diseño: kit (sistema de diseño), motor (HTML + GSAP → JPG/MP4 con Edge/Chrome y ffmpeg) y diseños
+diseno/          sistema de diseño de ejemplo (el que se usa hasta que importas el tuyo)
 mcp/             MCP jarvis para Claude Code y Hermes
 hermes/          personalidad de JARVIS para Hermes (SOUL.md)
 scripts/         claves, doctor, preparar (lo usa el instalador), configurar-hermes, generador de skills y modo desarrollo
@@ -145,5 +149,5 @@ assets/          icono de JARVIS para el acceso directo
 instalar.ps1     instalador para Windows (también -Reiniciar, -Parar, -Desinstalar)
 vault-template/  plantilla del vault: CLAUDE.md (personalidad), _voz.md y carpetas
 test/            tests (node --test)
-docs/            guías: instalación en Windows, estilo, Instagram, Meta Ads y Hermes
+docs/            guías: instalación en Windows, estilo, Instagram, Meta Ads, Hermes, VPS y Diseño
 ```

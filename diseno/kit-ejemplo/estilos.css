@@ -1,0 +1,38 @@
+/* Kit de ejemplo de JARVIS. Para usar tu marca, importa tu propio sistema de diseño (Contenido → Diseño). */
+@font-face { font-family: 'Inter Kit'; font-weight: 400; font-display: block; src: url(fuentes/inter-latin-400-normal.woff2) format('woff2'); }
+@font-face { font-family: 'Inter Kit'; font-weight: 600; font-display: block; src: url(fuentes/inter-latin-600-normal.woff2) format('woff2'); }
+@font-face { font-family: 'Inter Kit'; font-weight: 800; font-display: block; src: url(fuentes/inter-latin-800-normal.woff2) format('woff2'); }
+@font-face { font-family: 'Inter Kit'; font-weight: 900; font-display: block; src: url(fuentes/inter-latin-900-normal.woff2) format('woff2'); }
+
+:root { --oscuro: #0f1115; --claro: #f1f0ec; --acento: #3d7bff; --acento-claro: #2456c7; --texto-suave: #b4b8c2; --texto-suave-claro: #4a4d55; }
+.slide { position: absolute; inset: 0; overflow: hidden; font-family: 'Inter Kit', system-ui, sans-serif; color: #fff; }
+.bg { position: absolute; inset: 0; }
+.bg-black { background-color: var(--oscuro); background-image: linear-gradient(rgba(255,255,255,.035) 2px, transparent 2px), linear-gradient(90deg, rgba(255,255,255,.035) 2px, transparent 2px); background-size: 135px 135px; }
+.bg-grey { background-color: var(--claro); background-image: linear-gradient(rgba(15,17,21,.05) 2px, transparent 2px), linear-gradient(90deg, rgba(15,17,21,.05) 2px, transparent 2px); background-size: 135px 135px; }
+.on-grey { color: var(--oscuro); }
+.glow { position: absolute; left: 0; right: 0; height: 900px; pointer-events: none; }
+.glow.top { top: -120px; background: radial-gradient(ellipse 55% 50% at 50% 35%, rgba(61,123,255,.22), transparent 70%); }
+.glow.mid { top: 320px; background: radial-gradient(ellipse 60% 50% at 50% 50%, rgba(61,123,255,.18), transparent 72%); }
+.hdr { position: absolute; top: 58px; left: 0; right: 0; display: flex; justify-content: center; align-items: center; gap: 12px; font-weight: 800; font-size: 30px; z-index: 5; }
+.hdr svg { width: 30px; height: 30px; }
+.dots { position: absolute; bottom: 64px; left: 0; right: 0; display: flex; justify-content: center; align-items: center; gap: 9px; z-index: 5; }
+.dots i { width: 9px; height: 9px; border-radius: 50%; background: rgba(255,255,255,.25); }
+.on-grey .dots i { background: rgba(15,17,21,.2); }
+.dots i.on { width: 16px; height: 16px; background: var(--acento); }
+.content { position: absolute; left: 84px; right: 84px; top: 170px; bottom: 150px; display: flex; flex-direction: column; justify-content: center; gap: 34px; }
+.fmt-story .content { top: 270px; bottom: 320px; left: 70px; right: 70px; gap: 48px; }
+
+/* piezas de uso común */
+.titular { font-weight: 900; font-size: 76px; line-height: 1.05; letter-spacing: -0.02em; }
+.fmt-story .titular { font-size: 92px; }
+.etiqueta { font-weight: 800; font-size: 34px; color: var(--acento); }
+.on-grey .etiqueta, .on-grey .acento { color: var(--acento-claro); }
+.acento { color: var(--acento); }
+.cuerpo { font-weight: 600; font-size: 34px; line-height: 1.4; color: var(--texto-suave); }
+.on-grey .cuerpo { color: var(--texto-suave-claro); }
+.fmt-story .cuerpo { font-size: 50px; }
+.tarjeta { background: rgba(255,255,255,.05); border: 2px solid rgba(255,255,255,.14); border-radius: 24px; padding: 30px 34px; }
+.on-grey .tarjeta { background: #fff; border-color: rgba(15,17,21,.08); }
+.fila { display: flex; align-items: center; gap: 16px; font-weight: 700; font-size: 30px; padding: 12px 0; }
+.remate { background: var(--acento); color: #fff; font-weight: 800; font-size: 34px; border-radius: 18px; padding: 22px 30px; text-align: center; }
+.palabra { font-weight: 900; font-size: 170px; line-height: 1; color: var(--acento); text-align: center; letter-spacing: -0.03em; }
