@@ -13,7 +13,9 @@
     "skills": "node scripts/generar-skills.js",
     "hermes": "node --disable-warning=ExperimentalWarning scripts/configurar-hermes.js",
     "doctor": "node --disable-warning=ExperimentalWarning scripts/doctor.js",
-    "claves": "node scripts/claves.js"
+    "claves": "node scripts/claves.js",
+    "exportar": "node --disable-warning=ExperimentalWarning scripts/copia.js exportar",
+    "importar-copia": "node --disable-warning=ExperimentalWarning scripts/copia.js importar"
   },
   "engines": {
     "node": ">=22.5"
