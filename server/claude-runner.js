@@ -12,9 +12,13 @@ const esWindows = process.platform === 'win32';
 // En Windows hay que lanzar con shell (claude puede ser .cmd); comillas para rutas con espacios.
 const citar = (a) => (esWindows && /[\s&()^|<>"]/.test(a) ? `"${a.replace(/"/g, '""')}"` : a);
 
-export function argumentos({ modelo, sesion, mcpConfig, sistema }) {
+// herramientasExtra: permisos de más para una conversación concreta (p. ej. el Laboratorio puede ejecutar
+// python y ffmpeg con reglas "Bash(python:*)"); sin ellos, Bash sigue prohibido. pluginDirs: plugins de Claude Code.
+export function argumentos({ modelo, sesion, mcpConfig, sistema, herramientasExtra = [], pluginDirs = [] }) {
+  const conBash = herramientasExtra.some((h) => /^Bash\(/.test(h));
   const args = ['-p', '--output-format', 'stream-json', '--verbose', '--include-partial-messages',
-    '--permission-mode', 'acceptEdits', '--allowedTools', ...HERRAMIENTAS, '--disallowedTools', 'Bash'];
+    '--permission-mode', 'acceptEdits', '--allowedTools', ...HERRAMIENTAS, ...herramientasExtra, ...(conBash ? [] : ['--disallowedTools', 'Bash'])];
+  for (const d of pluginDirs) args.push('--plugin-dir', d);
   if (modelo) args.push('--model', modelo);
   if (sesion) args.push('--resume', sesion);
   if (mcpConfig) args.push('--mcp-config', mcpConfig);
@@ -47,8 +51,8 @@ const resumenEntrada = (input = {}) => {
  *  {tipo:'herramienta', nombre, detalle} · {tipo:'resultado_herramienta', ok}
  *  {tipo:'fin', texto, coste, duracion, sesion} · {tipo:'error', mensaje}
  */
-export function ejecutar({ prompt, cwd, modelo, sesion, mcpConfig, sistema, bin = process.env.JARVIS_CLAUDE_BIN || 'claude', env = {}, onEvento }) {
-  const args = argumentos({ modelo, sesion, mcpConfig, sistema });
+export function ejecutar({ prompt, cwd, modelo, sesion, mcpConfig, sistema, herramientasExtra, pluginDirs, bin = process.env.JARVIS_CLAUDE_BIN || 'claude', env = {}, onEvento }) {
+  const args = argumentos({ modelo, sesion, mcpConfig, sistema, herramientasExtra, pluginDirs });
   const [cmd, ...pre] = bin.split('|'); // permite "node|ruta/al/simulador.js" en tests
   const child = spawn(citar(cmd), [...pre, ...args].map(citar), {
     cwd,

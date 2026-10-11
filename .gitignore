@@ -10,3 +10,4 @@ Thumbs.db
 data/*.pid
 data/*.vbs
 data/contenido/
+__pycache__/

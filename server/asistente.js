@@ -40,6 +40,17 @@ Cuando la persona dé el guion por bueno o pida guardarlo, guárdalo con crear_n
 - Lee _voz.md y CLAUDE.md antes de escribir. Usa las fases de ver_pipeline.
 - No publicas nada. Responde breve, en español.`,
   },
+  // Laboratorio: clips de testimonios y edición de reels con el plugin «testimonios». Va en su propio carril:
+  // un montaje largo no bloquea el resto de JARVIS. El entorno (carpeta, plugin, permisos) lo pone server/laboratorio.js.
+  laboratorio: {
+    modeloFijo: 'opus',
+    carril: 'laboratorio',
+    sistema: `Estás en el LABORATORIO de JARVIS: conviertes entrevistas de clientes en clips, stories, carruseles en vídeo, portadas y captions con el plugin «testimonios», y editas los reels de la persona.
+- No tienes AskUserQuestion ni SendUserFile: pregunta en el chat (pocas preguntas, con opciones numeradas y una recomendada) y di qué archivos has generado; la persona los ve en el Laboratorio.
+- Las paradas de revisión de las skills se respetan: enseña el texto y ESPERA el visto bueno en el chat antes de renderizar.
+- Cifras y frases literales de la entrevista. Nunca publiques nada.
+- Responde breve, en español sencillo.`,
+  },
   diseno: {
     modeloFijo: 'opus',
     sistema: `Estás en DISEÑO de JARVIS: conviertes guiones en carruseles y stories con el sistema de diseño de la persona (el kit de _diseno/).
@@ -53,7 +64,9 @@ Herramientas del MCP jarvis: ver_kit_diseno (plantillas, guía, ejemplos y regla
   },
 };
 
-export function createAsistente({ db, jarvis, vaultPath, emitir = () => {}, ejecutarImpl = ejecutar }) {
+// entornos: { conversacion: () => ({ cwd, env, pluginDirs, herramientasExtra, sistema }) } para las conversaciones que
+// trabajan fuera del vault (el Laboratorio). Cada conversación con "carril" propio va en paralelo a las demás.
+export function createAsistente({ db, jarvis, vaultPath, emitir = () => {}, ejecutarImpl = ejecutar, entornos = {} }) {
   const q = {
     ins: db.prepare('INSERT INTO enrutamiento (ruta, modelo, etiqueta, canal) VALUES (?, ?, ?, ?)'),
     fin: db.prepare('UPDATE enrutamiento SET ok = ?, duracion_ms = ?, coste = ? WHERE id = ?'),
@@ -64,7 +77,8 @@ export function createAsistente({ db, jarvis, vaultPath, emitir = () => {}, ejec
   };
 
   const sesiones = Object.fromEntries(Object.keys(CONVERSACIONES).map((k) => [k, null])); // id de sesión de Claude Code por conversación
-  let actual = null;     // petición en curso (una a la vez)
+  const actuales = {};   // petición en curso de cada carril (una a la vez por carril)
+  const carrilDe = (conversacion) => CONVERSACIONES[conversacion]?.carril || 'principal';
   let historial = [];    // eventos (para quien abra la pestaña a mitad)
   let n = 0;
   let seq = 0;           // número de evento, para que el navegador no pierda ni duplique nada
@@ -81,7 +95,9 @@ export function createAsistente({ db, jarvis, vaultPath, emitir = () => {}, ejec
     if (!prompt) throw new Error('Falta "texto"');
     const conv = CONVERSACIONES[conversacion];
     if (!conv) throw new Error('Falta "conversacion" válida');
-    if (actual) throw new OcupadoError('JARVIS está terminando otra petición. Espera un momento o cancélala.');
+    const carril = carrilDe(conversacion);
+    if (actuales[carril]) throw new OcupadoError(carril === 'principal' ? 'JARVIS está terminando otra petición. Espera un momento o cancélala.' : 'El Laboratorio está terminando otro trabajo. Espera a que acabe o cancélalo.');
+    const extra = entornos[conversacion]?.() || {};
 
     // Algunas conversaciones van siempre con el mismo modelo (Diseño: Opus, por la calidad del resultado)
     if (!forzarModelo && conv.modeloFijo) forzarModelo = conv.modeloFijo;
@@ -95,10 +111,13 @@ export function createAsistente({ db, jarvis, vaultPath, emitir = () => {}, ejec
     const t0 = Date.now();
     const run = ejecutarImpl({
       prompt: canal === 'voz' ? `${prompt}\n\n(Te hablo por voz: responde breve y natural, como si hablaras.)` : prompt,
-      cwd: vaultPath,
+      cwd: extra.cwd || vaultPath,
+      env: extra.env,
+      pluginDirs: extra.pluginDirs,
+      herramientasExtra: extra.herramientasExtra,
       modelo: decision.modelo,
       sesion: conv.sinMemoria ? null : sesiones[conversacion],
-      sistema: conv.sistema,
+      sistema: [conv.sistema, extra.sistema].filter(Boolean).join('\n\n') || null,
       mcpConfig: mcpConfigDe(vaultPath),
       onEvento: (e) => {
         if (e.tipo === 'inicio' && e.sesion) sesiones[conversacion] = e.sesion;
@@ -106,25 +125,27 @@ export function createAsistente({ db, jarvis, vaultPath, emitir = () => {}, ejec
           if (e.sesion) sesiones[conversacion] = e.sesion;
           q.fin.run(e.tipo === 'fin' ? 1 : 0, e.duracion ?? Date.now() - t0, e.coste ?? null, lastInsertRowid);
           if (e.tipo === 'fin' && decision.actividad) jarvis.registrar(decision.actividad, `JARVIS (${decision.etiqueta}): ${prompt}`, 'dashboard');
-          actual = null;
+          if (actuales[carril]?.id === id) delete actuales[carril];
         }
         enviar({ id, conversacion, ...e });
       },
     });
-    actual = { id, run, decision, conversacion };
-    run.terminado.then(() => { if (actual?.id === id) actual = null; });
+    actuales[carril] = { id, run, decision, conversacion };
+    run.terminado.then(() => { if (actuales[carril]?.id === id) delete actuales[carril]; });
     return { id, ...decision };
   }
 
-  function cancelar() {
-    if (!actual) return { ok: false };
-    actual.run.cancelar();
+  function cancelar({ conversacion = 'principal' } = {}) {
+    const a = actuales[carrilDe(conversacion)];
+    if (!a) return { ok: false };
+    a.run.cancelar();
     return { ok: true };
   }
 
   function nuevaSesion({ conversacion = 'principal' } = {}) {
     if (!(conversacion in sesiones)) throw new Error('Falta "conversacion" válida');
-    if (actual?.conversacion === conversacion) actual.run.cancelar();
+    const a = actuales[carrilDe(conversacion)];
+    if (a?.conversacion === conversacion) a.run.cancelar();
     sesiones[conversacion] = null;
     historial = historial.filter((e) => e.conversacion !== conversacion);
     enviar({ id: 0, conversacion, tipo: 'sesion_nueva' });
@@ -133,8 +154,8 @@ export function createAsistente({ db, jarvis, vaultPath, emitir = () => {}, ejec
 
   function estado({ conversacion = 'principal' } = {}) {
     return {
-      ocupado: Boolean(actual),
-      ocupadoAqui: actual?.conversacion === conversacion,
+      ocupado: Boolean(actuales[carrilDe(conversacion)]),
+      ocupadoAqui: actuales[carrilDe(conversacion)]?.conversacion === conversacion,
       sesion: sesiones[conversacion] ?? null,
       eventos: historial.filter((e) => e.conversacion === conversacion),
     };
