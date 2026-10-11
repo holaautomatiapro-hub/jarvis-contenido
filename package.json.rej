@@ -1,0 +1,10 @@
+diff a/package.json b/package.json	(rejected hunks)
+@@ -14,6 +14,8 @@
+     "hermes": "node --disable-warning=ExperimentalWarning scripts/configurar-hermes.js",
+     "doctor": "node --disable-warning=ExperimentalWarning scripts/doctor.js",
+     "claves": "node scripts/claves.js",
++    "exportar": "node --disable-warning=ExperimentalWarning scripts/copia.js exportar",
++    "importar-copia": "node --disable-warning=ExperimentalWarning scripts/copia.js importar",
+     "importar-crm": "node --disable-warning=ExperimentalWarning scripts/importar-crm.js",
+     "carrusel": "node --disable-warning=ExperimentalWarning scripts/carrusel.js"
+   },

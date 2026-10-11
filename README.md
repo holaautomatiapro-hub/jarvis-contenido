@@ -37,6 +37,10 @@ Después, ábrelo con el acceso directo **JARVIS** del escritorio o en http://lo
 - La ficha de cada pieza guarda tipo, estado, fecha y hora, caption, enlace al vídeo y sus archivos.
 - **Publicar en Instagram** (con Instagram conectado con Facebook): marca «Publicar sola en Instagram» y se publica a su hora como foto, reel, carrusel o story, o pulsa «Publicar ahora». Solo lo activas tú desde el dashboard (Hermes y Claude Code no pueden) y JARVIS tiene que estar abierto. Para las demás redes, la adaptas en **Publicar** y la subes tú. Guía: [docs/INSTAGRAM.md](docs/INSTAGRAM.md#publicar-en-instagram-desde-jarvis).
 
+## JARVIS en un VPS (24 h)
+
+¿Quieres que publique y conteste por Telegram con el PC apagado? Instálalo en un VPS Linux y ábrelo desde tu PC o tu móvil por una red privada (Tailscale): **[docs/VPS.md](docs/VPS.md)**. `npm run exportar` y `npm run importar-copia` pasan todos tus datos de un equipo a otro.
+
 ## Hablar con JARVIS (pestaña Voz)
 
 Necesitas **Claude Code** instalado y con tu sesión iniciada: abre una terminal, ejecuta `claude` una vez y entra con tu cuenta (Pro o Max). JARVIS lo usa en segundo plano, dentro de tu vault, así que lee `CLAUDE.md` y tiene el MCP `jarvis` conectado.

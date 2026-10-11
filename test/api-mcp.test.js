@@ -113,3 +113,24 @@ describe('MCP jarvis', () => {
     assert.match(r.data, /fuera del vault/);
   });
 });
+
+test('en un VPS solo se abre desde las direcciones de JARVIS_HOSTS (Tailscale)', async () => {
+  const antes = process.env.JARVIS_HOSTS;
+  process.env.JARVIS_HOSTS = 'jarvis.tail123.ts.net';
+  const srv = http.createServer();
+  await new Promise((ok) => srv.listen(0, '127.0.0.1', ok));
+  const port = srv.address().port;
+  srv.on('request', createApp({ jarvis, port, status: async () => [] }));
+  const pedir = (host, extra = {}) => new Promise((ok, ko) => {
+    http.request({ host: '127.0.0.1', port, path: '/api/tareas', method: extra.method || 'GET', headers: { host, ...(extra.headers || {}) } }, (r) => { r.resume(); ok(r.statusCode); }).on('error', ko).end(extra.body);
+  });
+  try {
+    assert.equal(await pedir('jarvis.tail123.ts.net'), 200);
+    assert.equal(await pedir('JARVIS.tail123.ts.net'), 200, 'sin distinguir mayúsculas');
+    assert.equal(await pedir('otra.ejemplo.com'), 403);
+    assert.equal(await pedir('jarvis.tail123.ts.net', { method: 'POST', headers: { origin: 'https://malo.example', 'content-type': 'application/json' }, body: '{}' }), 403, 'CSRF');
+  } finally {
+    srv.close();
+    if (antes === undefined) delete process.env.JARVIS_HOSTS; else process.env.JARVIS_HOSTS = antes;
+  }
+});

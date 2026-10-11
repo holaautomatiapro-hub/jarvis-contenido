@@ -5,7 +5,7 @@ import { createServer } from 'node:http';
 import { existsSync, mkdirSync, writeFileSync, rmSync, readFileSync } from 'node:fs';
 import { fileURLToPath } from 'node:url';
 import { WebSocketServer } from 'ws';
-import { ROOT, getConfig } from './config.js';
+import { ROOT, getConfig, hostsPermitidos } from './config.js';
 import { openDb } from './db.js';
 import { createVault, ensureVault, VaultError } from './vault.js';
 import { createJarvis, JarvisError, TareaError } from './jarvis.js';
@@ -36,8 +36,8 @@ export function createApp({ jarvis, archivos, publicadorIg, asistente, instagram
   const app = express();
 
   // Solo se acepta tráfico de este mismo PC (protege contra webs maliciosas que apunten a localhost)
-  const hostsOk = new Set([`localhost:${port}`, `127.0.0.1:${port}`, `[::1]:${port}`, 'localhost:5173', '127.0.0.1:5173']);
-  app.use((req, res, next) => (hostsOk.has(req.headers.host) ? next() : res.status(403).send('Host no permitido')));
+  const hostsOk = hostsPermitidos(port);
+  app.use((req, res, next) => (hostsOk.has(String(req.headers.host || '').toLowerCase()) ? next() : res.status(403).send('Host no permitido')));
   // Y ninguna otra web abierta en el navegador puede pedirle cambios (CSRF): el navegador siempre manda
   // Origin en un POST/PATCH/DELETE entre sitios. El MCP y los scripts locales no lo mandan.
   app.use((req, res, next) => {
@@ -77,7 +77,12 @@ export function createApp({ jarvis, archivos, publicadorIg, asistente, instagram
   // Instagram: conexión, sincronización y dashboards
   if (instagram) {
     const estados = new Map(); // state del OAuth → caducidad
-    const redirectUri = (req) => `http://${req.headers.host.startsWith('127.') ? `127.0.0.1:${port}` : `localhost:${port}`}/api/instagram/callback`;
+    // En el PC, localhost; en un VPS (Tailscale), su dirección https: hay que añadirla también en la app de Meta
+    const redirectUri = (req) => {
+      const host = String(req.headers.host || '');
+      if (/^(localhost|127\.0\.0\.1|\[::1\])(:\d+)?$/.test(host)) return `http://${host.startsWith('127.') ? `127.0.0.1:${port}` : `localhost:${port}`}/api/instagram/callback`;
+      return `https://${host}/api/instagram/callback`;
+    };
     const conMensaje = (fn) => async (req) => { try { return await fn(req); } catch (e) { if (!(e instanceof MetaError)) e.publico = true; throw e; } };
 
     app.get('/api/instagram/estado', h(() => instagram.estado()));
@@ -325,7 +330,7 @@ function main() {
   publicadorIg.iniciar();
   const server = createServer(createApp({ jarvis, archivos, publicadorIg, asistente, instagram, competencia, ads, publicar, hermes, jobs, port: cfg.port, onChange }));
   // Solo el propio dashboard puede escuchar los eventos (otra web abierta en el navegador, no)
-  const local = new Set([`localhost:${cfg.port}`, `127.0.0.1:${cfg.port}`, `[::1]:${cfg.port}`, 'localhost:5173', '127.0.0.1:5173']);
+  const local = hostsPermitidos(cfg.port);
   wss = new WebSocketServer({ server, path: '/ws', verifyClient: ({ origin, req }) => local.has(req.headers.host) && (!origin || local.has(origin.replace(/^https?:\/\//, ''))) });
   wss.on('connection', (ws) => ws.send(JSON.stringify({ type: 'hola', at: Date.now() })));
 
