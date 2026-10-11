@@ -1,6 +1,6 @@
 # Kit de ejemplo de JARVIS
 
-Este es el sistema de diseño que JARVIS usa mientras no importas el tuyo. Sirve para probar: para que los carruseles salgan con **tu** marca, prepara tu kit (ver «Tu propio sistema de diseño» en `docs/DISENO.md`) e impórtalo desde **Contenido → Diseño**.
+Este es el sistema de diseño que JARVIS usa mientras no importas el tuyo. Sirve para probar: para que los carruseles salgan con **tu** marca, prepara tu kit (ver «Tu propio sistema de diseño» en `docs/DISENO.md`) e impórtalo desde **Laboratorio → Diseño**.
 
 ## Marca
 - Cuenta: `@tucuenta`. Español de España, tuteo, frases cortas.

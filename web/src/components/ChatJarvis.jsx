@@ -123,7 +123,7 @@ export default function ChatJarvis({ conversacion, titulo, subtitulo, placeholde
           aria-label={placeholder}
         />
         {ocupado
-          ? <button type="button" className="ask-send parar" onClick={() => api('/api/jarvis/cancelar', { method: 'POST' })} aria-label="Cancelar">■</button>
+          ? <button type="button" className="ask-send parar" onClick={() => api('/api/jarvis/cancelar', { method: 'POST', body: { conversacion } })} aria-label="Cancelar">■</button>
           : <button className="ask-send" aria-label="Enviar"><Icon name="send" size={15} /></button>}
       </form>
     </div>

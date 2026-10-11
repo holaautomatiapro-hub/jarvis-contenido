@@ -4,6 +4,7 @@ import Captura from './components/Captura.jsx';
 import Inicio from './views/Inicio.jsx';
 import Tareas from './views/Tareas.jsx';
 import Contenido from './views/Contenido.jsx';
+import Laboratorio from './views/Laboratorio.jsx';
 import Notas from './views/Notas.jsx';
 import Voz from './views/Voz.jsx';
 import Skills from './views/Skills.jsx';
@@ -53,6 +54,7 @@ export default function App() {
   if (tab === 'inicio') vista = <Inicio data={inicio} onAsk={(t) => { setPendiente(t); go('voz'); }} acciones={acciones} recargar={recargarInicio} />;
   else if (tab === 'tareas') vista = <Tareas />;
   else if (tab === 'contenido') vista = <Contenido onCaptura={setCaptura} />;
+  else if (tab === 'laboratorio') vista = <Laboratorio />;
   else if (tab === 'notas') vista = <Notas onCaptura={setCaptura} />;
   else if (tab === 'voz') vista = <Voz sistema={inicio.sistema} pendiente={pendiente} onConsumido={() => setPendiente(null)} />;
   else if (tab === 'skills') vista = <Skills />;

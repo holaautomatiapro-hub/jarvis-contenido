@@ -1,6 +1,6 @@
 # Diseño: del guion al carrusel o las stories, con tu sistema de diseño
 
-En **Contenido → Diseño**, JARVIS convierte un guion en un **carrusel** (1080 × 1350) o en **stories** (1080 × 1920) con **tu** sistema de diseño: tus colores, tus tipografías, tus plantillas. Claude lo diseña, JARVIS lo dibuja y revisa que nada se salga ni se pise, y tú lo exportas a la biblioteca como **imágenes (JPG)** o **vídeo (MP4)** para programarlo o publicarlo en Instagram.
+En **Laboratorio → Diseño**, JARVIS convierte un guion en un **carrusel** (1080 × 1350) o en **stories** (1080 × 1920) con **tu** sistema de diseño: tus colores, tus tipografías, tus plantillas. Claude lo diseña, JARVIS lo dibuja y revisa que nada se salga ni se pise, y tú lo exportas a la biblioteca como **imágenes (JPG)** o **vídeo (MP4)** para programarlo o publicarlo en Instagram.
 
 ## Cómo se usa
 
@@ -20,7 +20,7 @@ Desde Telegram, Hermes también puede crear y escribir diseños con las mismas h
 
 ## Tu propio sistema de diseño
 
-Mientras no importes el tuyo, JARVIS usa uno de ejemplo (`diseno/kit-ejemplo`). Tu sistema es un **.zip** que se importa en **Contenido → Diseño → Importar mi sistema (.zip)**:
+Mientras no importes el tuyo, JARVIS usa uno de ejemplo (`diseno/kit-ejemplo`). Tu sistema es un **.zip** que se importa en **Laboratorio → Diseño → Importar mi sistema (.zip)**:
 - Se guarda en tu vault, en `_diseno/`. Es tuyo: no va al repositorio de JARVIS.
 - Si importas otro, el anterior se guarda en `data/kits-anteriores/`.
 

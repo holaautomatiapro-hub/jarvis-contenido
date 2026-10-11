@@ -6,6 +6,7 @@ export const TABS = [
   { id: 'inicio', label: 'Inicio', icon: 'home' },
   { id: 'tareas', label: 'Tareas', icon: 'tasks' },
   { id: 'contenido', label: 'Contenido', icon: 'layers' },
+  { id: 'laboratorio', label: 'Laboratorio', icon: 'flask' },
   { id: 'notas', label: 'Notas', icon: 'notes' },
   { id: 'voz', label: 'Voz', icon: 'voice' },
   { id: 'skills', label: 'Skills', icon: 'skills' },

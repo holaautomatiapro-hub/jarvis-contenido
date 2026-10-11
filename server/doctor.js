@@ -5,6 +5,7 @@ import { ROOT, getConfig } from './config.js';
 import { leerEnv, ENV_PATH } from './env-archivo.js';
 import { leerEstado as estadoHermes, hermesHome } from './integrations/hermes.js';
 import { createKit } from './diseno/kit.js';
+import { createLaboratorio, carpetaPorDefecto as carpetaLaboratorio } from './laboratorio.js';
 
 // Revisión de la instalación: qué está listo y qué falta, con el arreglo de cada cosa.
 // Lo usan `npm run doctor` y el instalador al terminar.
@@ -72,8 +73,13 @@ export async function revisar({
   add(c.ads ? 'ok' : 'aviso', 'Meta Ads', c.ads ? '' : 'Falta la cuenta publicitaria (act_…).', 'Pestaña Meta Ads, o npm run claves  ·  guía: docs/META-ADS.md');
 
   const kit = createKit({ vaultPath: cfg.vaultPath }).estado();
-  if (kit.error) add('aviso', 'Sistema de diseño', kit.error, 'Contenido → Diseño → Importar mi sistema (.zip)');
-  else add(kit.propio ? 'ok' : 'aviso', 'Sistema de diseño', kit.propio ? kit.nombre : 'De ejemplo: importa el tuyo para diseñar con tu marca.', 'Contenido → Diseño → Importar mi sistema (.zip)  ·  guía: docs/DISENO.md');
+  if (kit.error) add('aviso', 'Sistema de diseño', kit.error, 'Laboratorio → Diseño → Importar mi sistema (.zip)');
+  else add(kit.propio ? 'ok' : 'aviso', 'Sistema de diseño', kit.propio ? kit.nombre : 'De ejemplo: importa el tuyo para diseñar con tu marca.', 'Laboratorio → Diseño → Importar mi sistema (.zip)  ·  guía: docs/DISENO.md');
+
+  const lab = createLaboratorio({ dir: carpetaLaboratorio({ ...procesoEnv, ...e }), env: { ...procesoEnv, ...e } }).estado();
+  if (!lab.plugin.instalado) add('aviso', 'Laboratorio (testimonios y reels)', 'Falta tu plugin de testimonios.', 'Laboratorio → Testimonios → Importar (.zip)  ·  guía: docs/LABORATORIO.md');
+  else if (!lab.python) add('aviso', 'Laboratorio (testimonios y reels)', 'Falta Python con las librerías del plugin.', plataforma === 'win32' ? 'guía: docs/LABORATORIO.md' : 'bash scripts/preparar-laboratorio.sh');
+  else add(lab.marca.verificado ? 'ok' : 'aviso', 'Laboratorio (testimonios y reels)', lab.marca.verificado ? `Plugin ${lab.plugin.nombre} y marca ${lab.marca.usuario || ''}` : 'Falta fijar tu marca.', 'Laboratorio → Testimonios → Configurar mi marca');
 
   const h = estadoHermes({ home: hermesHome({ ...procesoEnv, ...e }, plataforma), vaultPath: cfg.vaultPath });
   if (!h.instalado) add('aviso', 'Hermes (Telegram)', 'Sin instalar (opcional).', 'Guía: docs/HERMES.md');

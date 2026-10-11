@@ -31,12 +31,13 @@ import { createMotor } from './diseno/motor.js';
 import { createDisenos } from './diseno/disenos.js';
 import { createRecordatorios } from './recordatorios.js';
 import { promptReplicarCompetencia, promptReplicarPropia } from './replicar.js';
+import { createLaboratorio, carpetaPorDefecto } from './laboratorio.js';
 
 dotenv.config({ path: path.join(ROOT, '.env'), quiet: true });
 
 const DIST = path.join(ROOT, 'web', 'dist');
 
-export function createApp({ jarvis, archivos, publicadorIg, asistente, instagram, competencia, ads, publicar, hermes, jobs, kit, disenos, recordatorios, port, onChange = () => {}, status, tts = sintetizar }) {
+export function createApp({ jarvis, archivos, publicadorIg, asistente, instagram, competencia, ads, publicar, hermes, jobs, kit, disenos, recordatorios, laboratorio, port, onChange = () => {}, status, tts = sintetizar }) {
   const estadoSistema = status || (() => systemStatus({ vaultPath: jarvis.vault.base, instagram: Boolean(instagram?.estado().conectado), ads: Boolean(ads?.estado().conectado && ads?.estado().cuenta), hermes: Boolean(hermes?.estado().gateway.online) }));
   const app = express();
 
@@ -259,6 +260,26 @@ export function createApp({ jarvis, archivos, publicadorIg, asistente, instagram
   app.get('/api/config', (_req, res) => res.json({ vault: jarvis.vault.nombre, vaultPath: jarvis.vault.base }));
 
   // Tareas
+  // Laboratorio: clips de testimonios y edición de reels con el plugin «testimonios»
+  if (laboratorio) {
+    app.get('/api/laboratorio', h(() => ({ ...laboratorio.estado(), ...laboratorio.resultados(), trabajando: Boolean(asistente?.estado({ conversacion: 'laboratorio' }).ocupadoAqui) })));
+    app.get('/api/laboratorio/requisitos', h(() => laboratorio.requisitos()));
+    app.post('/api/laboratorio/plugin', express.raw({ type: () => true, limit: '200mb' }), h((req) => laboratorio.importarPlugin(req.body), true));
+    app.post('/api/laboratorio/subir', h((req) => laboratorio.subir(req, { tipo: String(req.query.tipo || ''), nombre: String(req.query.nombre || ''), cliente: String(req.query.cliente || '') }), true));
+    app.get('/api/laboratorio/archivo', (req, res) => {
+      let a;
+      try { a = laboratorio.archivo(String(req.query.ruta || '')); } catch (e) { return res.status(404).json({ error: e.message }); }
+      res.type(a.mime).sendFile(a.abs, { dotfiles: 'allow', headers: { 'Cache-Control': 'private, no-cache' } });
+    });
+    app.get('/api/laboratorio/texto', h((req) => laboratorio.texto(String(req.query.ruta || ''))));
+    app.delete('/api/laboratorio/archivo', h((req) => laboratorio.borrar(String(req.query.ruta || '')), true));
+    app.post('/api/laboratorio/biblioteca', h((req) => laboratorio.aBiblioteca(req.body || {}), true));
+    app.post('/api/laboratorio/empezar', h((req) => {
+      if (!asistente) throw Object.assign(new Error('JARVIS (Claude Code) no está disponible'), { publico: true });
+      return asistente.preguntar({ conversacion: 'laboratorio', texto: laboratorio.prompt(req.body?.tipo, req.body?.datos || {}) });
+    }));
+  }
+
   // Fases del pipeline de contenido (configurables)
   app.get('/api/pipeline', h(() => jarvis.pipeline.fases()));
   app.put('/api/pipeline', h((req) => jarvis.pipeline.guardar(req.body?.fases, { mover: req.body?.mover || {} }), true));
@@ -358,7 +379,7 @@ export function createApp({ jarvis, archivos, publicadorIg, asistente, instagram
   // JARVIS (Claude Code + JEV). La respuesta llega en directo por el WebSocket.
   if (asistente) {
     app.post('/api/jarvis/preguntar', h((req) => asistente.preguntar(req.body || {})));
-    app.post('/api/jarvis/cancelar', h(() => asistente.cancelar()));
+    app.post('/api/jarvis/cancelar', h((req) => asistente.cancelar(req.body || {})));
     app.post('/api/jarvis/nueva-sesion', h((req) => asistente.nuevaSesion(req.body || {})));
     app.get('/api/jarvis/estado', h((req) => asistente.estado({ conversacion: req.query.conversacion || 'principal' })));
     app.get('/api/jarvis/enrutamiento', h(() => asistente.enrutamiento()));
@@ -404,7 +425,9 @@ function main() {
   const onChange = () => emitir({ type: 'cambio', at: Date.now() });
   // Cuando JARVIS termina, el resto del dashboard se refresca (puede haber guardado ideas, tareas…)
   let disenos = null;
-  const asistente = createAsistente({ db, jarvis, vaultPath: cfg.vaultPath, emitir: (e) => { emitir(e); if (e.tipo === 'fin') onChange(); disenos?.alEventoClaude(e); } });
+  const laboratorio = createLaboratorio({ dir: carpetaPorDefecto(), archivos, jarvis, log: (m) => console.log(`  [Laboratorio] ${m}`) });
+  try { laboratorio.iniciar(); } catch (e) { console.warn(`  [Laboratorio] ${e.message}`); }
+  const asistente = createAsistente({ db, jarvis, vaultPath: cfg.vaultPath, entornos: { laboratorio: () => laboratorio.entorno() }, emitir: (e) => { emitir(e); if (e.tipo === 'fin') onChange(); disenos?.alEventoClaude(e); } });
   const instagram = createInstagram({ db, vault: jarvis.vault, alCambiar: onChange });
   const competencia = createCompetencia({ db, instagram, vault: jarvis.vault, alCambiar: onChange });
   const ads = createAds({ db, instagram, alCambiar: onChange });
@@ -419,7 +442,7 @@ function main() {
   if (process.platform !== 'win32') setTimeout(() => motor.preparar(), 5000).unref();
   disenos = createDisenos({ db, jarvis, kit, motor, archivos, previasDir: path.join(cfg.vaultPath, '.jarvis', 'disenos'), asistente, emitir, alCambiar: onChange });
   const recordatorios = createRecordatorios({ db });
-  const server = createServer(createApp({ jarvis, archivos, publicadorIg, asistente, instagram, competencia, ads, publicar, hermes, jobs, kit, disenos, recordatorios, port: cfg.port, onChange }));
+  const server = createServer(createApp({ jarvis, archivos, publicadorIg, asistente, instagram, competencia, ads, publicar, hermes, jobs, kit, disenos, recordatorios, laboratorio, port: cfg.port, onChange }));
   // Solo el propio dashboard puede escuchar los eventos (otra web abierta en el navegador, no)
   const local = hostsPermitidos(cfg.port);
   wss = new WebSocketServer({ server, path: '/ws', verifyClient: ({ origin, req }) => local.has(req.headers.host) && (!origin || local.has(origin.replace(/^https?:\/\//, ''))) });

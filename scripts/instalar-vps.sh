@@ -57,11 +57,22 @@ paso "Navegador para la sección Diseño"
 LOG_CHROMIUM="$(mktemp)"
 if npx --yes playwright-core install --with-deps chromium >"$LOG_CHROMIUM" 2>&1; then ok "Chromium listo"
 else
-  aviso "No se ha podido instalar Chromium: Contenido → Diseño no podrá dibujar. Esto es lo que ha fallado:"
+  aviso "No se ha podido instalar Chromium: Laboratorio → Diseño no podrá dibujar. Esto es lo que ha fallado:"
   tail -n 8 "$LOG_CHROMIUM" | sed 's/^/      /'
   aviso "Vuelve a probar con:  cd $DIR && npx playwright-core install --with-deps chromium"
 fi
 rm -f "$LOG_CHROMIUM"
+
+paso "Laboratorio (testimonios y reels)"
+# Python con las librerías del plugin de testimonios y el modelo de transcripción (~2 GB la primera vez)
+LOG_LAB="$(mktemp)"
+if bash "$DIR/scripts/preparar-laboratorio.sh" >"$LOG_LAB" 2>&1; then sed 's/^/  /' "$LOG_LAB" | grep -F '✓' || true; ok "Laboratorio listo en $HOME/JARVIS-Laboratorio"
+else
+  aviso "No se ha podido preparar el Laboratorio (testimonios y reels). Esto es lo que ha fallado:"
+  tail -n 8 "$LOG_LAB" | sed 's/^/      /'
+  aviso "Vuelve a probar con:  bash $DIR/scripts/preparar-laboratorio.sh"
+fi
+rm -f "$LOG_LAB"
 
 paso "Claude Code"
 if ! command -v claude >/dev/null; then $SUDO npm install -g @anthropic-ai/claude-code --loglevel=error >/dev/null; fi

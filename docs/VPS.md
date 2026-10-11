@@ -22,7 +22,7 @@ curl -fsSL https://raw.githubusercontent.com/holaautomatiapro-hub/jarvis-conteni
 bash instalar-vps.sh
 ```
 
-El script instala Node 22, JARVIS (en `~/JARVIS`), Chromium (para dibujar los diseños de Contenido → Diseño), Claude Code y Tailscale, y deja JARVIS como servicio: arranca solo y se reinicia si se cae.
+El script instala Node 22, JARVIS (en `~/JARVIS`), Chromium (para dibujar los diseños de Laboratorio → Diseño), lo que necesita el Laboratorio para testimonios y reels (ffmpeg, Python con sus librerías y el modelo de transcripción, ver [LABORATORIO.md](LABORATORIO.md)), Claude Code y Tailscale, y deja JARVIS como servicio: arranca solo y se reinicia si se cae.
 
 ## 3. Conecta Tailscale
 
