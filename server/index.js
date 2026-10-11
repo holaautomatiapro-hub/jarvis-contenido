@@ -220,6 +220,7 @@ export function createApp({ jarvis, archivos, publicadorIg, asistente, instagram
   };
   app.post('/api/piezas', h((req) => conInstagram(jarvis.crearPieza({ ...(req.body || {}), origen: 'dashboard' }), req.body), true));
   app.patch('/api/piezas/:id', h((req) => conInstagram(jarvis.actualizarPieza(req.params.id, req.body || {}), req.body), true));
+  app.post('/api/piezas/:id/duplicar', h((req) => jarvis.duplicarPieza(req.params.id), true));
   app.post('/api/piezas/:id/instagram/ahora', h((req) => {
     if (!publicadorIg) throw new PublicarError('La publicación en Instagram no está disponible');
     return publicadorIg.publicarAhora(req.params.id);

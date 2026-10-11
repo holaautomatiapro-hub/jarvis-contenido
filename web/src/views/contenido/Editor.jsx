@@ -54,11 +54,12 @@ function Pildoras({ opciones, valor, onCambio, color }) {
 }
 
 // ---------- Publicar en Instagram (solo si tú marcas la casilla) ----------
-function CajaInstagram({ ig, pieza, plan, marcado, onMarcar, onAhora, onConvertir, ocupado, texto = 'Publicar sola en Instagram el día y la hora de arriba' }) {
+function CajaInstagram({ ig, pieza, plan, marcado, onMarcar, onAhora, onConvertir, onRepublicar, ocupado, texto = 'Publicar sola en Instagram el día y la hora de arriba' }) {
   if (pieza.ig_estado === 'publicado') {
     return (
       <div className="caja-ig ok">
         <Icon name="instagram" size={14} /> Publicada en Instagram{pieza.ig_permalink && <> · <a href={pieza.ig_permalink} target="_blank" rel="noreferrer">verla ↗</a></>}
+        {onRepublicar && <button type="button" className="link-btn caja-ig-repub" onClick={onRepublicar} disabled={ocupado}>Volver a publicar otro día</button>}
       </div>
     );
   }
@@ -80,7 +81,7 @@ function CajaInstagram({ ig, pieza, plan, marcado, onMarcar, onAhora, onConverti
 }
 
 // ---------- Ficha de una pieza: nueva o para editar ----------
-export function EditorContenido({ pieza, carpetas, ig, onClose, onGuardado, onVisor }) {
+export function EditorContenido({ pieza, carpetas, ig, onClose, onGuardado, onVisor, onRepublicar }) {
   const nueva = !pieza.id;
   const [d, setD] = useState(() => ({
     titulo: pieza.titulo || '', carpeta: pieza.carpeta || '', formato: tipoDe(pieza.formato)?.id || pieza.formato || 'Reel',
@@ -224,7 +225,7 @@ export function EditorContenido({ pieza, carpetas, ig, onClose, onGuardado, onVi
             <input className="campo" value={d.video_url} onChange={cambia('video_url')} placeholder="https://drive.google.com/… o el enlace de la publicación" />
             {/^https?:\/\//i.test(d.video_url) && <a className="btn btn-sec" href={d.video_url} target="_blank" rel="noreferrer">↗ Abrir</a>}
           </div>
-          <CajaInstagram ig={ig} pieza={pieza} plan={plan} marcado={d.publicar_ig} onMarcar={marcarIg} ocupado={ocupado} onAhora={conIg ? () => guardar(null, { ahora: true }) : null} onConvertir={convertirAJpg} />
+          <CajaInstagram ig={ig} pieza={pieza} plan={plan} marcado={d.publicar_ig} onMarcar={marcarIg} ocupado={ocupado} onAhora={conIg ? () => guardar(null, { ahora: true }) : null} onConvertir={convertirAJpg} onRepublicar={!nueva && onRepublicar ? () => { cerrar(); onRepublicar(pieza); } : null} />
           <div className="aviso-publicar">
             <Icon name="publish" size={14} color="var(--accent-2)" />
             <span>{conIg ? 'Si no marcas la casilla, JARVIS no publica nada.' : 'JARVIS no publica por ti.'} Para las demás redes, adapta el texto en <a href="#publicar" onClick={cerrar}>Publicar</a> y súbela tú.</span>

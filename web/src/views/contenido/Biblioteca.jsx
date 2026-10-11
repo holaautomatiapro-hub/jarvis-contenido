@@ -1,6 +1,9 @@
 import { useEffect, useMemo, useRef, useState } from 'react';
 import Icon from '../../components/Icon.jsx';
 import { api, normaliza } from '../../lib/api.js';
+import { diaCorto } from '../../lib/fechas.js';
+
+const PUBLICADOS = '__publicados';
 import { Miniatura, Modal, esMedio, esVideo, mimeDe, ordenNatural, subirArchivo, tamanoLegible, textoTipo, tituloDeArchivo } from './comun.jsx';
 
 // Lee lo que se suelta: archivos sueltos y carpetas enteras (con subcarpetas)
@@ -145,7 +148,7 @@ function VentanaCarpeta({ carpeta, quedan, carpetas, onCancelar, onSaltar, onHec
 }
 
 // ---------- Biblioteca: lo que aún no tiene día ----------
-export function Biblioteca({ piezas, carpetas, onAbrir, onProgramar, recargar }) {
+export function Biblioteca({ piezas, publicados = [], carpetas, onAbrir, onProgramar, onRepublicar, recargar }) {
   const [abierta, setAbierta] = useState(null); // null = todas · '' = sin carpeta · nombre
   const [busca, setBusca] = useState('');
   const [marcadas, setMarcadas] = useState([]); // en el orden en que se marcan (= orden del carrusel)
@@ -160,11 +163,19 @@ export function Biblioteca({ piezas, carpetas, onAbrir, onProgramar, recargar })
 
   const lista = useMemo(() => {
     const b = normaliza(busca.trim());
+    // «Publicados»: lo que ya salió (aunque tenga fecha), para volver a subirlo otro día
+    if (abierta === PUBLICADOS) {
+      return publicados.filter((p) => !b || normaliza(`${p.titulo}\n${p.caption || ''}`).includes(b))
+        .sort((a, b2) => String(b2.ig_publicado_en || b2.fecha || '').localeCompare(String(a.ig_publicado_en || a.fecha || '')) || b2.id - a.id);
+    }
     return piezas
       .filter((p) => abierta === null || (abierta === '' ? !p.carpeta : p.carpeta === abierta))
       .filter((p) => !b || normaliza(`${p.titulo}\n${p.caption || ''}`).includes(b))
       .sort((a, b2) => b2.id - a.id);
-  }, [piezas, abierta, busca]);
+  }, [piezas, publicados, abierta, busca]);
+  const verPublicados = abierta === PUBLICADOS;
+  // La carpeta abierta de verdad («Publicados» es una vista, no una carpeta)
+  const carpeta = verPublicados ? null : abierta;
   const sinCarpeta = piezas.filter((p) => !p.carpeta).length;
   const enCarpeta = (n) => piezas.filter((p) => p.carpeta === n).length;
 
@@ -175,7 +186,7 @@ export function Biblioteca({ piezas, carpetas, onAbrir, onProgramar, recargar })
       setEstado(`Subiendo ${i + 1} de ${medios.length}…`);
       try {
         const a = await subirArchivo(medios[i]);
-        await api('/api/piezas', { method: 'POST', body: { titulo: tituloDeArchivo(a.nombre), formato: esVideo(a) ? 'Reel' : 'Post', estado: 'editar', carpeta: abierta || null, archivos: [a] } });
+        await api('/api/piezas', { method: 'POST', body: { titulo: tituloDeArchivo(a.nombre), formato: esVideo(a) ? 'Reel' : 'Post', estado: 'editar', carpeta: carpeta || null, archivos: [a] } });
       } catch (e) { errs.push(e.message); }
     }
     setEstado(null);
@@ -239,7 +250,7 @@ export function Biblioteca({ piezas, carpetas, onAbrir, onProgramar, recargar })
               <>
                 <Icon name="share" size={22} color="var(--accent-2)" />
                 <b>Arrastra aquí tus vídeos y fotos, o carpetas enteras</b>
-                <span className="ayuda">{abierta ? `Lo que subas suelto irá a la carpeta «${abierta}».` : 'Con una carpeta podrás ordenar sus archivos y elegir si es un carrusel o stories.'}</span>
+                <span className="ayuda">{carpeta ? `Lo que subas suelto irá a la carpeta «${carpeta}».` : 'Con una carpeta podrás ordenar sus archivos y elegir si es un carrusel o stories.'}</span>
                 <div style={{ display: 'flex', gap: 8, marginTop: 6 }}>
                   <button className="btn btn-sec" onClick={() => inputArchivos.current?.click()}>Elegir archivos</button>
                   <button className="btn btn-sec" onClick={() => inputCarpeta.current?.click()}>Añadir una carpeta</button>
@@ -253,6 +264,7 @@ export function Biblioteca({ piezas, carpetas, onAbrir, onProgramar, recargar })
 
       <div className="carpetas-chips">
         <button className={`chip${abierta === null ? ' on' : ''}`} onClick={() => setAbierta(null)}>Todas <span className="cuenta">{piezas.length}</span></button>
+        {publicados.length > 0 && <button className={`chip chip-publicados${verPublicados ? ' on' : ''}`} onClick={() => { setAbierta(PUBLICADOS); setMarcadas([]); }} title="Lo que ya publicaste, para volver a subirlo otro día"><Icon name="checkCircle" />Publicados <span className="cuenta">{publicados.length}</span></button>}
         {carpetas.length > 0 && <button className={`chip${abierta === '' ? ' on' : ''}`} onClick={() => setAbierta('')}>Sin carpeta <span className="cuenta">{sinCarpeta}</span></button>}
         {carpetas.map((c) => (
           <button key={c.nombre} className={`chip${abierta === c.nombre ? ' on' : ''}`} onClick={() => setAbierta(c.nombre)}><Icon name="folder" />{c.nombre} <span className="cuenta">{enCarpeta(c.nombre)}</span></button>
@@ -266,7 +278,7 @@ export function Biblioteca({ piezas, carpetas, onAbrir, onProgramar, recargar })
         )}
       </div>
 
-      {abierta && (
+      {carpeta && (
         <div className="carpeta-abierta">
           {renombrando === null ? (
             <>
@@ -300,7 +312,7 @@ export function Biblioteca({ piezas, carpetas, onAbrir, onProgramar, recargar })
         ) : (
           <>
             <div className="buscar-mini"><Icon name="search" size={13} /><input placeholder="Buscar en la biblioteca" value={busca} onChange={(e) => setBusca(e.target.value)} /></div>
-            <span className="ayuda" style={{ marginLeft: 'auto' }}>{piezas.length} sin programar</span>
+            <span className="ayuda" style={{ marginLeft: 'auto' }}>{verPublicados ? `${publicados.length} ya publicados · «Volver a publicar» hace una copia con los mismos archivos` : `${piezas.length} sin programar`}</span>
           </>
         )}
       </div>
@@ -312,18 +324,27 @@ export function Biblioteca({ piezas, carpetas, onAbrir, onProgramar, recargar })
             <div key={p.id} className={`bib-card${n >= 0 ? ' marcada' : ''}`}>
               <Miniatura p={p} className="bib-img" onClick={() => onAbrir(p)} />
               {!p.archivos.length && <span className="bib-sin" onClick={() => onAbrir(p)}>Sin archivo</span>}
-              <button className="bib-check" onClick={() => marcar(p.id)} aria-label={n >= 0 ? 'Desmarcar' : 'Marcar'}>{n >= 0 ? (marcadas.length > 1 ? n + 1 : '✓') : ''}</button>
+              {!verPublicados && <button className="bib-check" onClick={() => marcar(p.id)} aria-label={n >= 0 ? 'Desmarcar' : 'Marcar'}>{n >= 0 ? (marcadas.length > 1 ? n + 1 : '✓') : ''}</button>}
               <span className="bib-tipo">{textoTipo(p.formato)}</span>
               {p.archivos.length > 1 && <span className="bib-n">🎞 {p.archivos.length}</span>}
               <div className="bib-pie">
-                <div className="fila-c-txt"><b>{p.titulo}</b>{p.carpeta && p.carpeta !== abierta && <small><Icon name="folder" size={10} /> {p.carpeta}</small>}</div>
-                <button className="btn btn-sec bib-prog" onClick={() => onProgramar(p)} title="Elegir día y pasarla al calendario"><Icon name="calendar" size={12} />Programar</button>
+                {verPublicados ? (
+                  <>
+                    <div className="fila-c-txt"><b>{p.titulo}</b><small>Publicado {p.ig_publicado_en ? `el ${diaCorto(p.ig_publicado_en.slice(0, 10))}` : p.fecha ? `el ${diaCorto(p.fecha)}` : ''}{p.ig_permalink && <> · <a href={p.ig_permalink} target="_blank" rel="noreferrer">verlo ↗</a></>}</small></div>
+                    <button className="btn btn-sec bib-prog" onClick={() => onRepublicar(p)} title="Hace una copia con los mismos archivos y caption, y eliges el día"><Icon name="refresh" size={12} />Volver a publicar</button>
+                  </>
+                ) : (
+                  <>
+                    <div className="fila-c-txt"><b>{p.titulo}</b>{p.carpeta && p.carpeta !== abierta && <small><Icon name="folder" size={10} /> {p.carpeta}</small>}</div>
+                    <button className="btn btn-sec bib-prog" onClick={() => onProgramar(p)} title="Elegir día y pasarla al calendario"><Icon name="calendar" size={12} />Programar</button>
+                  </>
+                )}
               </div>
             </div>
           );
         })}
       </div>
-      {!lista.length && <div className="vacio">{piezas.length ? 'Nada coincide con la búsqueda o la carpeta.' : 'La biblioteca está vacía. Arrastra arriba tu contenido.'}</div>}
+      {!lista.length && <div className="vacio">{verPublicados ? 'Nada coincide con la búsqueda.' : piezas.length ? 'Nada coincide con la búsqueda o la carpeta.' : 'La biblioteca está vacía. Arrastra arriba tu contenido.'}</div>}
 
       {cola.length > 0 && (
         <VentanaCarpeta

@@ -90,6 +90,10 @@ Con Instagram conectado con Facebook (opción A o B, con el permiso `instagram_c
 | Carrusel | Carrusel (de 2 a 10 fotos o vídeos) |
 | Story | Historia (1 foto o vídeo, sin caption) |
 
+**Mientras se publica**, arriba en Contenido ves en qué paso va (subiendo el archivo, Instagram procesando, publicando…) y, al terminar, el aviso con el enlace. Si falla, sale en rojo con el motivo y el botón **Abrir**.
+
+**Volver a publicar:** lo publicado no desaparece. En **Biblioteca → Publicados** (o en la ficha de la pieza) pulsa **«Volver a publicar»**: JARVIS hace una copia con los mismos archivos y caption y eliges el día.
+
 **A tener en cuenta**
 - **JARVIS tiene que estar abierto** a la hora de publicar. Si el PC está apagado, publica en cuanto lo abras.
 - Instagram solo publica **fotos en JPG**. Las PNG o WebP que subes ahora se convierten solas; para las antiguas, el editor tiene el botón **«Convertir las imágenes a JPG»**.

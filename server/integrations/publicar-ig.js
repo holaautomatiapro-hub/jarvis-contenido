@@ -105,9 +105,11 @@ export function createPublicadorIg({ db, jarvis, instagram, almacen, archivos, f
     let st = {};
     try { st = JSON.parse(p.ig_contenedor || '{}'); } catch { /* empezar */ }
     const guardar = () => set(p.id, { ig_contenedor: JSON.stringify(st), ig_estado: 'procesando' });
+    const paso = (texto) => { st.paso = texto; guardar(); alCambiar(); log.log?.(`  Instagram · «${p.titulo}»: ${texto}`); };
 
     // 1. Archivos en un enlace público
     if (!st.subidos) {
+      paso(`subiendo ${p.archivos.length === 1 ? 'el archivo' : `${p.archivos.length} archivos`} a Supabase…`);
       st.subidos = [];
       for (const [i, a] of p.archivos.entries()) {
         const video = /^video\//.test(a.mime || '');
@@ -123,6 +125,7 @@ export function createPublicadorIg({ db, jarvis, instagram, almacen, archivos, f
     // 2 y 3. Contenedores
     if (tipo === 'CAROUSEL') {
       if (!st.hijos) {
+        paso('preparando el carrusel en Instagram…');
         st.hijos = [];
         for (const s of st.subidos) {
           const r = await g.post(`${c.igUserId}/media`, s.video ? { media_type: 'VIDEO', video_url: s.url, is_carousel_item: true } : { image_url: s.url, is_carousel_item: true });
@@ -136,6 +139,7 @@ export function createPublicadorIg({ db, jarvis, instagram, almacen, archivos, f
         guardar();
       }
     } else if (!st.contenedor) {
+      paso('preparando la publicación en Instagram…');
       const s = st.subidos[0];
       const params = tipo === 'REELS' ? { media_type: 'REELS', video_url: s.url, caption, share_to_feed: true }
         : tipo === 'STORIES' ? { media_type: 'STORIES', ...(s.video ? { video_url: s.url } : { image_url: s.url }) }
@@ -143,10 +147,13 @@ export function createPublicadorIg({ db, jarvis, instagram, almacen, archivos, f
       st.contenedor = (await g.post(`${c.igUserId}/media`, params)).id;
       guardar();
     }
+    if (st.paso !== 'Instagram está procesando el archivo…') paso('Instagram está procesando el archivo…');
     if (!(await esperar(g, st.contenedor))) return { listo: false };
 
     // 4. Publicar
+    paso('publicando…');
     const pub = await g.post(`${c.igUserId}/media_publish`, { creation_id: st.contenedor });
+    log.log?.(`  Instagram · «${p.titulo}»: publicado`);
     let permalink = null;
     try { permalink = (await g.get(pub.id, { fields: 'permalink' })).permalink || null; } catch { /* sin enlace */ }
     set(p.id, { ig_estado: 'publicado', ig_error: null, ig_media_id: pub.id, ig_permalink: permalink, ig_publicado_en: ahora().toISOString(), ig_contenedor: null, estado: 'publicado', publicar_ig: 0 });
@@ -174,6 +181,7 @@ export function createPublicadorIg({ db, jarvis, instagram, almacen, archivos, f
           const conocido = e instanceof MetaError || e instanceof AlmacenError || e instanceof PublicarError;
           if (e.reiniciar) set(p.id, { ig_contenedor: null, ig_estado: null });
           else set(p.id, { ig_estado: 'error', ig_error: conocido ? e.message : `Error inesperado: ${e.message}` });
+          log.warn?.(`  Instagram · «${p.titulo}»: no se pudo publicar: ${e.message}`);
           if (!conocido) log.warn?.(`  Instagram (publicar): ${e.stack || e.message}`);
         }
         alCambiar();

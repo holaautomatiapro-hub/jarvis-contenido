@@ -845,6 +845,11 @@ input.filtro-select { padding-right: 10px; }
 .caja-ig-problemas { margin: 0; padding-left: 18px; color: #fcd34d; display: flex; flex-direction: column; gap: 2px; }
 .caja-ig-ahora { align-self: flex-start; color: var(--pink); }
 .caja-ig-convertir { align-self: flex-start; height: 30px; }
+.caja-ig-repub { margin-left: auto; color: var(--accent-2); }
+.ig-aviso { display: flex; align-items: center; gap: 8px; }
+.ig-aviso span { flex: 1; }
+.chip-publicados svg { color: var(--green); }
+.chip-publicados.on svg { color: #fff; }
 .cal-chip-ig { display: inline-flex; vertical-align: -1px; margin-right: 3px; color: var(--accent-2); }
 .cal-chip-ig.publicado, .ig-ind.publicado { color: var(--green); }
 .cal-chip-ig.error, .ig-ind.error { color: var(--pink); }

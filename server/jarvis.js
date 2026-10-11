@@ -137,6 +137,18 @@ export function createJarvis({ db, vault }) {
     return { ok: true, pieza: p };
   }
 
+  // Copia de una pieza (p. ej. un carrusel ya publicado) para volver a publicarla otro día.
+  // Comparte los archivos: no se borran del disco mientras alguna pieza los use.
+  function duplicarPieza(id, origen = 'dashboard') {
+    const p = leerPieza(id);
+    const copia = crearPieza({
+      titulo: p.titulo, estado: 'listo', formato: p.formato, plataformas: p.plataformas, caption: p.caption,
+      video_url: p.video_url, carpeta: p.carpeta, nota: p.nota, archivos: p.archivos, fecha: null, hora: p.hora, origen, registrarActividad: false,
+    });
+    registrar('Contenido', `Copia para volver a publicar: ${p.titulo}`, origen);
+    return copia;
+  }
+
   // ---------- Biblioteca: carpetas y carruseles ----------
   const nombreCarpeta = (v) => {
     const s = typeof v === 'string' ? v.trim().replace(/\s+/g, ' ') : '';
@@ -272,7 +284,7 @@ export function createJarvis({ db, vault }) {
 
   return {
     capturarIdea, crearNota, crearPieza, listarPiezas, actualizarPieza, borrarPieza,
-    carpetas, crearCarpeta, renombrarCarpeta, borrarCarpeta, moverACarpeta, juntarEnCarrusel,
+    duplicarPieza, carpetas, crearCarpeta, renombrarCarpeta, borrarCarpeta, moverACarpeta, juntarEnCarrusel,
     crearTarea, actualizarTarea, marcarTarea, borrarTarea, listarTareas, tareas, resumenDelDia, inicio, registrar, actividadDe,
     vault,
   };

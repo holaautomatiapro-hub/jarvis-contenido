@@ -30,7 +30,19 @@ export default function Contenido({ onCaptura }) {
   const setVista = (v) => { setVistaEstado(v); try { localStorage.setItem('contenido_vista', v); } catch { /* sin localStorage */ } };
   const piezas = useMemo(() => data?.piezas || [], [data]);
   const carpetas = data?.carpetas || [];
-  const biblioteca = useMemo(() => piezas.filter((p) => !p.fecha), [piezas]);
+  const biblioteca = useMemo(() => piezas.filter((p) => !p.fecha && p.estado !== 'publicado'), [piezas]);
+  const publicados = useMemo(() => piezas.filter((p) => p.estado === 'publicado' || p.ig_estado === 'publicado'), [piezas]);
+  // Lo que se está publicando ahora, lo que falló y lo recién publicado (últimos 30 min)
+  const enCurso = piezas.filter((p) => p.ig_estado === 'procesando');
+  const fallidas = piezas.filter((p) => p.ig_estado === 'error');
+  const recientes = piezas.filter((p) => p.ig_estado === 'publicado' && p.ig_publicado_en && Date.now() - new Date(p.ig_publicado_en).getTime() < 30 * 60000);
+  const pasoDe = (p) => { try { return JSON.parse(p.ig_contenedor || '{}').paso || 'empezando…'; } catch { return 'empezando…'; } };
+
+  // Volver a publicar: copia con los mismos archivos y caption, y se elige el día
+  const republicar = useCallback(async (p) => {
+    try { const copia = await api(`/api/piezas/${p.id}/duplicar`, { method: 'POST' }); setProgramando({ p: copia }); recargar(); }
+    catch (e) { setAviso(`No se pudo copiar la pieza. ${e.message}`); }
+  }, [recargar]);
   const cuenta = (e) => piezas.filter((p) => p.estado === e).length;
 
   // Cambio optimista (estado o fecha): se ve al momento y, si falla, se deshace
@@ -69,6 +81,9 @@ export default function Contenido({ onCaptura }) {
       </div>
 
       {(aviso || errorCarga) && <div className="aviso error">{aviso || `No se pudo cargar el contenido. ${errorCarga}`}</div>}
+      {enCurso.map((p) => <div key={`c${p.id}`} className="aviso ig-aviso"><Icon name="instagram" size={14} />Publicando en Instagram «{p.titulo}»: {pasoDe(p)}</div>)}
+      {fallidas.map((p) => <div key={`e${p.id}`} className="aviso error ig-aviso"><Icon name="instagram" size={14} /><span>No se pudo publicar «{p.titulo}»: {p.ig_error}</span><button className="link-btn" onClick={() => setEditando(p)}>Abrir</button></div>)}
+      {recientes.map((p) => <div key={`r${p.id}`} className="aviso ok ig-aviso"><Icon name="instagram" size={14} /><span>Publicado en Instagram: «{p.titulo}»</span>{p.ig_permalink && <a className="link-btn" href={p.ig_permalink} target="_blank" rel="noreferrer">Verlo ↗</a>}</div>)}
 
       <div className="estados-kpis">
         {ESTADOS.map((e) => {
@@ -114,10 +129,10 @@ export default function Contenido({ onCaptura }) {
 
       {vista === 'calendario' && <Calendario piezas={piezas} dia={dia} setDia={setDia} onAbrir={setEditando} onNuevo={nuevo} onMover={mover} onProgramar={(p, f) => setProgramando({ p, f })} />}
       {vista === 'lista' && <Lista piezas={filtradas} cargando={!data} onAbrir={setEditando} onMover={mover} />}
-      {vista === 'biblioteca' && <Biblioteca piezas={biblioteca} carpetas={carpetas} onAbrir={setEditando} onProgramar={(p) => setProgramando({ p })} recargar={recargar} />}
+      {vista === 'biblioteca' && <Biblioteca piezas={biblioteca} publicados={publicados} carpetas={carpetas} onAbrir={setEditando} onProgramar={(p) => setProgramando({ p })} onRepublicar={republicar} recargar={recargar} />}
       {vista === 'pipeline' && <Pipeline piezas={piezas} onAbrir={setEditando} onMover={mover} onNuevaIdea={() => onCaptura('idea')} />}
 
-      {editando && <EditorContenido key={editando.id || 'nuevo'} pieza={editando} carpetas={carpetas} ig={data?.instagram} onClose={() => setEditando(null)} onGuardado={recargar} onVisor={abrirVisor} />}
+      {editando && <EditorContenido key={editando.id || 'nuevo'} pieza={editando} carpetas={carpetas} ig={data?.instagram} onClose={() => setEditando(null)} onGuardado={recargar} onVisor={abrirVisor} onRepublicar={republicar} />}
       {programando && <ProgramarContenido pieza={programando.p} fecha={programando.f} ig={data?.instagram} onClose={() => setProgramando(null)} onGuardado={recargar} />}
       {visor && <Visor archivos={visor.archivos} inicio={visor.inicio} onClose={() => setVisor(null)} />}
     </section>

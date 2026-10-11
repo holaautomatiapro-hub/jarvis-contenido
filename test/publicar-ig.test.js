@@ -170,3 +170,24 @@ describe('quién puede publicar', () => {
     assert.equal(db.prepare('SELECT publicar_ig FROM piezas WHERE id = ?').get(creada.id).publicar_ig, 0, 'el MCP no puede marcar la publicación');
   });
 });
+
+describe('volver a publicar', () => {
+  test('la copia comparte archivos, vuelve sin fecha y los archivos no se borran con el original', async () => {
+    const { jarvis, pub, mover } = entorno();
+    const p = jarvis.crearPieza({ titulo: 'Carrusel top', formato: 'Carrusel', caption: 'Texto', fecha: '2026-10-20', hora: '10:00', archivos: [jpg(), jpg('b.jpg')] });
+    pub.marcar(p.id, true);
+    mover('2026-10-20T10:01:00');
+    await pub.revisar();
+    const copia = jarvis.duplicarPieza(p.id);
+    assert.equal(copia.fecha, null);
+    assert.equal(copia.estado, 'listo');
+    assert.equal(copia.caption, 'Texto');
+    assert.equal(copia.ig_estado, null);
+    assert.equal(copia.publicar_ig, 0);
+    assert.deepEqual(copia.archivos.map((a) => a.path), jarvis.listarPiezas().find((x) => x.id === p.id).archivos.map((a) => a.path));
+    // Sin fecha no se puede programar; con fecha, sí
+    assert.throws(() => pub.marcar(copia.id, true), /día y hora/);
+    jarvis.actualizarPieza(copia.id, { fecha: '2026-11-01', hora: '18:00' });
+    assert.equal(pub.marcar(copia.id, true).publicar_ig, 1);
+  });
+});
