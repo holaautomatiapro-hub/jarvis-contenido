@@ -106,7 +106,7 @@ Lo generado se baja a `imagenes/<encargo>/`. Desde ahí lo pasas a la biblioteca
 En **Contenido**, el caption tiene una barra:
 - **B** pone en negrita lo que selecciones (o la palabra donde está el cursor). También funciona **Ctrl+B**, y si lo pulsas otra vez, se quita. Es la negrita que se ve en Instagram: letras Unicode, las únicas que Instagram enseña en negrita.
 - **😀** abre los emojis por grupos, con tus recientes primero.
-- **✨ Crear con IA** escribe el caption con tu voz (`_voz.md`), tu negocio y las reglas de tu sistema de diseño, a partir del título, el guion y el lead magnet de la pieza. Si ya hay texto, lo mejora. Si no te gusta, **Deshacer** o vuelve a pulsar.
+- **✨ Crear con IA** escribe el caption a partir de lo que hay **dentro** del post: en un reel transcribe el vídeo (con ElevenLabs si tienes su clave; si no, con el Whisper del Laboratorio en el VPS) y mira un par de fotogramas para ver el título en pantalla; en un carrusel o un post lee cada imagen (títulos y textos de las slides). Usa tu voz (`_voz.md`), tu negocio y las reglas de tu sistema de diseño. Si ya hay texto, lo mejora. Debajo te dice qué ha usado; si no te gusta, **Deshacer** o vuelve a pulsar. Las transcripciones se guardan para no repetirlas.
 - Si un caption trae `**PALABRA**` (por ejemplo, uno escrito por JARVIS), al publicar en Instagram se convierte en negrita.
 
 ## Dónde queda cada cosa

@@ -387,7 +387,7 @@ Pasos:
     throw new LaboratorioError('Trabajo no válido');
   }
 
-  return { dir: base, pluginDir, leadmagnets, imagenes, iniciar, estado, requisitos, importarPlugin, subir, resultados, archivo, texto, borrar, aBiblioteca, entorno, prompt, ruta };
+  return { dir: base, pluginDir, leadmagnets, imagenes, python, iniciar, estado, requisitos, importarPlugin, subir, resultados, archivo, texto, borrar, aBiblioteca, entorno, prompt, ruta };
 }
 
 export const carpetaPorDefecto = (envObj = process.env) => envObj.LABORATORIO_PATH || path.join(os.homedir(), 'JARVIS-Laboratorio');

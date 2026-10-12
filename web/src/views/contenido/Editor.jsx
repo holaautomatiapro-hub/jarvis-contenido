@@ -10,8 +10,10 @@ import { CampoLeadMagnet, OpcionesCarpetas, useFases, MAX_CAPTION, Miniatura, Mo
 
 // Caption con IA: JARVIS lo escribe con tu voz a partir de lo que tenga la pieza (título, guion, lead magnet…)
 const crearCaption = async (datos) => {
-  const { caption } = await api('/api/caption', { method: 'POST', body: { titulo: datos.titulo, formato: datos.formato, nota: datos.nota || null, caption: datos.caption, leadmagnet: Boolean(datos.leadmagnet), leadmagnet_url: datos.leadmagnet_url || null, archivos: (datos.archivos || []).map((a) => a.nombre) } });
-  return markdownANegrita(caption); // la negrita se ve ya como en Instagram
+  const { caption, leido = {}, avisos = [] } = await api('/api/caption', { method: 'POST', body: { titulo: datos.titulo, formato: datos.formato, nota: datos.nota || null, caption: datos.caption, leadmagnet: Boolean(datos.leadmagnet), leadmagnet_url: datos.leadmagnet_url || null, archivos: (datos.archivos || []).map((a) => ({ path: a.path, mime: a.mime, nombre: a.nombre })) } });
+  // Qué ha tenido en cuenta (para saber si ha escuchado el vídeo o leído las slides)
+  const visto = [leido.transcripciones && 'escuchado el vídeo', leido.imagenes && `${leido.imagenes} ${leido.imagenes === 1 ? 'imagen' : 'imágenes'}`].filter(Boolean).join(' y ');
+  return { texto: markdownANegrita(caption), nota: [visto && `ha usado ${visto}`, ...avisos].filter(Boolean).join(' · ') }; // la negrita se ve ya como en Instagram
 };
 
 // ---------- Visor a pantalla completa ----------

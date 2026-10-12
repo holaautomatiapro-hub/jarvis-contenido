@@ -32,7 +32,7 @@ import { createDisenos } from './diseno/disenos.js';
 import { createRecordatorios } from './recordatorios.js';
 import { promptReplicarCompetencia, promptReplicarPropia } from './replicar.js';
 import { createLaboratorio, carpetaPorDefecto } from './laboratorio.js';
-import { promptCaption, limpiarCaption } from './caption.js';
+import { promptCaption, limpiarCaption, createContextoCaption } from './caption.js';
 
 dotenv.config({ path: path.join(ROOT, '.env'), quiet: true });
 
@@ -343,9 +343,14 @@ export function createApp({ jarvis, archivos, publicadorIg, asistente, instagram
   app.delete('/api/piezas/:id', h((req) => { const r = jarvis.borrarPieza(req.params.id); borrarArchivosDe([r.pieza]); return { ok: true }; }, true));
   app.get('/api/contenido', h(() => ({ piezas: jarvis.listarPiezas(), carpetas: jarvis.carpetas(), archivos: Boolean(archivos), instagram: publicadorIg?.estado() || { disponible: false, motivo: 'La publicación en Instagram no está disponible' } })));
   // Caption con IA (al crear o programar un post): devuelve el texto, no guarda nada
+  const contextoCaption = archivos ? createContextoCaption({ archivos, vaultPath: jarvis.vault.base, python: () => laboratorio?.python?.() || null }) : null;
   app.post('/api/caption', h(async (req) => {
     if (!asistente?.redactar) throw Object.assign(new Error('JARVIS (Claude Code) no está disponible'), { publico: true });
-    return { caption: limpiarCaption(await asistente.redactar({ prompt: promptCaption(req.body || {}) })) };
+    const b = req.body || {};
+    // Lo que hay dentro de la pieza (transcripción del reel, slides del carrusel) para que no sea genérico
+    const contexto = contextoCaption ? await contextoCaption.preparar(b.archivos) : {};
+    const caption = limpiarCaption(await asistente.redactar({ prompt: promptCaption(b, contexto) }));
+    return { caption, leido: { transcripciones: contexto.transcripciones?.length || 0, imagenes: contexto.imagenes?.length || 0 }, avisos: contexto.avisos || [] };
   }));
   app.post('/api/contenido/carpetas', h((req) => jarvis.crearCarpeta(req.body?.nombre, req.body?.padre || null), true));
   app.patch('/api/contenido/carpetas', h((req) => jarvis.renombrarCarpeta(req.body?.de, req.body?.a), true));
@@ -380,8 +385,10 @@ export function createApp({ jarvis, archivos, publicadorIg, asistente, instagram
       let abs = null;
       try { abs = disenos.muestraPortada(req.params.tipo); } catch { /* sin kit */ }
       if (!abs) return res.status(404).end();
-      res.sendFile(abs, { headers: { 'Cache-Control': 'private, max-age=3600' } });
+      res.sendFile(abs, { dotfiles: 'allow', headers: { 'Cache-Control': 'private, max-age=3600' } });
     });
+    app.post('/api/portadas/plantillas', express.raw({ type: () => true, limit: '25mb' }), h((req) => disenos.guardarPlantillaPortada({ id: String(req.query.id || ''), nombre: req.query.nombre, formato: req.query.formato, ext: String(req.query.nombre_archivo || '').split('.').pop(), datos: req.body }), true));
+    app.delete('/api/portadas/plantillas/:id', h((req) => disenos.borrarPlantillaPortada(req.params.id), true));
     app.post('/api/portadas', h((req) => {
       const pid = Number(req.body?.pieza_id);
       const pieza = pid ? jarvis.listarPiezas().find((p) => p.id === pid) : req.body?.pieza || null;
