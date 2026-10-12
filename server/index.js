@@ -278,9 +278,9 @@ export function createApp({ jarvis, archivos, publicadorIg, asistente, instagram
     app.post('/api/laboratorio/biblioteca', h((req) => laboratorio.aBiblioteca(req.body || {}), true));
     app.post('/api/laboratorio/empezar', h((req) => {
       if (!asistente) throw Object.assign(new Error('JARVIS (Claude Code) no está disponible'), { publico: true });
-      if (req.body?.tipo === 'imagen' || req.body?.tipo === 'cara') {
+      if (['imagen', 'cara', 'buscar-cara'].includes(req.body?.tipo)) {
         if (asistente.estado({ conversacion: 'laboratorio' }).ocupadoAqui) throw new OcupadoError('El Laboratorio está terminando otro trabajo. Espera a que acabe o cancélalo.');
-        const { nombre, prompt } = req.body.tipo === 'cara' ? { nombre: null, ...laboratorio.imagenes.entrenarCara(req.body?.datos || {}) } : laboratorio.imagenes.nuevo(req.body?.datos || {});
+        const { nombre = null, prompt } = req.body.tipo === 'cara' ? laboratorio.imagenes.entrenarCara(req.body?.datos || {}) : req.body.tipo === 'buscar-cara' ? laboratorio.imagenes.buscarCara() : laboratorio.imagenes.nuevo(req.body?.datos || {});
         return Promise.resolve(asistente.preguntar({ conversacion: 'laboratorio', texto: prompt })).then((r) => ({ ...(r && typeof r === 'object' ? r : {}), nombre }));
       }
       if (req.body?.tipo === 'leadmagnet') {

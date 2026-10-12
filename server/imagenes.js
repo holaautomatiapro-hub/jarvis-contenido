@@ -78,7 +78,14 @@ export function createImagenes({ base, jarvis = null, bin = process.env.JARVIS_C
   function personaje() {
     try {
       const p = JSON.parse(readFileSync(path.join(cara, 'personaje.json'), 'utf8'));
-      return p.soul_id ? { soul_id: p.soul_id, nombre: p.nombre || null, estado: p.estado || 'listo', fecha: p.fecha || null } : null;
+      // Tres maneras de tener tu cara en Higgsfield: un personaje entrenado (Soul), un Elemento o tus fotos subidas
+      const tipo = p.element_id ? 'elemento' : p.soul_id ? 'soul' : Array.isArray(p.media_ids) && p.media_ids.length ? 'fotos' : null;
+      if (!tipo) return null;
+      return {
+        tipo, nombre: p.nombre || null, estado: p.estado || 'listo', fecha: p.fecha || null,
+        soul_id: p.soul_id || null, soul_tipo: ['soul_2', 'soul_cinematic', 'soul'].includes(p.soul_tipo) ? p.soul_tipo : 'soul_2',
+        element_id: p.element_id || null, media_ids: Array.isArray(p.media_ids) ? p.media_ids.slice(0, 8).map(String) : [],
+      };
     } catch { return null; }
   }
   const lista = (dir, rel) => (existsSync(dir) ? readdirSync(dir, { withFileTypes: true })
@@ -129,6 +136,29 @@ Reglas:
 - Espera los resultados con jobs_wait y BÁJALOS todos a ${carpeta}/ (sin eso no los veo en JARVIS).
 - Termina con un resumen corto: qué has generado, con qué modelo, los créditos gastados y cuál te parece mejor. No publiques nada.`;
 
+  // Cómo se usa tu cara en cada caso (lo dicen las herramientas del conector)
+  function comoMiCara(p) {
+    if (!p) return '';
+    if (p.tipo === 'soul') return `Con mi personaje entrenado: model '${p.soul_tipo === 'soul_cinematic' ? 'soul_cinematic' : 'soul_2'}' con soul_id ${p.soul_id}.`;
+    if (p.tipo === 'elemento') return `Con mi Elemento de Higgsfield: pon <<<${p.element_id}>>> dentro del prompt (no en medias) y usa un modelo que admita Elementos (p. ej. nano_banana_pro o gpt_image_2 para imagen; seedance_2_0 para vídeo).`;
+    return `Con mis fotos subidas a Higgsfield como referencia de cara (medias, media_id: ${p.media_ids.join(', ')}) y un modelo que respete la identidad con referencias (p. ej. nano_banana_pro). Que se me reconozca: misma cara, sin inventar rasgos.`;
+  }
+
+  // Ya tienes tu cara en Higgsfield (personaje, Elemento o fotos): JARVIS lo busca y lo guarda para usarlo
+  function buscarCara() {
+    return {
+      prompt: `Quiero usar en JARVIS lo que YA tengo de mi cara en Higgsfield. No generes nada ni gastes créditos: solo mira y guarda.
+1. list_workspaces: si ninguno está marcado como seleccionado, selecciona el privado con select_workspace.
+2. Busca, en este orden: personajes entrenados (show_characters action 'list' con type 'soul_2', luego 'soul_cinematic' y 'soul', status 'ready'); Elementos (show_reference_elements action 'list', category character, status completed); y mis fotos subidas (show_medias type image).
+3. Enséñame en el chat lo que encuentres (nombre, tipo y, de las fotos, sus enlaces) y pregúntame cuál uso. Si solo hay una opción clara, propónmela.
+4. Con mi respuesta, escribe imagenes/_mi-cara/personaje.json con UNA de estas formas:
+   - personaje: {"soul_id": "...", "soul_tipo": "soul_2|soul_cinematic|soul", "nombre": "...", "estado": "listo"}
+   - Elemento: {"element_id": "...", "nombre": "...", "estado": "listo"}
+   - fotos: {"media_ids": ["...", "..."] (de 1 a 4 de las mejores, solo yo, cara clara), "nombre": "Mis fotos", "estado": "listo"}
+5. Si no hay nada, dímelo: entonces subo fotos en «Tu cara» y lo entrenamos.`,
+    };
+  }
+
   function nuevo(d = {}) {
     const tipo = TIPOS_IMAGEN[d.tipo] ? d.tipo : 'imagen';
     const descripcion = String(d.descripcion || '').trim().slice(0, 3000);
@@ -140,7 +170,7 @@ Reglas:
     const refs = (Array.isArray(d.referencias) ? d.referencias : []).map(String).filter((r) => /^imagenes\/_referencias\/[^/]+$/.test(r)).slice(0, 8);
     if (tipo === 'animar' && !refs.length) throw new ImagenesError('Sube la imagen que quieres animar');
     const p = personaje();
-    if (tipo === 'conmigo' && !p) throw new ImagenesError('Primero crea tu personaje con tu cara (sube tus fotos en «Tu cara»)');
+    if (tipo === 'conmigo' && !p) throw new ImagenesError('Primero elige tu cara en «Tu cara»: busca lo que ya tienes en Higgsfield o sube tus fotos');
 
     const titulo = String(d.titulo || '').trim().slice(0, 80) || descripcion.split(/[.\n]/)[0].slice(0, 60);
     let nombre = slug(titulo) || 'imagenes';
@@ -153,7 +183,7 @@ Reglas:
     const pieza = d.pieza && jarvis ? (() => { try { return jarvis.listarPiezas().find((x) => x.id === Number(d.pieza)); } catch { return null; } })() : null;
     const que = {
       imagen: `${cantidad} ${cantidad === 1 ? 'imagen' : 'variantes de imagen'}. Modelo: el general por defecto del conector (o el que mejor encaje: models_explore action:'recommend').`,
-      conmigo: `${cantidad} ${cantidad === 1 ? 'foto' : 'fotos'} MÍAS con mi personaje entrenado: model 'soul_2' con soul_id ${p?.soul_id}.`,
+      conmigo: `${cantidad} ${cantidad === 1 ? 'foto' : 'fotos'} MÍAS. ${comoMiCara(p)}`,
       broll: `${cantidad} ${cantidad === 1 ? 'clip' : 'clips'} de B-roll de unos ${duracion} s, sin texto en pantalla ni marcas de agua. Modelo de vídeo general por defecto del conector.`,
       animar: `Anima la imagen de referencia: ${cantidad} ${cantidad === 1 ? 'vídeo' : 'variantes'} de unos ${duracion} s, movimiento natural, sin deformar caras ni texto.`,
     }[tipo];
@@ -187,5 +217,5 @@ No generes nada más.`,
     };
   }
 
-  return { estado, conector, anadirConector, personaje, trabajos, nuevo, entrenarCara, borrar, carpetas: { raiz, referencias, cara } };
+  return { estado, conector, anadirConector, personaje, trabajos, nuevo, entrenarCara, buscarCara, borrar, carpetas: { raiz, referencias, cara } };
 }
