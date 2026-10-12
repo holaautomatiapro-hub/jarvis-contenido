@@ -16,7 +16,7 @@ Nuevas versiones de tus piezas que mejor funcionaron. Úsala cuando falten ideas
 - Si te falta un dato imprescindible (tema, objetivo o público), pregunta una sola cosa y espera.
 
 ## Pasos
-1. Identifica tus piezas top (métricas o transcripciones marcadas).
+1. Saca tus piezas top con metricas_instagram (guardados, compartidos y alcance frente a tu media).
 2. Para cada una: mismo tema con otro formato, otro gancho y otra profundidad.
 3. Marca cuándo republicar (mínimo 3 meses después).
 
@@ -26,5 +26,5 @@ Pieza original → 3 versiones nuevas.
 ## Al terminar
 - Repasa el texto contra la lista anti-IA: nada de "en el mundo de hoy", "descubre", "sumérgete", "no solo… sino también", tríos de adjetivos ni emojis de relleno. Frases concretas, como se dicen en voz alta.
 - Guarda el resultado con `crear_nota` en `01-Ideas/` (título claro y la fecha si es un informe).
-- Si es una pieza de contenido nueva, créala o muévela en el pipeline (`crear_pieza` / `mover_pieza`).
+- Si es una pieza de contenido nueva, créala o muévela en el pipeline (`crear_pieza` / `mover_pieza`) con su pilar, objetivo, gancho y CTA si los sabes.
 - Termina proponiendo el siguiente paso en una frase.

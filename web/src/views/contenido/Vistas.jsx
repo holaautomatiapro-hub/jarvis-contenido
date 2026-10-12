@@ -1,9 +1,11 @@
 import { useEffect, useMemo, useRef, useState } from 'react';
 import { normaliza } from '../../lib/api.js';
+import { num } from '../../lib/formato.js';
 import Icon from '../../components/Icon.jsx';
 import { celdasMes, diaCorto, diaLargo, hoyIso, mesDe, nombreMes, sumarMeses } from '../../lib/fechas.js';
 import { EditorFases } from './Fases.jsx';
-import { ChipEstado, MarcaLeadMagnet, Miniatura, useFases, Modal, esStory, estadoDe, textoTipo, tipoDe } from './comun.jsx';
+import { redDe } from '../../lib/redes.js';
+import { ChipEstado, MarcaLeadMagnet, Miniatura, useFases, Modal, esStory, estadoDe, objetivoDe, textoTipo, tipoDe } from './comun.jsx';
 
 const MAX_POR_DIA = 4;
 const DIAS = ['Lun', 'Mar', 'Mié', 'Jue', 'Vie', 'Sáb', 'Dom'];
@@ -114,7 +116,8 @@ function ElegirPieza({ fecha, piezas, carpetas = [], onCerrar, onElegida, onNuev
   );
 }
 
-export function Calendario({ piezas, carpetas = [], dia, setDia, onAbrir, onNuevo, onMover, onProgramar }) {
+// versiones: las de otras redes. Salen con su pieza (se cuentan en su chip) o, si tienen otro día, con su propio chip.
+export function Calendario({ piezas, versiones = [], carpetas = [], dia, setDia, onAbrir, onNuevo, onMover, onProgramar }) {
   const ESTADOS = useFases();
   const [mes, setMes] = useState(() => mesDe(dia));
   const [sobre, setSobre] = useState(null);
@@ -133,6 +136,19 @@ export function Calendario({ piezas, carpetas = [], dia, setDia, onAbrir, onNuev
     for (const l of m.values()) l.sort(ordenDia);
     return m;
   }, [piezas]);
+  // Redes de cada pieza que salen con ella, y versiones con un día propio
+  const { conPieza, aparte } = useMemo(() => {
+    const porId = new Map(piezas.map((p) => [p.id, p]));
+    const conPieza = new Map(), aparte = new Map();
+    for (const v of versiones) {
+      const p = porId.get(v.pieza_id);
+      if (!p) continue;
+      if (!v.fecha || v.fecha === p.fecha) conPieza.set(p.id, [...(conPieza.get(p.id) || []), v]);
+      else aparte.set(v.fecha, [...(aparte.get(v.fecha) || []), { ...v, pieza: p }]);
+    }
+    return { conPieza, aparte };
+  }, [piezas, versiones]);
+  const redesTxt = (p) => (conPieza.get(p.id) || []).map((v) => `${redDe(v.red).corto}${v.estado === 'publicado' ? ' ✓' : ''}`).join(', ');
   const delDia = porDia.get(dia) || [];
 
   const soltar = (f) => (e) => {
@@ -187,9 +203,15 @@ export function Calendario({ piezas, carpetas = [], dia, setDia, onAbrir, onNuev
                       {(p.publicar_ig || p.ig_estado) ? <span className={`cal-chip-ig ${p.ig_estado || 'pendiente'}`}><Icon name="instagram" size={9} /></span> : null}
                       {p.leadmagnet ? <span className="cal-chip-lm" title="Lleva lead magnet"><Icon name="target" size={9} /></span> : null}
                       <span className="cal-chip-tipo">{tipoDe(p.formato)?.corto || ''}</span>{p.titulo || 'Sin título'}
+                      {conPieza.get(p.id)?.length ? <span className="cal-chip-redes" title={`También en: ${redesTxt(p)}`}>+{conPieza.get(p.id).length}</span> : null}
                     </button>
                   ))}
                   {lista.length > MAX_POR_DIA && <span className="cal-mas-n">+{lista.length - MAX_POR_DIA} más</span>}
+                  {(aparte.get(f) || []).slice(0, 2).map((v) => (
+                    <button key={`v${v.id}`} className={`cal-chip cal-chip-version${v.estado === 'publicado' ? ' hecha' : ''}`} style={{ '--c': redDe(v.red).color }} onClick={(e) => { e.stopPropagation(); onAbrir(v.pieza); }} title={`${redDe(v.red).nombre} · ${v.pieza.titulo}`}>
+                      <span className="cal-chip-tipo">{redDe(v.red).corto}</span>{v.pieza.titulo}
+                    </button>
+                  ))}
                 </div>
               </div>
             );
@@ -209,8 +231,15 @@ export function Calendario({ piezas, carpetas = [], dia, setDia, onAbrir, onNuev
             <button className="chip" onClick={() => onNuevo(dia)}><Icon name="plus" />Nuevo</button>
           </div>
         </div>
-        {!delDia.length && <div className="vacio">Nada planificado este día.</div>}
-        {delDia.map((p) => <FilaDia key={p.id} p={p} onAbrir={onAbrir} />)}
+        {!delDia.length && !(aparte.get(dia) || []).length && <div className="vacio">Nada planificado este día.</div>}
+        {delDia.map((p) => <FilaDia key={p.id} p={p} redes={redesTxt(p)} onAbrir={onAbrir} />)}
+        {(aparte.get(dia) || []).map((v) => (
+          <div key={`v${v.id}`} className="fila-c" tabIndex={0} onClick={() => onAbrir(v.pieza)} onKeyDown={(e) => e.key === 'Enter' && onAbrir(v.pieza)}>
+            <span className="insignia" style={{ width: 28, height: 28, '--c': redDe(v.red).color }}>{redDe(v.red).corto.slice(0, 2).toUpperCase()}</span>
+            <div className="fila-c-txt"><b>{v.pieza.titulo}</b><small>Versión para {redDe(v.red).nombre}{v.hora ? ` · ${v.hora}` : ''}</small></div>
+            <span className="tag-estado" style={{ '--c': v.estado === 'publicado' ? 'var(--green)' : 'var(--orange)' }}>{v.estado === 'publicado' ? 'Publicada' : 'Pendiente'}</span>
+          </div>
+        ))}
       </div>
 
       {menu && <MenuDia menu={menu} lista={porDia.get(menu.fecha) || []} onCerrar={() => setMenu(null)} onAbrir={onAbrir} onElegir={setEligiendo} onNuevo={onNuevo} />}
@@ -219,9 +248,9 @@ export function Calendario({ piezas, carpetas = [], dia, setDia, onAbrir, onNuev
   );
 }
 
-function FilaDia({ p, onAbrir }) {
+function FilaDia({ p, redes, onAbrir }) {
   const ig = p.ig_estado === 'publicado' ? 'publicado en Instagram' : p.ig_estado === 'error' ? 'error al publicar en Instagram' : p.publicar_ig ? 'se publica sola en Instagram' : null;
-  const extra = [textoTipo(p.formato), p.hora, ig, p.archivos.length ? `🎞 ${p.archivos.length}` : null].filter(Boolean).join(' · ');
+  const extra = [textoTipo(p.formato), p.hora, ig, p.archivos.length ? `🎞 ${p.archivos.length}` : null, redes && `también en ${redes}`].filter(Boolean).join(' · ');
   return (
     <div className="fila-c" tabIndex={0} onClick={() => onAbrir(p)} onKeyDown={(e) => e.key === 'Enter' && onAbrir(p)}>
       <Miniatura p={p} className="peque" />
@@ -233,7 +262,8 @@ function FilaDia({ p, onAbrir }) {
 }
 
 // ---------- Lista: próximos, sin fecha y anteriores ----------
-export function Lista({ piezas, cargando, onAbrir, onMover }) {
+// metricas: { piezaId: { alcance, … } } de las que están unidas a su publicación de Instagram
+export function Lista({ piezas, metricas = {}, cargando, onAbrir, onMover }) {
   const ESTADOS = useFases();
   const h = hoyIso();
   const orden = (a, b) => a.fecha.localeCompare(b.fecha) || ordenDia(a, b);
@@ -250,9 +280,11 @@ export function Lista({ piezas, cargando, onAbrir, onMover }) {
         <div key={p.id} className="fila-lista" tabIndex={0} onClick={() => onAbrir(p)} onKeyDown={(e) => e.key === 'Enter' && onAbrir(p)}>
           <Miniatura p={p} className="media" />
           <div className="fila-c-txt"><b>{p.titulo || 'Sin título'}</b><small>{p.caption?.split('\n')[0] || 'Sin caption'}</small></div>
+          {p.pilar ? <span className="chip-pilar hide-sm" title="Pilar">{p.pilar}</span> : <span className="hide-sm" />}
           <span className="tipo-pildora">{textoTipo(p.formato)}</span>
           <span className="fila-fecha">{p.fecha ? `${diaCorto(p.fecha)}${p.hora ? ` · ${p.hora}` : ''}` : 'Sin fecha'}</span>
           <span className="fila-ind">
+            {metricas[p.id]?.alcance != null && <span className="ind-alcance" title={`Alcance en Instagram · ${metricas[p.id].guardados ?? 0} guardados · ${metricas[p.id].compartidos ?? 0} compartidos`}><Icon name="eye" size={11} /> {num(metricas[p.id].alcance)}</span>}
             {p.archivos.length > 0 && <span title="Archivos subidos">🎞 {p.archivos.length}</span>}
             {(p.publicar_ig || p.ig_estado) ? (
               p.ig_permalink
@@ -325,6 +357,7 @@ export function Pipeline({ piezas, onAbrir, onMover, onNuevaIdea }) {
                   <div className="tarjeta-titulo">{p.titulo}</div>
                   <div className="tarjeta-meta">
                     {p.formato && <span className="tag" style={{ background: 'color-mix(in srgb, var(--accent) 14%, transparent)', color: 'var(--accent-texto)' }}>{textoTipo(p.formato)}</span>}
+                    {p.pilar && <span className="chip-pilar">{p.pilar}</span>}
                     {p.plataformas && <span className="mini">{p.plataformas}</span>}
                     <MarcaLeadMagnet p={p} />
                     {p.fecha && <span className="mini"><Icon name="calendar" size={10} /> {p.fecha.slice(5).split('-').reverse().join('/')}</span>}
@@ -341,6 +374,52 @@ export function Pipeline({ piezas, onAbrir, onMover, onNuevaIdea }) {
           );
         })}
       </div>
+    </div>
+  );
+}
+
+// ---------- Banco de ideas: lo que aún es solo una idea, agrupado por pilar ----------
+export function BancoIdeas({ piezas, onAbrir, onMover, onNuevaIdea }) {
+  const ESTADOS = useFases();
+  const [busca, setBusca] = useState('');
+  const siguiente = ESTADOS[ESTADOS.findIndex((e) => e.id === 'idea') + 1];
+  const ideas = useMemo(() => {
+    const b = normaliza(busca.trim());
+    return piezas.filter((p) => p.estado === 'idea' && (!b || normaliza(`${p.titulo}\n${p.pilar || ''}\n${p.gancho || ''}`).includes(b)))
+      .sort((a, b2) => b2.id - a.id);
+  }, [piezas, busca]);
+  const grupos = useMemo(() => {
+    const m = new Map();
+    for (const p of ideas) { const k = p.pilar || ''; if (!m.has(k)) m.set(k, []); m.get(k).push(p); }
+    return [...m.entries()].sort(([a, x], [b, y]) => (!a) - (!b) || y.length - x.length || a.localeCompare(b, 'es'));
+  }, [ideas]);
+  return (
+    <div className="panel panel-pad banco-ideas">
+      <div className="panel-head">
+        <span className="label">Banco de ideas <span className="cuenta">{ideas.length}</span></span>
+        <div style={{ display: 'flex', gap: 6, alignItems: 'center' }}>
+          <div className="buscar-mini"><Icon name="search" size={13} /><input placeholder="Buscar idea" value={busca} onChange={(e) => setBusca(e.target.value)} /></div>
+          <button className="chip" onClick={onNuevaIdea}><Icon name="plus" />Nueva idea</button>
+        </div>
+      </div>
+      <p className="ayuda">Ideas sin desarrollar, separadas de lo que ya tiene archivos. Ponles pilar y objetivo y, cuando vayas a trabajarlas, pásalas a {siguiente?.label || 'la siguiente fase'}.</p>
+      {!ideas.length && <div className="vacio">{busca ? 'Ninguna idea con ese texto.' : 'No hay ideas pendientes. Apúntalas desde aquí, desde el chat o por Telegram.'}</div>}
+      {grupos.map(([pilar, lista]) => (
+        <div key={pilar || '-'} className="banco-grupo">
+          <div className="banco-grupo-head">{pilar || 'Sin pilar'} <span className="cuenta">{lista.length}</span></div>
+          {lista.map((p) => {
+            const o = objetivoDe(p.objetivo);
+            return (
+              <div key={p.id} className="banco-idea" tabIndex={0} onClick={() => onAbrir(p)} onKeyDown={(e) => e.key === 'Enter' && onAbrir(p)}>
+                <div className="fila-c-txt"><b>{p.titulo}</b>{p.gancho && <small>«{p.gancho}»</small>}</div>
+                {o ? <span className="tag-estado" style={{ '--c': o.color }}>{o.label}</span> : <span />}
+                {p.formato ? <span className="tipo-pildora">{textoTipo(p.formato)}</span> : <span />}
+                {siguiente && <button className="btn btn-sec btn-mini" onClick={(e) => { e.stopPropagation(); onMover(p, { estado: siguiente.id }); }}>→ {siguiente.label}</button>}
+              </div>
+            );
+          })}
+        </div>
+      ))}
     </div>
   );
 }

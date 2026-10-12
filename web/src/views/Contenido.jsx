@@ -2,8 +2,8 @@ import { useCallback, useEffect, useMemo, useState } from 'react';
 import Icon from '../components/Icon.jsx';
 import { api, normaliza, useRecurso } from '../lib/api.js';
 import { hoyIso } from '../lib/fechas.js';
-import { TIPOS, tipoDe, useFases } from './contenido/comun.jsx';
-import { Calendario, Lista, Pipeline } from './contenido/Vistas.jsx';
+import { OBJETIVOS, TIPOS, tipoDe, useFases } from './contenido/comun.jsx';
+import { BancoIdeas, Calendario, Lista, Pipeline } from './contenido/Vistas.jsx';
 import { Biblioteca } from './contenido/Biblioteca.jsx';
 import { EditorContenido, ProgramarContenido, Visor } from './contenido/Editor.jsx';
 
@@ -11,6 +11,7 @@ const VISTAS = [
   { id: 'calendario', label: 'Calendario', icon: 'calendar' },
   { id: 'lista', label: 'Lista', icon: 'tasks' },
   { id: 'biblioteca', label: 'Biblioteca', icon: 'book' },
+  { id: 'ideas', label: 'Ideas', icon: 'bulb' },
   { id: 'pipeline', label: 'Pipeline', icon: 'skills' },
 ];
 const vistaGuardada = () => { try { const v = localStorage.getItem('contenido_vista'); return VISTAS.some((x) => x.id === v) ? v : 'calendario'; } catch { return 'calendario'; } };
@@ -21,7 +22,7 @@ export default function Contenido({ onCaptura }) {
   const [data, recargar, errorCarga, setData] = useRecurso('/api/contenido', null);
   const [vista, setVistaEstado] = useState(vistaGuardada);
   const [dia, setDia] = useState(hoyIso);
-  const [filtro, setFiltro] = useState({ estado: '', tipo: '', texto: '' });
+  const [filtro, setFiltro] = useState({ estado: '', tipo: '', texto: '', pilar: '', objetivo: '' });
   const [editando, setEditando] = useState(null);
   const [programando, setProgramando] = useState(null);
   const [visor, setVisor] = useState(null);
@@ -31,7 +32,9 @@ export default function Contenido({ onCaptura }) {
   const setVista = (v) => { setVistaEstado(v); try { localStorage.setItem('contenido_vista', v); } catch { /* sin localStorage */ } };
   const piezas = useMemo(() => data?.piezas || [], [data]);
   const carpetas = data?.carpetas || [];
-  const biblioteca = useMemo(() => piezas.filter((p) => !p.fecha && p.estado !== 'publicado'), [piezas]);
+  // Biblioteca: lo que tiene archivos o ya está en marcha y aún no tiene día. Las ideas sin archivos van a «Ideas».
+  const biblioteca = useMemo(() => piezas.filter((p) => !p.fecha && p.estado !== 'publicado' && (p.estado !== 'idea' || p.archivos.length)), [piezas]);
+  const ideas = useMemo(() => piezas.filter((p) => p.estado === 'idea').length, [piezas]);
   const publicados = useMemo(() => piezas.filter((p) => p.estado === 'publicado' || p.ig_estado === 'publicado'), [piezas]);
   // Lo que se está publicando ahora, lo que falló y lo recién publicado (últimos 30 min)
   const enCurso = piezas.filter((p) => p.ig_estado === 'procesando');
@@ -62,7 +65,9 @@ export default function Contenido({ onCaptura }) {
     return piezas.filter((p) =>
       (!filtro.estado || p.estado === filtro.estado) &&
       (!filtro.tipo || tipoDe(p.formato)?.id === filtro.tipo) &&
-      (!t || normaliza(`${p.titulo}\n${p.caption || ''}`).includes(t)));
+      (!filtro.pilar || (filtro.pilar === '-' ? !p.pilar : p.pilar === filtro.pilar)) &&
+      (!filtro.objetivo || (filtro.objetivo === '-' ? !p.objetivo : p.objetivo === filtro.objetivo)) &&
+      (!t || normaliza(`${p.titulo}\n${p.caption || ''}\n${p.gancho || ''}`).includes(t)));
   }, [piezas, filtro]);
 
   useEffect(() => { if (vista !== 'lista' && filtro.estado) setFiltro((f) => ({ ...f, estado: '' })); }, [vista]); // eslint-disable-line react-hooks/exhaustive-deps
@@ -109,7 +114,7 @@ export default function Contenido({ onCaptura }) {
         <div className="seg">
           {VISTAS.map((v) => (
             <button key={v.id} className={vista === v.id ? 'on' : ''} onClick={() => setVista(v.id)}>
-              <Icon name={v.icon} />{v.label}{v.id === 'biblioteca' && biblioteca.length > 0 && <span className="seg-n">· {biblioteca.length}</span>}
+              <Icon name={v.icon} />{v.label}{v.id === 'biblioteca' && biblioteca.length > 0 && <span className="seg-n">· {biblioteca.length}</span>}{v.id === 'ideas' && ideas > 0 && <span className="seg-n">· {ideas}</span>}
             </button>
           ))}
         </div>
@@ -120,6 +125,16 @@ export default function Contenido({ onCaptura }) {
               <option value="">Todos los tipos</option>
               {TIPOS.map((t) => <option key={t.id} value={t.id}>{t.id}</option>)}
             </select>
+            <select className="campo" value={filtro.pilar} onChange={(e) => setFiltro({ ...filtro, pilar: e.target.value })} aria-label="Pilar">
+              <option value="">Todos los pilares</option>
+              {(data?.pilares || []).map((p) => <option key={p.nombre} value={p.nombre}>{p.nombre}</option>)}
+              <option value="-">Sin pilar</option>
+            </select>
+            <select className="campo" value={filtro.objetivo} onChange={(e) => setFiltro({ ...filtro, objetivo: e.target.value })} aria-label="Objetivo">
+              <option value="">Todos los objetivos</option>
+              {OBJETIVOS.map((o) => <option key={o.id} value={o.id}>{o.label}</option>)}
+              <option value="-">Sin objetivo</option>
+            </select>
             <select className="campo" value={filtro.estado} onChange={(e) => setFiltro({ ...filtro, estado: e.target.value })} aria-label="Estado">
               <option value="">Todos los estados</option>
               {ESTADOS.map((e) => <option key={e.id} value={e.id}>{e.label}</option>)}
@@ -128,12 +143,13 @@ export default function Contenido({ onCaptura }) {
         )}
       </div>
 
-      {vista === 'calendario' && <Calendario piezas={piezas} carpetas={carpetas} dia={dia} setDia={setDia} onAbrir={setEditando} onNuevo={nuevo} onMover={mover} onProgramar={(p, f) => setProgramando({ p, f })} />}
-      {vista === 'lista' && <Lista piezas={filtradas} cargando={!data} onAbrir={setEditando} onMover={mover} />}
+      {vista === 'calendario' && <Calendario piezas={piezas} versiones={data?.versiones || []} carpetas={carpetas} dia={dia} setDia={setDia} onAbrir={setEditando} onNuevo={nuevo} onMover={mover} onProgramar={(p, f) => setProgramando({ p, f })} />}
+      {vista === 'lista' && <Lista piezas={filtradas} metricas={data?.metricas || {}} cargando={!data} onAbrir={setEditando} onMover={mover} />}
       {vista === 'biblioteca' && <Biblioteca piezas={biblioteca} publicados={publicados} carpetas={carpetas} onAbrir={setEditando} onProgramar={(p) => setProgramando({ p })} onRepublicar={republicar} recargar={recargar} />}
+      {vista === 'ideas' && <BancoIdeas piezas={piezas} onAbrir={setEditando} onMover={mover} onNuevaIdea={() => onCaptura('idea')} />}
       {vista === 'pipeline' && <Pipeline piezas={piezas} onAbrir={setEditando} onMover={mover} onNuevaIdea={() => onCaptura('idea')} />}
 
-      {editando && <EditorContenido key={editando.id || 'nuevo'} pieza={editando} carpetas={carpetas} ig={data?.instagram} onClose={() => setEditando(null)} onGuardado={recargar} onVisor={abrirVisor} onRepublicar={republicar} />}
+      {editando && <EditorContenido key={editando.id || `nuevo-${editando.padre_id || ''}`} pieza={editando} carpetas={carpetas} ig={data?.instagram} piezas={piezas} pilares={data?.pilares || []} onAbrir={setEditando} onDerivada={setEditando} onClose={() => setEditando(null)} onGuardado={recargar} onVisor={abrirVisor} onRepublicar={republicar} />}
       {programando && <ProgramarContenido pieza={programando.p} fecha={programando.f} ig={data?.instagram} onClose={() => setProgramando(null)} onGuardado={recargar} />}
       {visor && <Visor archivos={visor.archivos} inicio={visor.inicio} onClose={() => setVisor(null)} />}
     </section>

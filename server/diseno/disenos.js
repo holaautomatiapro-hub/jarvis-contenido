@@ -19,7 +19,8 @@ export function createDisenos({ db, jarvis, kit, motor, archivos = null, previas
   const q = {
     get: db.prepare('SELECT * FROM disenos WHERE id = ?'),
     // Las portadas que se hacen desde una pieza no salen en la lista de Diseño
-    lista: db.prepare("SELECT * FROM disenos WHERE uso IS NULL OR uso != 'portada' ORDER BY actualizado DESC, id DESC LIMIT 200"),
+    // (las que no llegaron a la pieza, p. ej. porque se cerró la ventana antes de tiempo, sí: para no perderlas)
+    lista: db.prepare("SELECT * FROM disenos WHERE uso IS NULL OR uso != 'portada' OR exportado IS NULL ORDER BY actualizado DESC, id DESC LIMIT 200"),
     del: db.prepare('DELETE FROM disenos WHERE id = ?'),
   };
   const actualizar = (id, campos) => {
@@ -110,6 +111,8 @@ Pasos: 1) ver_kit_diseno; 2) lee con Read la guía del kit y el ejemplo de esta 
 
   function generarConClaude(id, { indicaciones, prompt } = {}) {
     if (!asistente) throw new DisenoError('El chat con Claude no está disponible');
+    // Antes de borrar la sesión del chat de Diseño: si JARVIS está ocupado, no se toca nada
+    if (asistente.estado({ conversacion: 'diseno' }).ocupado) throw new DisenoError('JARVIS está terminando otra petición. Espera a que acabe y vuelve a probar.');
     const r = leer(id);
     asistente.nuevaSesion({ conversacion: 'diseno' });
     asistente.preguntar({ texto: prompt || promptGenerar(r, { indicaciones }), conversacion: 'diseno' });
@@ -335,17 +338,20 @@ Pasos: 1) Read de la referencia; 2) ver_kit_diseno (formato técnico de las diap
     const previas = json(r.exportado, null)?.piezas || [];
     const sustituidos = [];
     let ids;
+    // Lo nuevo hereda la estrategia de la pieza del guion y queda enlazado a ella (o al diseño, si no sale de una pieza)
+    const origen = r.pieza_origen ? piezas.find((x) => x.id === r.pieza_origen) : null;
+    const enlace = origen ? { padre_id: origen.id, pilar: origen.pilar, objetivo: origen.objetivo } : { origen_ref: `Diseño #${r.id} · ${r.titulo}` };
     if (r.formato === 'carrusel') {
       const destino = libre(previas[0]) || libre(r.pieza_origen);
       const campos = { titulo: r.titulo, formato: 'Carrusel', estado: 'listo', caption: datos.caption || r.caption || null, archivos: guardados };
       if (destino) { sustituidos.push(...destino.archivos); ids = [jarvis.actualizarPieza(destino.id, campos).id]; }
-      else ids = [jarvis.crearPieza({ ...campos, origen: 'dashboard' }).id];
+      else ids = [jarvis.crearPieza({ ...campos, ...enlace, origen: 'dashboard' }).id];
     } else {
       ids = guardados.map((a, i) => {
         const campos = { titulo: `${r.titulo} · ${i + 1}/${guardados.length}`, formato: 'Story', estado: 'listo', archivos: [a] };
         const destino = previas.length === guardados.length ? libre(previas[i]) : null;
         if (destino) { sustituidos.push(...destino.archivos); return jarvis.actualizarPieza(destino.id, campos).id; }
-        return jarvis.crearPieza({ ...campos, origen: 'dashboard', registrarActividad: i === 0 }).id;
+        return jarvis.crearPieza({ ...campos, ...enlace, origen: 'dashboard', registrarActividad: i === 0 }).id;
       });
       jarvis.moverACarpeta(ids, r.titulo.slice(0, 80));
       if (r.pieza_origen && libre(r.pieza_origen)) jarvis.actualizarPieza(r.pieza_origen, { estado: 'listo' });

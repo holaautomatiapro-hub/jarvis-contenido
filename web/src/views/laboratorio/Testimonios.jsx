@@ -3,7 +3,7 @@ import Icon from '../../components/Icon.jsx';
 import ChatJarvis from '../../components/ChatJarvis.jsx';
 import { api } from '../../lib/api.js';
 import { fechaCorta } from '../../lib/formato.js';
-import { CampoArchivo, Grupo, Medio, VerMedio, VerTexto, urlArchivo } from './comun.jsx';
+import { CampoArchivo, Grupo, Medio, VerMedio, VerTexto, enviarGrupo, textoEnviadas, urlArchivo } from './comun.jsx';
 
 // Testimonios: de la entrevista de un cliente a stories, carrusel en vídeo, clips (reel, 4:5, YouTube),
 // portada y 3 captions, con tu plugin y tu marca. Claude lo prepara, te enseña el guion y, con tu sí, lo monta.
@@ -26,6 +26,19 @@ export default function Testimonios({ data, recargar }) {
       setAviso({ tipo: 'ok', texto: tipo === 'marca' ? 'JARVIS te va a hacer unas preguntas sobre tu diseño en el chat de la derecha.' : 'JARVIS está preparando el testimonio: primero transcribe y te enseña el guion en el chat. No monta nada hasta que le des el visto bueno.' });
       if (tipo === 'testimonio') setF(VACIO);
     } catch (e) { setAviso({ tipo: 'error', texto: e.message }); }
+  };
+  // Todo lo de un cliente a la biblioteca de una vez (stories, carrusel, clips y portadas), sin duplicar lo que ya estaba
+  const [enviando, setEnviando] = useState(null);
+  const todoABiblioteca = async (t) => {
+    setEnviando(t.cliente); setAviso(null);
+    try {
+      let n = 0;
+      if (t.portadas.length) n += await enviarGrupo({ id: 'portadas', nombre: 'Portadas', archivos: t.portadas }, t.cliente, () => 'Post');
+      // Lo de Instagram: los clips en 4:5 y los de YouTube son otra versión de los mismos clips y se pasan a mano si se quieren
+      for (const g of t.grupos.filter((x) => !/youtube|4x5/.test(x.id))) n += await enviarGrupo(g, t.cliente, formatoDe);
+      setAviso({ tipo: 'ok', texto: textoEnviadas(n) });
+    } catch (e) { setAviso({ tipo: 'error', texto: e.message }); }
+    setEnviando(null);
   };
   const alternarPieza = (p) => setF((x) => ({ ...x, piezas: piezas.includes(p) ? piezas.filter((y) => y !== p) : [...piezas, p] }));
 
@@ -85,10 +98,11 @@ export default function Testimonios({ data, recargar }) {
               <div className="lab-acciones">
                 {t.caption && <button className="chip" onClick={() => setTexto({ ruta: t.caption, titulo: `Captions · ${t.cliente}` })}><Icon name="doc" />Captions</button>}
                 {t.indice && <button className="chip" onClick={() => setTexto({ ruta: t.indice, titulo: `Clips · ${t.cliente}` })}><Icon name="tasks" />Índice de clips</button>}
+                <button className="chip" onClick={() => todoABiblioteca(t)} disabled={Boolean(enviando)} title={`Stories, carrusel, clips en reel y portadas, cada uno con su caption, en la carpeta Testimonios/${t.cliente}. Los clips en 4:5 y YouTube, desde su grupo.`}><Icon name="book" />{enviando === t.cliente ? 'Pasando…' : 'Todo a la biblioteca'}</button>
               </div>
             </div>
-            {t.portadas.length > 0 && <Grupo g={{ id: 'portadas', nombre: 'Portadas', archivos: t.portadas }} titulo={t.cliente} formatoPorDefecto={() => 'Post'} recargar={recargar} setAviso={setAviso} />}
-            {t.grupos.map((g) => <Grupo key={g.id} g={g} titulo={t.cliente} formatoPorDefecto={formatoDe} recargar={recargar} setAviso={setAviso} />)}
+            {t.portadas.length > 0 && <Grupo g={{ id: 'portadas', nombre: 'Portadas', archivos: t.portadas }} titulo={t.cliente} formatoPorDefecto={() => 'Post'} setAviso={setAviso} />}
+            {t.grupos.map((g) => <Grupo key={g.id} g={g} titulo={t.cliente} formatoPorDefecto={formatoDe} setAviso={setAviso} />)}
           </div>
         ))}
         {!data.testimonios.length && <div className="panel panel-pad vacio">Aquí aparecerán los testimonios que montes: stories, carrusel, clips, portadas y captions.</div>}

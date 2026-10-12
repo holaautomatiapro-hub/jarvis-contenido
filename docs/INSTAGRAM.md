@@ -103,6 +103,8 @@ Con Instagram conectado con Facebook (opción A o B, con el permiso `instagram_c
 ## Qué hace JARVIS después
 - **Sincroniza cada 6 horas** (cámbialo con `IG_SYNC_HORAS`) tus últimas 150 publicaciones: alcance, visualizaciones, interacciones, guardados, compartidos y tiempo medio de visualización de los reels. También guarda el alcance diario y los seguidores nuevos de la cuenta.
 - **Transcribe tus reels** con ElevenLabs (si tienes `ELEVENLABS_API_KEY`) y los guarda en `03-Transcripciones/` con sus métricas. Como mucho transcribe 10 por sincronización (`IG_TRANSCRIBIR_MAX`) para no gastar créditos de golpe.
+- **Une cada publicación con su pieza** de Contenido (las que publica JARVIS, por el enlace, por el caption o, si no hay duda, por el día y el formato) para que veas sus resultados en la ficha y en Instagram → **Qué me funciona**. Con Facebook y Windsor a la vez no se duplica nada: las dos fuentes rellenan la misma publicación (lo que una no trae, lo pone la otra).
+- **Cada lunes escribe el informe** de la semana pasada en `07-Diario/`.
 - **Clasifica los temas** de tus publicaciones con Claude Haiku y, cuando tiene 5 transcripciones o más, **crea tu perfil de voz** (`_voz.md`). Lo hace en segundo plano; si no quieres estas tareas automáticas, pon `JARVIS_AUTO=0`.
 
 ## Problemas frecuentes

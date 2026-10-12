@@ -134,8 +134,8 @@ imagenes/_mi-cara/      tus fotos para tu personaje y personaje.json
 - El Laboratorio lleva su **propio carril**: mientras monta, puedes seguir usando JARVIS en el resto de pestañas.
 - Claude Code se lanza con tu plugin y en la carpeta del Laboratorio. Solo puede ejecutar los programas del montaje:
   - `python`, `ffmpeg`, `ffprobe`, `node` y `npx`;
-  - y moverse por las carpetas.
+  - y moverse por las carpetas, leer y copiar archivos (`ls`, `cat`, `mkdir`, `cp`…).
 
-  No puede borrar, instalar ni usar `sudo`. Cada comando puede durar hasta 2 horas (transcribir y renderizar es lento).
+  No tiene `rm`, `mv`, `npm` ni `sudo`: no puede borrar ni instalar paquetes con npm. Ojo: `cp` y lo que escriban `python` o `ffmpeg` sí pueden sobrescribir un archivo con el mismo nombre dentro del Laboratorio. Cada comando puede durar hasta 2 horas (transcribir y renderizar es lento).
 - Las copias del PC (`npm run exportar`) no incluyen el Laboratorio, porque los vídeos pesan mucho.
 - En Windows, instala tú Python 3.10+ y ejecuta `python -m venv %USERPROFILE%\JARVIS-Laboratorio\.venv`; después, con el Python de ese entorno, `python -m pip install pillow numpy opencv-python-headless rembg onnxruntime faster-whisper huggingface_hub`.

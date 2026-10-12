@@ -27,5 +27,5 @@ Historia por historia: Texto / Visual / Sticker.
 ## Al terminar
 - Repasa el texto contra la lista anti-IA: nada de "en el mundo de hoy", "descubre", "sumérgete", "no solo… sino también", tríos de adjetivos ni emojis de relleno. Frases concretas, como se dicen en voz alta.
 - Guarda el resultado con `crear_nota` en `06-Publicaciones/` (título claro y la fecha si es un informe).
-- Si es una pieza de contenido nueva, créala o muévela en el pipeline (`crear_pieza` / `mover_pieza`).
+- Si es una pieza de contenido nueva, créala o muévela en el pipeline (`crear_pieza` / `mover_pieza`) con su pilar, objetivo, gancho y CTA si los sabes.
 - Termina proponiendo el siguiente paso en una frase.

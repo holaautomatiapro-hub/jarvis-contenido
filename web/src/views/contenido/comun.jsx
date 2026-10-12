@@ -44,6 +44,14 @@ export const textoTipo = (formato) => tipoDe(formato)?.id || formato || 'Sin tip
 export const esStory = (p) => tipoDe(p.formato)?.id === 'Story';
 export const MAX_CAPTION = 2200;
 
+// Objetivo de cada pieza (para equilibrar el calendario y saber qué funciona)
+export const OBJETIVOS = [
+  { id: 'atraer', label: 'Atraer', color: 'var(--blue)', ayuda: 'Alcance y gente nueva' },
+  { id: 'nutrir', label: 'Nutrir', color: 'var(--purple)', ayuda: 'Confianza con quien ya te sigue' },
+  { id: 'convertir', label: 'Convertir', color: 'var(--green)', ayuda: 'Leads y ventas' },
+];
+export const objetivoDe = (id) => OBJETIVOS.find((o) => o.id === id);
+
 export const esVideo = (a) => /^video\//.test(a?.mime || '');
 export const tamanoLegible = (b) => (b < 1024 ** 2 ? `${Math.max(1, Math.round(b / 1024))} KB` : `${(b / 1024 ** 2).toLocaleString('es-ES', { maximumFractionDigits: 1 })} MB`);
 // "mi_reel-final.mp4" → "mi reel final"
@@ -143,6 +151,36 @@ export function CampoLeadMagnet({ activo, url, onCambio }) {
           <BotonCopiar texto={/^https?:\/\//i.test(url) ? url : ''} />
         </div>
       )}
+    </div>
+  );
+}
+
+// Estrategia de la pieza: pilar (con los que ya usas como sugerencia), objetivo, gancho y CTA
+export function CampoEstrategia({ d, pilares = [], onCambio }) {
+  const cambia = (k) => (e) => onCambio({ [k]: e.target.value });
+  return (
+    <div className="estrategia">
+      <div className="dos-col">
+        <div>
+          <label className="campo-et">Pilar</label>
+          <input className="campo" list="pilares-sugeridos" value={d.pilar} onChange={cambia('pilar')} placeholder="p. ej. Automatización" maxLength={60} />
+          <datalist id="pilares-sugeridos">{pilares.map((p) => <option key={p.nombre} value={p.nombre} />)}</datalist>
+        </div>
+        <div>
+          <label className="campo-et">Objetivo</label>
+          <div className="pildoras">
+            {OBJETIVOS.map((o) => (
+              <button type="button" key={o.id} title={o.ayuda} className={d.objetivo === o.id ? 'on' : ''} style={d.objetivo === o.id ? { '--c': o.color } : undefined} onClick={() => onCambio({ objetivo: d.objetivo === o.id ? '' : o.id })}>
+                <span className="punto" style={{ background: o.color }} />{o.label}
+              </button>
+            ))}
+          </div>
+        </div>
+      </div>
+      <label className="campo-et">Gancho</label>
+      <input className="campo" value={d.gancho} onChange={cambia('gancho')} placeholder="La primera frase o el texto del primer segundo" maxLength={300} />
+      <label className="campo-et">CTA</label>
+      <input className="campo" value={d.cta} onChange={cambia('cta')} placeholder="p. ej. Comenta GUÍA y te la mando" maxLength={300} />
     </div>
   );
 }

@@ -1,5 +1,6 @@
 import { cpSync, existsSync, mkdirSync, readdirSync, readFileSync, renameSync, statSync, writeFileSync } from 'node:fs';
 import path from 'node:path';
+import { RETIRADAS } from '../skills/catalogo.js';
 
 // Acceso al vault de Obsidian: la "memoria" de JARVIS. Todo son archivos Markdown normales.
 
@@ -170,12 +171,32 @@ export function ensureVault(vaultPath, templateDir, mcpScript) {
   mkdirSync(vaultPath, { recursive: true });
   if (existsSync(templateDir)) cpSync(templateDir, vaultPath, { recursive: true, force: false, errorOnExist: false });
   for (const c of CARPETAS) mkdirSync(path.join(vaultPath, c), { recursive: true });
+  archivarSkillsRetiradas(vaultPath);
   const mcpFile = path.join(vaultPath, '.mcp.json');
   if (!existsSync(mcpFile)) {
     const cfg = { mcpServers: { jarvis: { command: 'node', args: ['--disable-warning=ExperimentalWarning', mcpScript] } } };
     writeFileSync(mcpFile, JSON.stringify(cfg, null, 2) + '\n', 'utf8');
   }
   return { nuevo };
+}
+
+// Las skills que JARVIS ya no trae se apartan a .claude/skills-archivadas/ (no se borran) si siguen siendo de
+// JARVIS (autor: JARVIS). Las que la persona hizo suyas (sin esa marca) se quedan donde están.
+export function archivarSkillsRetiradas(vaultPath, retiradas = RETIRADAS) {
+  const dir = path.join(vaultPath, '.claude', 'skills');
+  const archivo = path.join(vaultPath, '.claude', 'skills-archivadas');
+  const movidas = [];
+  for (const n of retiradas) {
+    const f = path.join(dir, n, 'SKILL.md');
+    let md;
+    try { md = readFileSync(f, 'utf8'); } catch { continue; }
+    if (!/^\s+autor:\s*JARVIS\s*$/m.test(md)) continue;
+    mkdirSync(archivo, { recursive: true });
+    const destino = path.join(archivo, n);
+    if (existsSync(destino)) continue;
+    try { renameSync(path.join(dir, n), destino); movidas.push(n); } catch { /* en uso: se intenta en el próximo arranque */ }
+  }
+  return movidas;
 }
 
 export function normaliza(s) {

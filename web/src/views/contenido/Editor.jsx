@@ -2,11 +2,13 @@ import { useEffect, useRef, useState } from 'react';
 import Icon from '../../components/Icon.jsx';
 import CampoCaption from '../../components/CampoCaption.jsx';
 import GenerarPortada, { esFormatoVideo } from './Portada.jsx';
+import { VersionesRed } from './Versiones.jsx';
+import { ResultadosPieza } from './Resultados.jsx';
 import { api } from '../../lib/api.js';
 import { markdownANegrita } from '../../lib/negrita.js';
 import { diaLargo, hoyIso, sumarDias } from '../../lib/fechas.js';
 import { NOMBRE_TIPO_IG, planDePublicacion } from '../../lib/planIg.js';
-import { CampoLeadMagnet, OpcionesCarpetas, useFases, MAX_CAPTION, Miniatura, Modal, TIPOS, borrarArchivo, esMedio, esStory, esVideo, subirArchivo, tamanoLegible, tipoDe } from './comun.jsx';
+import { CampoEstrategia, CampoLeadMagnet, OpcionesCarpetas, useFases, MAX_CAPTION, Miniatura, Modal, TIPOS, borrarArchivo, esMedio, esStory, esVideo, subirArchivo, tamanoLegible, tipoDe } from './comun.jsx';
 
 // Caption con IA: JARVIS lo escribe con tu voz a partir de lo que tenga la pieza (título, guion, lead magnet…)
 const crearCaption = async (datos) => {
@@ -92,14 +94,19 @@ function CajaInstagram({ ig, pieza, plan, marcado, onMarcar, onAhora, onConverti
 }
 
 // ---------- Ficha de una pieza: nueva o para editar ----------
-export function EditorContenido({ pieza, carpetas, ig, onClose, onGuardado, onVisor, onRepublicar }) {
+// piezas y pilares: para enseñar de dónde sale y qué ha salido de ella, y sugerir pilares.
+// onDerivada: abre una pieza nueva que sale de esta (p. ej. el carrusel de un reel).
+export function EditorContenido({ pieza, carpetas, ig, onClose, onGuardado, onVisor, onRepublicar, piezas = [], pilares = [], onAbrir, onDerivada }) {
   const ESTADOS = useFases();
   const nueva = !pieza.id;
   const [d, setD] = useState(() => ({
     titulo: pieza.titulo || '', carpeta: pieza.carpeta || '', formato: tipoDe(pieza.formato)?.id || pieza.formato || 'Reel',
     estado: pieza.estado || 'idea', fecha: pieza.fecha || '', hora: pieza.hora || '', caption: pieza.caption || '', video_url: pieza.video_url || '',
     publicar_ig: Boolean(pieza.publicar_ig), leadmagnet: Boolean(pieza.leadmagnet), leadmagnet_url: pieza.leadmagnet_url || '',
+    pilar: pieza.pilar || '', objetivo: pieza.objetivo || '', gancho: pieza.gancho || '', cta: pieza.cta || '',
   }));
+  const padre = pieza.padre_id ? piezas.find((p) => p.id === pieza.padre_id) : null;
+  const derivadas = pieza.id ? piezas.filter((p) => p.padre_id === pieza.id) : [];
   const [archivos, setArchivos] = useState(pieza.archivos || []);
   const [portada, setPortada] = useState(pieza.portada || null); // la de un reel (Instagram la usa de cover)
   const [generandoPortada, setGenerandoPortada] = useState(false);
@@ -184,7 +191,7 @@ export function EditorContenido({ pieza, carpetas, ig, onClose, onGuardado, onVi
     }
     setGuardando(true); setError('');
     if (d.leadmagnet && d.leadmagnet_url && !/^https?:\/\//i.test(d.leadmagnet_url)) return setError('El enlace del lead magnet debe empezar por https://');
-    const body = { ...d, carpeta: d.carpeta || null, fecha: d.fecha || null, hora: d.hora || null, archivos, portada: esFormatoVideo(d.formato) ? portada : null, publicar_ig: ahora ? false : conIg ? d.publicar_ig : false, leadmagnet_url: d.leadmagnet ? d.leadmagnet_url.trim() || null : null };
+    const body = { ...d, pilar: d.pilar.trim() || null, objetivo: d.objetivo || null, gancho: d.gancho.trim() || null, cta: d.cta.trim() || null, ...(nueva && pieza.padre_id ? { padre_id: pieza.padre_id } : {}), ...(nueva && pieza.origen_ref ? { origen_ref: pieza.origen_ref } : {}), carpeta: d.carpeta || null, fecha: d.fecha || null, hora: d.hora || null, archivos, portada: esFormatoVideo(d.formato) ? portada : null, publicar_ig: ahora ? false : conIg ? d.publicar_ig : false, leadmagnet_url: d.leadmagnet ? d.leadmagnet_url.trim() || null : null };
     if (!conIg) delete body.publicar_ig;
     try {
       const r = nueva ? await api('/api/piezas', { method: 'POST', body }) : await api(`/api/piezas/${pieza.id}`, { method: 'PATCH', body });
@@ -223,6 +230,16 @@ export function EditorContenido({ pieza, carpetas, ig, onClose, onGuardado, onVi
           <Pildoras opciones={TIPOS} valor={d.formato} onCambio={cambia('formato')} />
           <label className="campo-et">Estado</label>
           <Pildoras opciones={ESTADOS} valor={d.estado} onCambio={cambia('estado')} color />
+          {(padre || pieza.origen_ref || derivadas.length > 0 || (!nueva && onDerivada)) && (
+            <div className="origen-pieza">
+              {padre && <span>Sale de <button type="button" className="link-btn" onClick={() => onAbrir?.(padre)}>«{padre.titulo}»</button></span>}
+              {!padre && pieza.origen_ref && <span>Sale de {pieza.origen_ref.replace(/^laboratorio:/, 'Laboratorio · ')}</span>}
+              {derivadas.length > 0 && (
+                <span>De aquí {derivadas.length === 1 ? 'sale' : 'salen'}: {derivadas.map((x, i) => <span key={x.id}>{i ? ', ' : ''}<button type="button" className="link-btn" onClick={() => onAbrir?.(x)}>«{x.titulo}»</button></span>)}</span>
+              )}
+              {!nueva && onDerivada && <button type="button" className="link-btn" onClick={() => onDerivada({ titulo: '', estado: 'idea', archivos: [], padre_id: pieza.id, pilar: d.pilar, objetivo: d.objetivo, carpeta: d.carpeta })}>+ Sacar otra pieza de esta</button>}
+            </div>
+          )}
           <div className="dos-col">
             <div>
               <label className="campo-et">Fecha de publicación</label>
@@ -234,6 +251,7 @@ export function EditorContenido({ pieza, carpetas, ig, onClose, onGuardado, onVi
             </div>
           </div>
           {!d.fecha && <div className="ayuda">Sin fecha se queda en la biblioteca hasta que la programes.</div>}
+          <CampoEstrategia d={d} pilares={pilares} onCambio={(c) => setD((x) => ({ ...x, ...c }))} />
           <label className="campo-et">Caption <span className={`contador${largo ? ' pasado' : ''}`}>{d.caption.length} / {MAX_CAPTION}</span></label>
           <CampoCaption rows={7} value={d.caption} onChange={cambia('caption')} placeholder="El texto que acompaña a la publicación…" onIA={() => crearCaption({ ...d, nota: pieza.nota, archivos })} />
           <label className="campo-et">URL del vídeo</label>
@@ -291,6 +309,8 @@ export function EditorContenido({ pieza, carpetas, ig, onClose, onGuardado, onVi
           {!archivos.length && <div className="ayuda">Se guardan en tu PC, en la carpeta data\contenido de JARVIS.</div>}
         </div>
       </form>
+      {!nueva && <ResultadosPieza pieza={{ ...pieza, estado: d.estado, fecha: d.fecha }} onVinculada={(p) => p && setD((x) => ({ ...x, estado: p.estado, fecha: p.fecha || '' }))} />}
+      {!nueva && <VersionesRed pieza={pieza} fecha={d.fecha} />}
       {error && <div className="caja-error">{error}</div>}
       {generandoPortada && (
         <GenerarPortada

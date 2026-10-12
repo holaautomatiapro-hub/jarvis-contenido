@@ -16,7 +16,7 @@ Genera 10 ganchos para la apertura de un reel o short. Úsala cuando pidan ganch
 - Si te falta un dato imprescindible (tema, objetivo o público), pregunta una sola cosa y espera.
 
 ## Pasos
-1. Identifica el dolor o deseo concreto del público con este tema.
+1. Mira con metricas_instagram qué ganchos te han funcionado mejor y busca en 03-Transcripciones cómo abres tú los vídeos.
 2. Escribe 10 ganchos mezclando 5 tipos: curiosidad, contradicción, lista con número, historia en marcha y pregunta al dolor.
 3. Máximo 12 palabras por gancho; nada de "¿Sabías que…?" ni "En este vídeo…".
 4. Elige los 3 mejores y explica en una línea por qué paran el scroll.
@@ -27,5 +27,5 @@ Tabla con columnas Tipo | Gancho | Por qué funciona, y debajo el top 3 con el t
 ## Al terminar
 - Repasa el texto contra la lista anti-IA: nada de "en el mundo de hoy", "descubre", "sumérgete", "no solo… sino también", tríos de adjetivos ni emojis de relleno. Frases concretas, como se dicen en voz alta.
 - Guarda el resultado con `crear_nota` en `02-Guiones/` (título claro y la fecha si es un informe).
-- Si es una pieza de contenido nueva, créala o muévela en el pipeline (`crear_pieza` / `mover_pieza`).
+- Si es una pieza de contenido nueva, créala o muévela en el pipeline (`crear_pieza` / `mover_pieza`) con su pilar, objetivo, gancho y CTA si los sabes.
 - Termina proponiendo el siguiente paso en una frase.

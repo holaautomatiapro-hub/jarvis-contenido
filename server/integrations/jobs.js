@@ -5,7 +5,7 @@ import { PROMPT_ANALISIS } from './competencia.js';
 
 const HORA = 3600000;
 
-export function createJobs({ instagram, competencia, ads, asistente, skills, vault, ajustesDb, env = process.env, log = console }) {
+export function createJobs({ instagram, competencia, ads, asistente, resultados = null, skills, vault, ajustesDb, env = process.env, log = console }) {
   let timer = null;
 
   // Tareas de JARVIS en segundo plano (conversación "sistema", no molesta a la principal)
@@ -47,6 +47,7 @@ export function createJobs({ instagram, competencia, ads, asistente, skills, vau
     } catch (e) {
       log.warn?.(`  Instagram: ${e.message}`);
     }
+    resultadosAlDia();
     // Competidores: una vez al día
     if (competencia && instagram.estado().conectadoMeta) {
       const ultima = ajustesDb.leer('comp_sync', {}).fin;
@@ -64,13 +65,28 @@ export function createJobs({ instagram, competencia, ads, asistente, skills, vau
     try { tareasJarvis(); } catch (e) { log.warn?.(`  JARVIS automático: ${e.message}`); }
   }
 
+  // Une las publicaciones nuevas con sus piezas y, desde el lunes, escribe el informe de la semana pasada en 07-Diario
+  function resultadosAlDia() {
+    if (!resultados) return;
+    try {
+      const r = resultados.alDia();
+      if (r.vinculadas) log.log?.(`  Resultados: ${r.vinculadas} publicaciones unidas a su pieza`);
+      if (r.informe) log.log?.(`  Informe semanal: ${r.informe}`);
+    } catch (e) { log.warn?.(`  Resultados: ${e.message}`); }
+  }
+
+  let reloj = null;
   function iniciar() {
     const horas = Number(env.IG_SYNC_HORAS) || 6;
     const tick = () => { if (instagram.estado().conectado) sincronizarAhora(); };
     setTimeout(tick, 15000).unref?.();
     timer = setInterval(tick, horas * HORA);
     timer.unref?.();
+    // Aunque Instagram no esté conectado: el informe sale con lo publicado
+    setTimeout(resultadosAlDia, 20000).unref?.();
+    reloj = setInterval(resultadosAlDia, HORA);
+    reloj.unref?.();
   }
 
-  return { iniciar, sincronizarAhora, tareasJarvis, parar: () => clearInterval(timer) };
+  return { iniciar, sincronizarAhora, tareasJarvis, resultadosAlDia, parar: () => { clearInterval(timer); clearInterval(reloj); } };
 }

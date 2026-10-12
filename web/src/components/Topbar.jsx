@@ -8,12 +8,11 @@ export const TABS = [
   { id: 'contenido', label: 'Contenido', icon: 'layers' },
   { id: 'laboratorio', label: 'Laboratorio', icon: 'flask' },
   { id: 'notas', label: 'Notas', icon: 'notes' },
-  { id: 'voz', label: 'Voz', icon: 'voice' },
+  { id: 'chat', label: 'Chat', icon: 'voice' },
   { id: 'skills', label: 'Skills', icon: 'skills' },
   { id: 'instagram', label: 'Instagram', icon: 'instagram' },
   { id: 'competencia', label: 'Competencia', icon: 'spy' },
   { id: 'ads', label: 'Meta Ads', icon: 'ads' },
-  { id: 'publicar', label: 'Publicar', icon: 'publish' },
   { id: 'apps', label: 'Apps', icon: 'apps' },
 ];
 
@@ -26,7 +25,7 @@ function useClock() {
   return now;
 }
 
-export default function Topbar({ tab, onTab, demo, onBuscar }) {
+export default function Topbar({ tab, onTab, onBuscar }) {
   const now = useClock();
   const time = now.toLocaleTimeString('es-ES', { hour: '2-digit', minute: '2-digit' });
   const date = now.toLocaleDateString('es-ES', { weekday: 'short', day: 'numeric', month: 'short' }).replace(/\./g, '');
@@ -36,7 +35,6 @@ export default function Topbar({ tab, onTab, demo, onBuscar }) {
         <div className="logo-word">JARVIS<span className="logo-dot" /></div>
         <div className="logo-sub-row">
           <span className="logo-sub">Sistema Operativo de IA</span>
-          {demo && <span className="demo-tag" title="Mostrando datos de ejemplo hasta que conectes tus cuentas">Demo</span>}
         </div>
       </div>
       <nav className="nav" aria-label="Secciones">
@@ -50,7 +48,6 @@ export default function Topbar({ tab, onTab, demo, onBuscar }) {
       <div className="top-right">
         <button className="icon-btn hide-sm" aria-label="Buscar en tus notas" onClick={onBuscar}><Icon name="search" /></button>
         <Apariencia />
-        <button className="icon-btn hide-sm" aria-label="Notificaciones"><Icon name="bell" /><span className="badge-dot" /></button>
         <div className="avatar">J</div>
         <div className="clock">
           <div className="clock-time">{time}</div>

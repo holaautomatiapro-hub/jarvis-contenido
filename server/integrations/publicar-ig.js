@@ -1,6 +1,7 @@
 import { createGraph, MetaError } from './meta.js';
 import { AlmacenError } from './almacen.js';
 import { planDePublicacion, instanteDe, NOMBRE_TIPO_IG } from '../../web/src/lib/planIg.js';
+import { RED_DE_TIPO_IG } from '../publicar.js';
 import { markdownANegrita } from '../../web/src/lib/negrita.js';
 import { row, rows } from '../db.js';
 
@@ -168,6 +169,8 @@ export function createPublicadorIg({ db, jarvis, instagram, almacen, archivos, f
     let permalink = null;
     try { permalink = (await g.get(pub.id, { fields: 'permalink' })).permalink || null; } catch { /* sin enlace */ }
     set(p.id, { ig_estado: 'publicado', ig_error: null, ig_media_id: pub.id, ig_permalink: permalink, ig_publicado_en: ahora().toISOString(), ig_contenedor: null, estado: 'publicado', publicar_ig: 0 });
+    // Si la pieza tenía preparada su versión de Instagram (en «Versiones por red»), también queda publicada
+    if (RED_DE_TIPO_IG[tipo]) db.prepare("UPDATE pub_versiones SET estado = 'publicado', publicado = datetime('now','localtime'), actualizado = datetime('now','localtime') WHERE pieza_id = ? AND red = ? AND estado != 'publicado'").run(p.id, RED_DE_TIPO_IG[tipo]);
     almacen.borrar(st.subidos.map((s) => s.ruta).filter(Boolean));
     jarvis.registrar('Contenido', `Publicado en Instagram (${NOMBRE_TIPO_IG[tipo]}): ${p.titulo}`, 'dashboard');
     return { listo: true, permalink };

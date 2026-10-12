@@ -31,7 +31,7 @@ export default function Skills() {
           <div className="ayuda" style={{ margin: '4px 0 12px' }}>Skills de Claude para crear, analizar y optimizar tu contenido.</div>
           <div className="vault-total">
             <div>
-              <div className="vault-num">+{Math.floor(data.total / 10) * 10 || data.total}</div>
+              <div className="vault-num">{data.total}</div>
               <div className="status"><span className="dot on" />{data.total} skills activas</div>
             </div>
             <Mascota pose="sentada" size={92} float={false} />

@@ -20,7 +20,7 @@ export const TAREAS_PROGRAMADAS = [
     titulo: 'Plan del día',
     cuando: 'Todos los días · 8:45',
     cron: '45 8 * * *',
-    prompt: 'Buenos días. Usa tareas_de_hoy, recordatorios_de_hoy y resumen_del_dia del MCP jarvis y escribe mi plan de hoy en 5 líneas como mucho: primero lo atrasado y la prioridad alta. Después mira listar_pipeline y propón 2 ideas de contenido para hoy a partir de lo que tengo en marcha (no las guardes, solo proponlas). No inventes datos.',
+    prompt: 'Buenos días. Usa tareas_de_hoy, recordatorios_de_hoy y resumen_del_dia del MCP jarvis y escribe mi plan de hoy en 5 líneas como mucho: primero lo atrasado y la prioridad alta. Después, con mi_semana: qué tengo que producir con urgencia, si hay huecos en los próximos días y cómo voy con mi ritmo semanal. Si hay un hueco, propón con qué pieza lista sin fecha (o idea) taparlo. No guardes nada. No inventes datos.',
   },
   {
     nombre: 'jarvis-informe-lunes',
@@ -41,7 +41,7 @@ export const TAREAS_PROGRAMADAS = [
     titulo: 'Planificación de la semana',
     cuando: 'Domingo · 18:50',
     cron: '50 18 * * 0',
-    prompt: 'Planifica mi semana de contenido. Mira listar_pipeline y calendario_publicaciones de los próximos 7 días y propón qué grabar, editar y publicar cada día (lunes a viernes, una línea por día). Mira también listar_tareas (atrasadas y de esta semana). Añade como tareas con anadir_tarea solo las 3 más importantes del lunes, con su prioridad. No publiques ni programes nada más.',
+    prompt: 'Planifica mi semana de contenido. Mira mi_semana (con la fecha del lunes que viene), listar_pipeline y calendario_publicaciones de los próximos 7 días y propón qué grabar, editar y publicar cada día de publicación (una línea por día), tapando los huecos y cumpliendo mi ritmo semanal. Mira también listar_tareas (atrasadas y de esta semana). Añade como tareas con anadir_tarea solo las 3 más importantes del lunes, con su prioridad. No publiques ni programes nada más.',
   },
 ];
 

@@ -8,7 +8,7 @@ import { McpServer } from '@modelcontextprotocol/sdk/server/mcp.js';
 import { StdioServerTransport } from '@modelcontextprotocol/sdk/server/stdio.js';
 import { z } from 'zod';
 import { ROOT, getConfig } from '../server/config.js';
-import { openDb, CATEGORIAS } from '../server/db.js';
+import { openDb, CATEGORIAS, OBJETIVOS } from '../server/db.js';
 import { createVault, ensureVault, CARPETAS } from '../server/vault.js';
 import { createJarvis } from '../server/jarvis.js';
 import { ESTADOS_TAREA, PRIORIDADES, PLAZOS } from '../server/tareas.js';
@@ -16,14 +16,19 @@ import { createInstagram } from '../server/integrations/instagram.js';
 import { createCompetencia } from '../server/integrations/competencia.js';
 import { createAds } from '../server/integrations/ads.js';
 import { createPublicar, REDES } from '../server/publicar.js';
+import { createResultados } from '../server/resultados.js';
+import { PIEZAS_TESTIMONIO, PLANTILLAS_REEL } from '../server/laboratorio.js';
+import { TIPOS_LM } from '../server/leadmagnets.js';
+import { FORMATOS_IMAGEN, TIPOS_IMAGEN } from '../server/imagenes.js';
 import { createKit } from '../server/diseno/kit.js';
 import { createRecordatorios } from '../server/recordatorios.js';
 import { reglasDiseno } from '../server/diseno/reglas.js';
-import { readFileSync, statSync } from 'node:fs';
+import { createReadStream, existsSync, readFileSync, statSync } from 'node:fs';
+import { Readable } from 'node:stream';
 
 dotenv.config({ path: path.join(ROOT, '.env'), quiet: true });
 
-export function buildServer(jarvis, { origen = 'claude', avisar = () => {}, instagram = null, competencia = null, ads = null, publicar = null, diseno = null, recordatorios = null } = {}) {
+export function buildServer(jarvis, { origen = 'claude', avisar = () => {}, instagram = null, competencia = null, ads = null, publicar = null, diseno = null, recordatorios = null, resultados = null, laboratorio = null } = {}) {
   const server = new McpServer({ name: 'jarvis', version: '0.2.0' });
 
   const tool = (name, description, inputSchema, fn, escribe = false) =>
@@ -37,9 +42,23 @@ export function buildServer(jarvis, { origen = 'claude', avisar = () => {}, inst
       }
     });
 
+  // Estrategia de una pieza: para saber después qué pilar, objetivo, gancho y CTA funcionan mejor
+  const estrategia = {
+    pilar: z.string().optional().describe('Pilar de contenido (usa ver_pilares para reutilizar los que ya tiene la persona)'),
+    objetivo: z.enum(OBJETIVOS).optional().describe('atraer (alcance, gente nueva), nutrir (confianza) o convertir (ventas, leads)'),
+    gancho: z.string().optional().describe('El gancho: la primera frase o el texto del primer segundo'),
+    cta: z.string().optional().describe('La llamada a la acción (p. ej. «comenta GUÍA»)'),
+  };
+
   tool('capturar_idea', 'Guarda una idea de contenido: crea una nota en 01-Ideas y una tarjeta en la columna Idea del pipeline.',
-    { texto: z.string().describe('La idea, tal cual la dijo la persona'), formato: z.string().optional().describe('reel, carrusel, historia, post, short…') },
-    ({ texto, formato }) => jarvis.capturarIdea({ texto, formato, origen }), true);
+    { texto: z.string().describe('La idea, tal cual la dijo la persona'), formato: z.string().optional().describe('reel, carrusel, historia, post, short…'), pilar: estrategia.pilar, objetivo: estrategia.objetivo },
+    ({ texto, formato, pilar, objetivo }) => jarvis.capturarIdea({ texto, formato, pilar, objetivo, origen }), true);
+
+  tool('mi_semana', 'La semana de contenido: qué sale cada día (y los huecos), cómo va el ritmo semanal (objetivo por tipo de pieza), cuántos días de publicación hay cubiertos desde hoy, cuántas piezas listas sin fecha hay de reserva y qué falta producir (piezas con día que aún no están listas).',
+    { fecha: z.string().optional().describe('Un día de la semana que quieres ver, AAAA-MM-DD (por defecto hoy)') },
+    ({ fecha }) => jarvis.miSemana(fecha ? { fecha } : {}));
+
+  tool('ver_pilares', 'Pilares de contenido que ya usan las piezas de la persona, con cuántas piezas tiene cada uno.', {}, () => jarvis.pilares());
 
   tool('crear_nota', 'Crea una nota Markdown en el vault de Obsidian.',
     { titulo: z.string(), contenido: z.string().optional(), carpeta: z.enum(CARPETAS).optional().describe('Por defecto 00-Inbox') },
@@ -77,6 +96,9 @@ export function buildServer(jarvis, { origen = 'claude', avisar = () => {}, inst
       nota: z.string().optional().describe('Ruta de la nota asociada en el vault'),
       leadmagnet: z.boolean().optional().describe('Si la pieza lleva lead magnet (p. ej. «comenta GUÍA y te la mando»)'),
       leadmagnet_url: z.string().optional().describe('Enlace del lead magnet (https://…)'),
+      ...estrategia,
+      padre_id: z.number().int().optional().describe('Si sale de otra pieza (p. ej. un clip de un vídeo largo o el carrusel de un reel), el id de esa pieza'),
+      origen_ref: z.string().optional().describe('De dónde sale si no es de una pieza (p. ej. «Testimonio · Ana»)'),
     },
     (a) => jarvis.crearPieza({ ...a, origen }), true);
 
@@ -93,6 +115,8 @@ export function buildServer(jarvis, { origen = 'claude', avisar = () => {}, inst
       nota: z.string().optional(),
       leadmagnet: z.boolean().optional(),
       leadmagnet_url: z.string().optional().describe('Enlace del lead magnet (https://…)'),
+      ...estrategia,
+      padre_id: z.number().int().nullable().optional().describe('Id de la pieza de la que sale (null para quitarlo)'),
     },
     ({ id, ...cambios }) => jarvis.actualizarPieza(id, cambios, origen), true);
 
@@ -251,9 +275,19 @@ export function buildServer(jarvis, { origen = 'claude', avisar = () => {}, inst
       (a) => ads.proponer(a, origen), true);
   }
 
+  if (resultados) {
+    tool('que_me_funciona', 'Qué te funciona en Instagram (datos reales, sin IA): alcance, interacción y guardados+compartidos por cada 1.000 personas, agrupado por pilar, objetivo, formato y CTA de tus piezas, más los mejores y peores ganchos y unas conclusiones (solo con grupos de 3 piezas o más). cobertura dice cuántas publicaciones están unidas a su pieza.',
+      { dias: z.number().int().min(30).max(365).optional().describe('Periodo, por defecto 90 días') },
+      ({ dias }) => { resultados.vincularTodo(); return resultados.queFunciona({ dias }); });
+    tool('resultados_pieza', 'Métricas de Instagram de una pieza (su publicación) frente a la media de su formato.', { id: z.number().int() }, ({ id }) => resultados.deLaPieza(id));
+    tool('informe_semanal', 'Escribe el informe de una semana en 07-Diario (números, ritmo, lo mejor y lo peor, qué funciona y la semana que viene) y devuelve sus datos. Por defecto, la semana pasada.',
+      { fecha: z.string().optional().describe('Un día de esa semana, AAAA-MM-DD') },
+      ({ fecha }) => resultados.informeSemanal(fecha ? { fecha } : {}), true);
+  }
+
   if (publicar) {
     const redes = REDES.map((r) => r.id);
-    tool('guardar_versiones', 'Guarda las versiones de una pieza para cada red (aparecen en la pestaña Publicar y en 06-Publicaciones). Si ya había una versión sin publicar de esa red, la reemplaza. No publica nada.',
+    tool('guardar_versiones', 'Guarda las versiones de una pieza para otras redes (aparecen en la ficha de la pieza, en Contenido, y en 06-Publicaciones). Salen el mismo día que la pieza salvo que les pongas fecha propia. Si ya había una versión sin publicar de esa red, la reemplaza. No publica nada.',
       {
         piezaId: z.number().int(),
         versiones: z.array(z.object({
@@ -263,16 +297,16 @@ export function buildServer(jarvis, { origen = 'claude', avisar = () => {}, inst
           texto: z.string().describe('Lo que se publica: guion, slides, post o hilo'),
           extra: z.string().optional().describe('Hashtags, CTA o enlace'),
           notas: z.string().optional().describe('Indicaciones de grabación, diseño o edición'),
-          fecha: z.string().optional().describe('AAAA-MM-DD si hay fecha prevista'),
+          fecha: z.string().optional().describe('AAAA-MM-DD solo si sale otro día que la pieza'),
           hora: z.string().optional().describe('HH:MM'),
         })).min(1),
       },
       ({ piezaId, versiones }) => publicar.guardarVersiones({ piezaId, versiones, origen }), true);
     tool('versiones_de_pieza', 'Lista las versiones por red de una pieza.', { piezaId: z.number().int() }, ({ piezaId }) => publicar.listarPieza(piezaId));
-    tool('calendario_publicaciones', 'Versiones programadas entre dos fechas y las que están sin fecha.',
+    tool('calendario_publicaciones', 'Todo lo que se publica entre dos fechas: las piezas del calendario de Contenido (piezas) y sus versiones para otras redes (versiones; dia = el día en que salen). sinFecha = versiones de piezas sin día.',
       { desde: z.string().describe('AAAA-MM-DD'), hasta: z.string().describe('AAAA-MM-DD') },
       ({ desde, hasta }) => publicar.calendario({ desde, hasta }));
-    tool('programar_version', 'Pone fecha (y hora) de publicación a una versión. Solo la agenda: la persona publica.',
+    tool('programar_version', 'Pone a una versión un día (y hora) distinto del de su pieza. Para cambiar el día de todo, cambia la fecha de la pieza con mover_pieza. Solo la agenda: la persona publica.',
       { id: z.number().int(), fecha: z.string().describe('AAAA-MM-DD'), hora: z.string().optional().describe('HH:MM') },
       ({ id, fecha, hora }) => publicar.programar(id, { fecha, hora }), true);
   }
@@ -339,6 +373,73 @@ export function buildServer(jarvis, { origen = 'claude', avisar = () => {}, inst
       ({ id, ...datos }) => servidor('PUT', `/api/disenos/${id}/datos`, datos), true);
   }
 
+  // Laboratorio: testimonios, reels, clips, imágenes y lead magnets. Lo hace el Laboratorio del dashboard (Claude con el
+  // plugin, Python y ffmpeg, en su propio carril); estas herramientas le pasan el trabajo para llevarlo todo desde un chat.
+  if (laboratorio) {
+    const { servidor, subir } = laboratorio;
+    const corto = (t, n) => (t && t.length > n ? `${t.slice(0, n)}…` : t);
+    tool('laboratorio_estado', 'Qué hay en el Laboratorio: si está listo (plugin, Python, marca), si está trabajando, las entrevistas y vídeos subidos (crudo/), lo que ha salido de cada testimonio y reel (con enBiblioteca si ya está en Contenido), los lead magnets y los encargos de imágenes.', {},
+      async () => {
+        const l = await servidor('GET', '/api/laboratorio');
+        const lm = await servidor('GET', '/api/laboratorio/leadmagnets').catch(() => null);
+        const img = await servidor('GET', '/api/laboratorio/imagenes').catch(() => null);
+        const archivos = (lista) => lista.map((a) => ({ ruta: a.ruta, ...(a.enBiblioteca ? { enBiblioteca: true } : {}) }));
+        return {
+          listo: { plugin: Boolean(l.plugin?.instalado), python: Boolean(l.python), marca: Boolean(l.marca?.verificado) },
+          trabajando: Boolean(l.trabajando),
+          subidos: (l.entrevistas || []).map((a) => a.ruta),
+          testimonios: (l.testimonios || []).map((t) => ({ cliente: t.cliente, captions: t.caption, portadas: archivos(t.portadas || []), grupos: t.grupos.map((g) => ({ id: g.id, nombre: g.nombre, archivos: archivos(g.archivos) })) })),
+          reels: (l.reels || []).map((r) => ({ nombre: r.nombre, captions: r.caption, grupos: r.grupos.map((g) => ({ id: g.id, nombre: g.nombre, archivos: archivos(g.archivos) })) })),
+          leadmagnets: (lm?.leadmagnets || []).map(({ slug, titulo, tipo, url, listo, pieza }) => ({ slug, titulo, tipo, url: url || null, listo: Boolean(listo), pieza: pieza || null })),
+          imagenes: (img?.trabajos || []).slice(0, 10).map((t) => ({ nombre: t.nombre, titulo: t.titulo, archivos: (t.archivos || []).map((a) => a.ruta) })),
+        };
+      });
+    tool('laboratorio_subir', 'Copia al Laboratorio un archivo de este ordenador: la entrevista o el vídeo a editar (tipo entrevista o video, va a crudo/), la foto del cliente (tipo foto, con su nombre en cliente) o una imagen de referencia (tipo referencia). Devuelve su ruta para laboratorio_encargar.',
+      { ruta_local: z.string().describe('Ruta completa del archivo en este ordenador'), tipo: z.enum(['entrevista', 'video', 'foto', 'referencia']), cliente: z.string().optional().describe('Nombre del cliente (para su foto)') },
+      ({ ruta_local, tipo, cliente }) => subir(ruta_local, { tipo, cliente }), true);
+    tool('laboratorio_encargar', `Encarga un trabajo al Laboratorio (Opus con el plugin; tarda minutos). datos según el tipo:
+- testimonio: { cliente, entrevista (ruta de laboratorio_subir), foto?, frase? (de la portada), queHicimos?, indicaciones?, piezas? (de ${Object.keys(PIEZAS_TESTIMONIO).join(', ')}; por defecto todo) }
+- reel: { video (ruta), nombre?, modo? ("entero" o clips), clips? (1-10), duracion? (s por clip), plantillas? (${Object.keys(PLANTILLAS_REEL).join(', ')}), titulo?, indicaciones? }. Para sacar clips de un vídeo largo, modo clips con varios clips.
+- leadmagnet: { titulo, tipo (${Object.keys(TIPOS_LM).join(', ')}), palabra? (la palabra clave del CTA), pieza? (id de la pieza que lo anuncia), contenido? (de qué va), indicaciones? }
+- imagen: { descripcion, tipo? (${Object.keys(TIPOS_IMAGEN).join(', ')}), formato? (${Object.keys(FORMATOS_IMAGEN).join(', ')}), cantidad? }
+Testimonios y reels se paran a enseñar el guion y los clips: léelo con laboratorio_chat, enséñaselo a la persona y pásale su respuesta con laboratorio_responder. Nunca des tú el visto bueno.`,
+      { tipo: z.enum(['testimonio', 'reel', 'leadmagnet', 'imagen']), datos: z.object({}).passthrough() },
+      ({ tipo, datos }) => servidor('POST', '/api/laboratorio/empezar', { tipo, datos }), true);
+    tool('laboratorio_chat', 'Lo último de la conversación del Laboratorio (lo que pregunta o enseña mientras trabaja) y si sigue trabajando.',
+      { turnos: z.number().int().min(1).max(10).optional() },
+      async ({ turnos = 2 }) => {
+        const e = await servidor('GET', '/api/jarvis/estado?conversacion=laboratorio');
+        const t = new Map();
+        for (const ev of e.eventos || []) {
+          if (!ev.id) continue;
+          if (!t.has(ev.id)) t.set(ev.id, { pedido: '', respuesta: '', estado: 'trabajando' });
+          const x = t.get(ev.id);
+          if (ev.tipo === 'pregunta') x.pedido = corto(ev.texto, 400);
+          else if (ev.tipo === 'texto') x.respuesta += ev.texto;
+          else if (ev.tipo === 'fin') { x.estado = 'terminado'; if (ev.texto) x.respuesta = ev.texto; }
+          else if (ev.tipo === 'error') { x.estado = 'error'; x.respuesta += `\n[Error] ${ev.mensaje}`; }
+        }
+        return { trabajando: Boolean(e.ocupadoAqui), turnos: [...t.values()].slice(-turnos).map((x) => ({ ...x, respuesta: corto(x.respuesta.trim(), 6000) })) };
+      });
+    tool('laboratorio_responder', 'Manda al Laboratorio la respuesta de la persona (su visto bueno, cambios o lo que le pregunte). Solo lo que la persona diga.',
+      { texto: z.string() },
+      ({ texto }) => servidor('POST', '/api/jarvis/preguntar', { conversacion: 'laboratorio', texto }), true);
+    tool('laboratorio_a_biblioteca', 'Pasa a la biblioteca de Contenido lo que ha salido del Laboratorio: una pieza en Listo con su caption (de _caption.md si no das otro), en la carpeta del trabajo y sin duplicar (si ya estaba, la devuelve). Un carrusel en vídeo va junto (varias rutas); stories y clips, de uno en uno.',
+      {
+        rutas: z.array(z.string()).min(1).max(20), titulo: z.string().optional(),
+        formato: z.string().optional().describe('Reel, Carrusel, Story, Post, B-roll…'), caption: z.string().optional(),
+        padre_id: z.number().int().optional().describe('La pieza madre (p. ej. el vídeo largo del que salen los clips)'),
+        pilar: z.string().optional(), objetivo: z.enum(OBJETIVOS).optional(),
+      },
+      (a) => servidor('POST', '/api/laboratorio/biblioteca', a), true);
+    tool('asignar_leadmagnet', 'Une un lead magnet a la pieza que lo anuncia (si ya está publicado, pone su enlace en la pieza). Publicarlo en Vercel lo hace la persona en Laboratorio → Lead magnets.',
+      { slug: z.string(), pieza: z.number().int().nullable() },
+      ({ slug, pieza }) => servidor('PUT', `/api/laboratorio/leadmagnets/${encodeURIComponent(slug)}/pieza`, { pieza }), true);
+    tool('exportar_diseno', 'Exporta un diseño terminado a la biblioteca de Contenido (JPG, o vídeo MP4 con su animación): un carrusel queda en su pieza (la del guion si sale de una) y las stories, una pieza por story enlazadas a ella.',
+      { id: z.number().int(), tipo: z.enum(['jpg', 'mp4']).optional() },
+      ({ id, tipo = 'jpg' }) => servidor('POST', `/api/disenos/${id}/exportar`, { tipo }), true);
+  }
+
   return server;
 }
 
@@ -369,7 +470,20 @@ async function main() {
   };
   const diseno = { kit: createKit({ vaultPath: cfg.vaultPath }), servidor };
   const recordatorios = createRecordatorios({ db });
-  await buildServer(jarvis, { origen, avisar, instagram, competencia, ads, publicar, diseno, recordatorios }).connect(new StdioServerTransport());
+  const resultados = createResultados({ db, jarvis, vault });
+  // Sube un archivo de este ordenador al Laboratorio del dashboard (en trozos, sin cargarlo en memoria)
+  const subir = async (ruta, { tipo, cliente }) => {
+    if (!existsSync(ruta) || !statSync(ruta).isFile()) throw new Error(`No encuentro el archivo ${ruta}`);
+    const q = new URLSearchParams({ tipo, nombre: path.basename(ruta), cliente: cliente || '' });
+    let res;
+    try {
+      res = await fetch(`http://127.0.0.1:${cfg.port}/api/laboratorio/subir?${q}`, { method: 'POST', headers: { 'content-type': 'application/octet-stream' }, body: Readable.toWeb(createReadStream(ruta)), duplex: 'half', signal: AbortSignal.timeout(60 * 60_000) });
+    } catch { throw new Error('JARVIS no está abierto: el Laboratorio vive en el dashboard'); }
+    const j = await res.json().catch(() => ({}));
+    if (!res.ok) throw new Error(j.error || `Error ${res.status}`);
+    return j;
+  };
+  await buildServer(jarvis, { origen, avisar, instagram, competencia, ads, publicar, diseno, recordatorios, resultados, laboratorio: { servidor, subir } }).connect(new StdioServerTransport());
 }
 
 const esPrincipal = process.argv[1] && path.resolve(process.argv[1]) === fileURLToPath(import.meta.url);

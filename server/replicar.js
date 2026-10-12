@@ -33,7 +33,7 @@ Cómo hacerlo:
 1. Lee _voz.md y escribe con MI voz. Busca con buscar_notas en 03-Transcripciones y 01-Ideas material mío relacionado y úsalo.
 2. Si hay una skill adecuada en .claude/skills (guion-reel-30s, guion-reel-60s, ganchos-reel, carrusel-educativo…), síguela.
 3. Las versiones del mismo formato tienen que ser distintas entre sí (otro ángulo, otro gancho, otro ejemplo). No copies frases.
-4. Mira las fases con ver_pipeline. Guarda cada versión con crear_nota en 02-Guiones (título «<Formato>: <título>») y crea su pieza con crear_pieza: estado "guion" si existe esa fase (si no, la primera fase de trabajo), formato (Reel, Carrusel, Story o Post), nota = la ruta que devuelve crear_nota y el caption.
+4. Mira las fases con ver_pipeline. Guarda cada versión con crear_nota en 02-Guiones (título «<Formato>: <título>») y crea su pieza con crear_pieza: estado "guion" si existe esa fase (si no, la primera fase de trabajo), formato (Reel, Carrusel, Story o Post), nota = la ruta que devuelve crear_nota, el caption y su estrategia: gancho, cta, objetivo (atraer, nutrir o convertir) y pilar (reutiliza uno de ver_pilares si encaja).
 5. No publiques nada. Responde con la lista de piezas creadas, en una línea cada una.`;
 }
 

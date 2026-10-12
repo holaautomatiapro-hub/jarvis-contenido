@@ -38,9 +38,10 @@ describe('API REST', () => {
     assert.equal(status, 403);
   });
 
-  test('inicio vacío devuelve datos de ejemplo', async () => {
+  test('inicio vacío devuelve KPIs reales a cero, sin datos de ejemplo', async () => {
     const r = await (await api('/api/inicio')).json();
-    assert.equal(r.demo, true);
+    assert.equal(r.demo, undefined);
+    assert.ok(r.kpis.every((k) => k.value === 0));
   });
 
   test('crear idea por la API y verla en el pipeline', async () => {
@@ -50,7 +51,7 @@ describe('API REST', () => {
     assert.equal(piezas[0].titulo, 'Idea desde el dashboard');
     assert.ok(cambios > 0, 'avisa al WebSocket');
     const inicio = await (await api('/api/inicio')).json();
-    assert.equal(inicio.demo, false);
+    assert.equal(inicio.kpis.find((k) => k.id === 'ideas').value, 1);
   });
 
   test('errores de validación → 400 con mensaje', async () => {
