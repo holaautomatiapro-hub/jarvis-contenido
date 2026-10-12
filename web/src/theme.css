@@ -1131,6 +1131,8 @@ button.portada-muestra { padding: 0; border: 0; width: 100%; cursor: pointer; fo
 .portada-foto img { width: 100%; height: 100%; object-fit: cover; display: block; }
 .portada-subir { border-style: dashed; align-content: center; gap: 2px; }
 .portada-subir small { font-size: 10px; }
+.portada-sinfondo { display: flex; align-items: center; gap: 8px; font-size: 12.5px; margin-top: 10px; cursor: pointer; }
+.portada-haciendo .aviso { max-width: 460px; }
 .portada-haciendo { display: flex; flex-direction: column; align-items: center; gap: 10px; text-align: center; padding: 20px 10px; }
 .portada-haciendo img { max-height: 46vh; max-width: 100%; border-radius: 10px; border: 1px solid var(--border-soft); }
 .portada-spinner { width: 64px; height: 64px; border-radius: 50%; display: grid; place-items: center; color: var(--accent-2); background: color-mix(in srgb, var(--accent) 12%, transparent); animation: portada-pulso 1.4s ease-in-out infinite; }

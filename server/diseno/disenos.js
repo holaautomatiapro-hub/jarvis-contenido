@@ -15,7 +15,7 @@ export class DisenoError extends Error {
 const ESTADOS = ['nuevo', 'generando', 'renderizando', 'listo', 'exportando', 'error'];
 const json = (v, d) => { try { return v ? JSON.parse(v) : d; } catch { return d; } };
 
-export function createDisenos({ db, jarvis, kit, motor, archivos = null, previasDir, portadasDir = path.join(path.dirname(previasDir), 'portadas'), asistente = null, emitir = () => {}, alCambiar = () => {} }) {
+export function createDisenos({ db, jarvis, kit, motor, archivos = null, previasDir, portadasDir = path.join(path.dirname(previasDir), 'portadas'), recortarFoto = null, asistente = null, emitir = () => {}, alCambiar = () => {} }) {
   const q = {
     get: db.prepare('SELECT * FROM disenos WHERE id = ?'),
     // Las portadas que se hacen desde una pieza no salen en la lista de Diseño
@@ -193,7 +193,7 @@ Pasos: 1) ver_kit_diseno; 2) lee con Read la guía del kit y el ejemplo de esta 
     return { tipos: tiposPortada() };
   }
 
-  function crearPortada({ tipo, titulo, descripcion, foto, pieza } = {}) {
+  async function crearPortada({ tipo, titulo, descripcion, foto, pieza, sinFondo = true } = {}) {
     const t = tiposPortada().find((x) => x.id === tipo);
     if (!t) throw new DisenoError('Elige una plantilla de portada');
     const ref = imagenDe(t.id);
@@ -207,7 +207,15 @@ Pasos: 1) ver_kit_diseno; 2) lee con Read la guía del kit y el ejemplo de esta 
     if (!pl) throw new DisenoError('Tu sistema de diseño no tiene plantillas');
     const formato = pl.formatos.includes(t.formato) ? t.formato : pl.formatos[0];
     const desc = String(descripcion || '').trim().slice(0, 2000);
-    const f = foto?.url && /^image\//.test(String(foto.mime || 'image/')) ? { url: String(foto.url), nombre: String(foto.nombre || '') } : null;
+    let f = foto?.url && /^image\//.test(String(foto.mime || 'image/')) ? { url: String(foto.url), nombre: String(foto.nombre || ''), path: foto.path || null, mime: foto.mime } : null;
+    // La persona va recortada (sin fondo), como en las portadas de referencia: se recorta antes de diseñar
+    let recortada = false, aviso = null;
+    if (f && sinFondo !== false && f.path) {
+      if (!recortarFoto) aviso = 'No he podido quitar el fondo de la foto: en el VPS ejecuta bash ~/instalar-vps.sh para preparar el Laboratorio.';
+      else {
+        try { const r = await recortarFoto(f); if (r?.url) { f = { ...r }; recortada = true; } } catch (e) { aviso = `No he podido quitar el fondo de la foto (${e.message}); se usa tal cual.`; }
+      }
+    }
     const medios = (Array.isArray(pieza?.archivos) ? pieza.archivos : []).filter((a) => a?.url).slice(0, 6).map((a) => `${a.url} (${/^video\//.test(a.mime || '') ? 'vídeo' : 'foto'})`);
     const guion = [tit, desc].filter(Boolean).join('\n\n');
     const { lastInsertRowid } = db.prepare("INSERT INTO disenos (titulo, formato, plantilla, guion, uso) VALUES (?, ?, ?, ?, 'portada')").run(tit, formato, pl.id, guion);
@@ -217,11 +225,13 @@ Pasos: 1) ver_kit_diseno; 2) lee con Read la guía del kit y el ejemplo de esta 
 - Plantilla de portada: ${t.nombre}. Referencia (mírala con Read antes de nada): ${ref}
 - Formato: ${fmt.nombre.toLowerCase()} (${fmt.ancho}×${fmt.alto} px)${formato === 'story' ? ', respetando las zonas seguras de arriba y abajo' : ''}
 - Título: ${tit}
-${desc ? `- Qué quiero: ${desc}\n` : ''}${f ? `- Foto que quiero usar (ponla tal cual en <img src>${t.id === 'testimonio' ? '; si tiene fondo, intégrala como en la referencia' : ''}): ${f.url}\n` : ''}${pieza?.titulo ? `- Es la portada de la pieza «${pieza.titulo}» (${pieza.formato || 'pieza'}).${medios.length ? ` Sus archivos (puedes usar una foto o un fotograma de un vídeo si encaja): ${medios.join(', ')}` : ''}\n` : ''}
+${desc ? `- Qué quiero: ${desc}\n` : ''}${f ? (recortada
+      ? `- Foto (YA SIN FONDO, PNG transparente con la persona recortada; ponla tal cual en <img src>): ${f.url}. Colócala como la persona de la referencia (mismo tamaño, posición y encuadre, con el mismo resplandor o luz detrás y el mismo fundido abajo), nunca dentro de un recuadro ni con fondo.\n`
+      : `- Foto que quiero usar (ponla tal cual en <img src>): ${f.url}.${sinFondo !== false ? ' Tiene fondo: intégrala lo más parecido a la referencia (sin recuadro; difumina sus bordes con una máscara o degradado hacia el fondo).' : ''}\n`) : ''}${pieza?.titulo ? `- Es la portada de la pieza «${pieza.titulo}» (${pieza.formato || 'pieza'}).${medios.length ? ` Sus archivos (puedes usar una foto o un fotograma de un vídeo si encaja): ${medios.join(', ')}` : ''}\n` : ''}
 Cómo: reproduce la referencia lo más fiel posible: misma composición y jerarquía, mismas tipografías (o las más parecidas de Google Fonts), mismos colores, mismos efectos (brillos, resplandores, degradados, fondos), mismo tipo de comillas, subrayados y marca; solo cambian el texto${f ? ' y la foto' : ''}. Si en «Qué quiero» pido algo distinto (por ejemplo, fondo blanco con letras negras), eso manda sobre la referencia. Usa la plantilla "${pl.id}" del kit solo como soporte técnico (tamaño, fuentes y CSS base); el aspecto es el de la referencia. Sin paginación ni cierre.
 Pasos: 1) Read de la referencia; 2) ver_kit_diseno (formato técnico de las diapositivas); 3) escribe la diapositiva y guárdala con guardar_diseno (id ${id}); 4) mira la vista previa con Read, compárala con la referencia y corrige lo que no se parezca (y los avisos); 5) termina con una línea diciendo qué has puesto.`;
     generarConClaude(id, { prompt });
-    return obtener(id);
+    return { ...obtener(id), aviso, fotoSinFondo: recortada ? f : null };
   }
 
   // Exporta la portada a JPG en la biblioteca y devuelve el archivo (el editor la pone en la pieza)
