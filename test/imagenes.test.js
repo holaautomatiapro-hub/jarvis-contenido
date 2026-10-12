@@ -94,8 +94,9 @@ describe('Imágenes con Higgsfield', () => {
     const { nombre, prompt } = img.nuevo({ descripcion: 'Escritorio con portátil y café. Luz de mañana', formato: '4:5', cantidad: 9, presupuesto: 30, referencias: ['imagenes/_referencias/producto.jpg', '../fuera.jpg'], pieza: p.id });
     assert.equal(nombre, 'escritorio-con-portatil-y-cafe');
     assert.ok(existsSync(path.join(lab.dir, 'imagenes', nombre, '_encargo.json')));
-    assert.match(prompt, /4 variantes de imagen/);
-    assert.match(prompt, /Formato: 4:5/);
+    assert.match(prompt, /4 variantes\. Decide tú por lo que pido: si es vídeo/);
+    assert.match(prompt, /Si salgo yo .*Busca mi cara en mi Higgsfield/);
+    assert.match(prompt, /Formato: Feed 4:5/);
     assert.match(prompt, /get_cost:true/);
     assert.match(prompt, /Presupuesto: 30 créditos/);
     assert.match(prompt, /use_unlim/);
@@ -103,6 +104,11 @@ describe('Imágenes con Higgsfield', () => {
     assert.doesNotMatch(prompt, /fuera\.jpg/);
     assert.match(prompt, /Carrusel productividad/);
     assert.match(prompt, /bajar "<url>" imagenes\/escritorio-con-portatil-y-cafe/);
+    // Foto a editar: va aparte de las referencias
+    const ed = img.nuevo({ descripcion: 'Cámbiale el fondo por una playa', editar: 'imagenes/_referencias/producto.jpg', referencias: ['imagenes/_referencias/producto.jpg'] }).prompt;
+    assert.match(ed, /Foto a editar: imagenes\/_referencias\/producto\.jpg/);
+    assert.doesNotMatch(ed, /Referencias \(súbelas/);
+    assert.doesNotMatch(img.nuevo({ descripcion: 'x', editar: '../../etc/passwd' }).prompt, /Foto a editar/);
     // Con el personaje listo, fotos contigo con soul_2
     mkdirSync(path.join(lab.dir, 'imagenes', '_mi-cara'), { recursive: true });
     writeFileSync(path.join(lab.dir, 'imagenes', '_mi-cara', 'personaje.json'), JSON.stringify({ soul_id: 'soul-123', nombre: 'Jose', estado: 'listo' }));

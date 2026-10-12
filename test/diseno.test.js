@@ -206,6 +206,29 @@ describe('diseños: API, exportar a la biblioteca y Claude', () => {
     assert.match(e.error, /sin guardar el diseño/);
   });
 
+  test('portadas: plantillas del kit, generar una diapositiva y exportarla a una imagen para la pieza', async () => {
+    const { data: t } = await api('/api/portadas');
+    assert.deepEqual(t.tipos.map((x) => x.id), ['carrusel-rejilla', 'carrusel-cine', 'reel-rejilla', 'testimonio']);
+    assert.equal(t.tipos.find((x) => x.id === 'reel-rejilla').formato, 'story');
+    assert.equal(t.tipos.find((x) => x.id === 'testimonio').formato, 'story');
+    assert.equal((await api('/api/portadas', { tipo: 'nada', titulo: 'x' })).status, 400);
+    assert.match((await api('/api/portadas', { tipo: 'carrusel-cine' })).data.error, /título/);
+    const pieza = jarvis.crearPieza({ titulo: 'Reel del setter', formato: 'Reel' });
+    const { data: d } = await api('/api/portadas', { tipo: 'reel-rejilla', titulo: 'El martirio del setter', descripcion: 'Yo a la derecha', foto: { url: '/api/contenido/archivos/2026-10/yo.jpg', mime: 'image/jpeg' }, pieza_id: pieza.id });
+    assert.equal(d.uso, 'portada');
+    assert.equal(d.formato, 'story');
+    const e = await esperar(d.id, 'error');
+    assert.match(e.error, /sin guardar/);
+    // Claude la guarda (una diapositiva) y se exporta a la biblioteca como imagen
+    assert.equal((await api(`/api/disenos/${d.id}/datos`, { slides: [slide(1)] }, 'PUT')).status, 200);
+    const { data: a } = await api(`/api/portadas/${d.id}/exportar`, {});
+    assert.equal(a.mime, 'image/jpeg');
+    assert.match(a.nombre, /portada-el-martirio-del-setter/);
+    assert.deepEqual((await api(`/api/portadas/${d.id}/exportar`, {})).data, a, 'no la exporta dos veces');
+    // No sale en la lista de Diseño
+    assert.ok(!(await api('/api/disenos')).data.disenos.some((x) => x.id === d.id));
+  });
+
   test('importar el kit por la API', async () => {
     const r = await fetch(`${base}/api/disenos/kit`, { method: 'POST', headers: { 'content-type': 'application/zip' }, body: zipDeKit() });
     assert.equal(r.status, 200);

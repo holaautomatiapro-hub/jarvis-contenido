@@ -18,7 +18,8 @@ const json = (v, d) => { try { return v ? JSON.parse(v) : d; } catch { return d;
 export function createDisenos({ db, jarvis, kit, motor, archivos = null, previasDir, asistente = null, emitir = () => {}, alCambiar = () => {} }) {
   const q = {
     get: db.prepare('SELECT * FROM disenos WHERE id = ?'),
-    lista: db.prepare('SELECT * FROM disenos ORDER BY actualizado DESC, id DESC LIMIT 200'),
+    // Las portadas que se hacen desde una pieza no salen en la lista de Diseño
+    lista: db.prepare("SELECT * FROM disenos WHERE uso IS NULL OR uso != 'portada' ORDER BY actualizado DESC, id DESC LIMIT 200"),
     del: db.prepare('DELETE FROM disenos WHERE id = ?'),
   };
   const actualizar = (id, campos) => {
@@ -36,7 +37,7 @@ export function createDisenos({ db, jarvis, kit, motor, archivos = null, previas
     const datos = json(r.datos, null);
     const previas = json(r.previas, []);
     return {
-      id: r.id, titulo: r.titulo, formato: r.formato, plantilla: r.plantilla, estado: r.estado, error: r.error,
+      id: r.id, titulo: r.titulo, formato: r.formato, plantilla: r.plantilla, estado: r.estado, error: r.error, uso: r.uso || null,
       version: r.version, caption: r.caption || '', guion: r.guion || '', nota: r.nota, pieza_origen: r.pieza_origen,
       diapositivas: datos?.slides?.length || 0,
       previas: previas.map((f) => `/api/disenos/${r.id}/previas/${f}`),
@@ -107,11 +108,11 @@ Pasos: 1) ver_kit_diseno; 2) lee con Read la guía del kit y el ejemplo de esta 
 6) termina con un resumen de 2-3 líneas: qué hay en cada diapositiva y si queda algún aviso.`;
   }
 
-  function generarConClaude(id, { indicaciones } = {}) {
+  function generarConClaude(id, { indicaciones, prompt } = {}) {
     if (!asistente) throw new DisenoError('El chat con Claude no está disponible');
     const r = leer(id);
     asistente.nuevaSesion({ conversacion: 'diseno' });
-    asistente.preguntar({ texto: promptGenerar(r, { indicaciones }), conversacion: 'diseno' });
+    asistente.preguntar({ texto: prompt || promptGenerar(r, { indicaciones }), conversacion: 'diseno' });
     generando = { id: r.id, version: r.version };
     actualizar(r.id, { estado: 'generando', error: null });
     avisar(r.id);
@@ -134,6 +135,74 @@ Pasos: 1) ver_kit_diseno; 2) lee con Read la guía del kit y el ejemplo de esta 
       error: e.tipo === 'error' ? `Claude no ha podido terminar: ${e.mensaje || 'error'}` : sinGuardar ? 'Claude ha terminado sin guardar el diseño. Pídeselo en el chat.' : sinDibujar ? r.error : null,
     });
     avisar(id);
+  }
+
+  // ---------- Portadas (desde una pieza: «Generar portada») ----------
+  // Las plantillas salen del sistema de diseño: la portada de cada plantilla de carrusel, la de reel (9:16) de
+  // las que tienen stories y una de testimonio. Cada una con su imagen de muestra de referencias/ si la hay.
+  function tiposPortada() {
+    const k = kit.leer();
+    const refs = (() => { try { return readdirSync(path.join(k.dir, 'referencias')).filter((f) => /\.(png|jpe?g|webp)$/i.test(f)); } catch { return []; } })();
+    const muestraDe = (i) => refs.find((f) => new RegExp(`plantilla-${i + 1}-portada`, 'i').test(f)) || refs.find((f) => new RegExp(`plantilla-${i + 1}`, 'i').test(f)) || null;
+    const corto = (n) => String(n).replace(/^plantilla\s*\d+\s*[·:-]\s*/i, '');
+    const out = [];
+    k.plantillas.forEach((pl, i) => {
+      if (pl.formatos.includes('carrusel')) out.push({ id: `carrusel-${pl.id}`, nombre: `Carrusel · ${corto(pl.nombre)}`, descripcion: pl.descripcion || '', formato: 'carrusel', plantilla: pl.id, muestra: muestraDe(i) });
+    });
+    k.plantillas.forEach((pl, i) => {
+      if (pl.formatos.includes('story')) out.push({ id: `reel-${pl.id}`, nombre: `Reel · ${corto(pl.nombre)}`, descripcion: 'Portada vertical 9:16 para un reel, con la misma composición que la del carrusel.', formato: 'story', plantilla: pl.id, muestra: muestraDe(i) });
+    });
+    const conStory = k.plantillas.find((pl) => pl.formatos.includes('story'));
+    const plTest = conStory || k.plantillas[0];
+    if (plTest) out.push({ id: 'testimonio', nombre: 'Testimonio', descripcion: 'Foto del cliente, su nombre y una frase suya entre comillas.', formato: conStory ? 'story' : 'carrusel', plantilla: plTest.id, muestra: refs.find((f) => /testimonio|stories?-/i.test(f)) || null });
+    return out.map((t) => ({ ...t, muestra: t.muestra ? `/api/portadas/muestra/${encodeURIComponent(t.id)}` : null, archivoMuestra: t.muestra ? `referencias/${t.muestra}` : null }));
+  }
+  function muestraPortada(id) {
+    const t = tiposPortada().find((x) => x.id === id);
+    return t?.archivoMuestra ? kit.archivo(kit.leer(), t.archivoMuestra) : null;
+  }
+
+  function crearPortada({ tipo, titulo, descripcion, foto, pieza } = {}) {
+    const t = tiposPortada().find((x) => x.id === tipo);
+    if (!t) throw new DisenoError('Elige una plantilla de portada');
+    const tit = String(titulo || '').trim().slice(0, 160);
+    if (!tit) throw new DisenoError('Escribe el título de la portada');
+    if (!asistente) throw new DisenoError('El chat con Claude no está disponible');
+    if (asistente.estado().ocupado) throw new DisenoError('JARVIS está terminando otra petición. Espera a que acabe y vuelve a pulsar Generar.');
+    const desc = String(descripcion || '').trim().slice(0, 2000);
+    const f = foto?.url && /^image\//.test(String(foto.mime || 'image/')) ? { url: String(foto.url), nombre: String(foto.nombre || '') } : null;
+    const medios = (Array.isArray(pieza?.archivos) ? pieza.archivos : []).filter((a) => a?.url).slice(0, 6).map((a) => `${a.url} (${/^video\//.test(a.mime || '') ? 'vídeo' : 'foto'})`);
+    const guion = [tit, desc].filter(Boolean).join('\n\n');
+    const { lastInsertRowid } = db.prepare("INSERT INTO disenos (titulo, formato, plantilla, guion, uso) VALUES (?, ?, ?, ?, 'portada')").run(tit, t.formato, t.plantilla, guion);
+    const id = Number(lastInsertRowid);
+    const fmt = FORMATOS[t.formato];
+    const prompt = `Diseña SOLO UNA PORTADA (una única diapositiva) en el diseño #${id} de JARVIS.
+- Tipo de portada: ${t.nombre}${t.id === 'testimonio' ? ' — portada de testimonio: foto del cliente, su nombre y una frase literal suya entre comillas (como las stories de testimonio de la guía, sección de Stories)' : ''}
+- Formato: ${fmt.nombre.toLowerCase()} (${fmt.ancho}×${fmt.alto} px)${t.formato === 'story' ? ', respetando las zonas seguras de arriba y abajo' : ''}
+- Plantilla: id "${t.plantilla}"
+- Título: ${tit}
+${desc ? `- Qué quiero: ${desc}\n` : ''}${f ? `- Foto que quiero usar (ponla tal cual en <img src>): ${f.url}\n` : ''}${pieza?.titulo ? `- Es la portada de la pieza «${pieza.titulo}» (${pieza.formato || 'pieza'}).${medios.length ? ` Sus archivos (puedes usar un fotograma de un vídeo o una foto si encaja): ${medios.join(', ')}` : ''}\n` : ''}
+Pasos: 1) ver_kit_diseno; 2) lee con Read la guía del kit (sobre todo lo que dice de portadas) y el ejemplo de esta plantilla; 3) escribe UNA diapositiva de portada (gancho grande, como dice la guía; sin paginación ni cierre) y guárdala con guardar_diseno (id ${id}); 4) corrige los avisos y vuelve a guardar; 5) termina con una línea diciendo qué has puesto.`;
+    generarConClaude(id, { prompt });
+    return obtener(id);
+  }
+
+  // Exporta la portada a JPG en la biblioteca y devuelve el archivo (el editor la pone en la pieza)
+  async function exportarPortada(id) {
+    if (!archivos) throw new DisenoError('La biblioteca no está disponible');
+    const r = leer(id);
+    const datos = json(r.datos, null);
+    if (!datos?.slides?.length) throw new DisenoError('La portada aún no está lista');
+    const previo = json(r.exportado, null);
+    if (previo?.archivo && r.estado === 'listo' && previo.version === r.version) return previo.archivo;
+    const res = await motor.exportar({ ...datos, slides: datos.slides.slice(0, 1) }, 'jpg', { alProgreso: () => {} });
+    try {
+      const a = res.archivos[0];
+      const fuente = a.ruta ? createReadStream(a.ruta) : Readable.from([a.buffer]);
+      const archivo = await archivos.guardar(fuente, { nombre: `portada-${slug(r.titulo).replace(/^portada-?/, '') || 'pieza'}.jpg`, mime: 'image/jpeg' });
+      actualizar(r.id, { exportado: JSON.stringify({ tipo: 'portada', en: new Date().toISOString(), version: r.version, archivo }) });
+      return archivo;
+    } finally { res?.limpiar?.(); }
   }
 
   // ---------- Guardar (lo llama guardar_diseno) y vista previa ----------
@@ -259,7 +328,7 @@ Pasos: 1) ver_kit_diseno; 2) lee con Read la guía del kit y el ejemplo de esta 
   // Al arrancar: lo que se quedó a medias (JARVIS se cerró) vuelve a estar disponible
   db.prepare("UPDATE disenos SET estado = CASE WHEN version > 0 THEN 'listo' ELSE 'error' END, error = CASE WHEN version > 0 THEN error ELSE 'Se interrumpió al cerrar JARVIS' END, progreso = NULL WHERE estado IN ('generando', 'renderizando', 'exportando')").run();
 
-  return { listar, obtener, crear, generar: generarConClaude, alEventoClaude, guardarDatos, exportar, borrar, rutaPrevia, ESTADOS };
+  return { listar, obtener, crear, generar: generarConClaude, alEventoClaude, guardarDatos, exportar, borrar, rutaPrevia, tiposPortada, muestraPortada, crearPortada, exportarPortada, ESTADOS };
 }
 
 const slug = (s) => String(s).normalize('NFD').replace(/[̀-ͯ]/g, '').replace(/[^A-Za-z0-9]+/g, '-').replace(/^-+|-+$/g, '').slice(0, 40).toLowerCase() || 'diseno';

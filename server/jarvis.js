@@ -73,7 +73,9 @@ export function createJarvis({ db, vault }) {
     if (!p) return p;
     let archivos = [];
     try { archivos = JSON.parse(p.archivos || '[]'); } catch { /* columna dañada: sin archivos */ }
-    return { ...p, archivos: Array.isArray(archivos) ? archivos : [] };
+    let portada = null;
+    try { portada = p.portada ? JSON.parse(p.portada) : null; } catch { /* sin portada */ }
+    return { ...p, archivos: Array.isArray(archivos) ? archivos : [], portada: portada?.url ? portada : null };
   };
   const leerPieza = (id) => {
     const p = pieza(row(q.getPieza, Number(id)));
@@ -96,6 +98,16 @@ export function createJarvis({ db, vault }) {
       if (k === 'archivos') set.archivos = archivosValidos(v);
       else if (k === 'plataformas') set.plataformas = Array.isArray(v) ? v.join(', ') : v || null;
       else set[k] = typeof v === 'string' ? (k === 'caption' ? v : v.trim()) || null : v ?? null;
+    }
+    // Portada (de un reel): una imagen de la biblioteca, o null para quitarla
+    if ('portada' in c) {
+      const a = c.portada;
+      if (!a) set.portada = null;
+      else {
+        if (!/^image\//.test(String(a.mime || '')) || !a.url) throw new JarvisError('La portada tiene que ser una imagen');
+        const [x] = JSON.parse(archivosValidos([a]));
+        set.portada = x ? JSON.stringify(x) : null;
+      }
     }
     if ('titulo' in set) set.titulo = texto(set.titulo, 'titulo', 200);
     if ('estado' in set && !pipeline.existe(set.estado)) throw new JarvisError(`Fase no válida. Usa: ${pipeline.ids().join(', ')}`);
@@ -157,7 +169,7 @@ export function createJarvis({ db, vault }) {
     const p = leerPieza(id);
     const copia = crearPieza({
       titulo: p.titulo, estado: 'listo', formato: p.formato, plataformas: p.plataformas, caption: p.caption,
-      video_url: p.video_url, carpeta: p.carpeta, nota: p.nota, archivos: p.archivos, fecha: null, hora: p.hora, origen, registrarActividad: false,
+      video_url: p.video_url, carpeta: p.carpeta, nota: p.nota, archivos: p.archivos, portada: p.portada, fecha: null, hora: p.hora, origen, registrarActividad: false,
       leadmagnet: p.leadmagnet, leadmagnet_url: p.leadmagnet_url,
     });
     registrar('Contenido', `Copia para volver a publicar: ${p.titulo}`, origen);

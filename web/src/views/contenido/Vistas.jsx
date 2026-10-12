@@ -47,15 +47,25 @@ function MenuDia({ menu, lista, onCerrar, onAbrir, onElegir, onNuevo }) {
   );
 }
 
-// Elegir una pieza ya creada para un día: primero las de la biblioteca (sin fecha), o cualquiera
-function ElegirPieza({ fecha, piezas, onCerrar, onElegida, onNuevo }) {
+// Elegir una pieza ya creada para un día: primero las de la biblioteca (sin fecha), o cualquiera.
+// Se navega por las carpetas de la biblioteca (con sus subcarpetas) para encontrarla antes.
+const enCarpeta = (p, c) => c === null || (c === '' ? !p.carpeta : p.carpeta === c || String(p.carpeta || '').startsWith(`${c}/`));
+function ElegirPieza({ fecha, piezas, carpetas = [], onCerrar, onElegida, onNuevo }) {
   const sinFecha = piezas.filter((p) => !p.fecha);
   const [ambito, setAmbito] = useState(sinFecha.length ? 'biblioteca' : 'todas');
+  const [carpeta, setCarpeta] = useState(null); // null = todas · '' = sin carpeta · ruta
   const [busca, setBusca] = useState('');
   const b = normaliza(busca.trim());
-  const lista = (ambito === 'biblioteca' ? sinFecha : piezas.filter((p) => p.fecha !== fecha))
-    .filter((p) => !b || normaliza(`${p.titulo}\n${p.caption || ''}`).includes(b))
+  const base = ambito === 'biblioteca' ? sinFecha : piezas.filter((p) => p.fecha !== fecha);
+  const lista = base
+    .filter((p) => enCarpeta(p, carpeta))
+    .filter((p) => !b || normaliza(`${p.titulo}\n${p.caption || ''}\n${p.carpeta || ''}`).includes(b))
     .sort((x, y) => y.id - x.id);
+  const cuenta = (c) => base.filter((p) => enCarpeta(p, c)).length;
+  // Las carpetas que se enseñan: las de arriba o, dentro de una, sus subcarpetas (solo las que tienen algo)
+  const visibles = carpetas.filter((c) => (carpeta ? c.padre === carpeta : !c.padre)).filter((c) => cuenta(c.nombre));
+  const migas = carpeta ? carpeta.split('/').map((_, i, l) => l.slice(0, i + 1).join('/')) : [];
+  const hayCarpetas = carpetas.some((c) => cuenta(c.nombre));
   return (
     <Modal titulo={`¿Qué publicas el ${diaLargo(fecha).toLowerCase()}?`} onClose={onCerrar} ancho={760}>
       <div className="elegir-barra">
@@ -66,16 +76,36 @@ function ElegirPieza({ fecha, piezas, onCerrar, onElegida, onNuevo }) {
         <div className="buscar-mini"><Icon name="search" size={13} /><input autoFocus placeholder="Buscar por título o caption" value={busca} onChange={(e) => setBusca(e.target.value)} /></div>
       </div>
       {ambito === 'todas' && <div className="ayuda" style={{ marginBottom: 10 }}>Si eliges una que ya tiene día, se mueve a este.</div>}
+      {hayCarpetas && (
+        <div className="elegir-carpetas">
+          {carpeta ? (
+            <nav className="carpeta-migas" aria-label="Carpeta">
+              <button className="link-btn" onClick={() => setCarpeta(null)}>Todas</button><i>›</i>
+              {migas.map((m, i) => (i === migas.length - 1
+                ? <b key={m}>{m.split('/').at(-1)}</b>
+                : <span key={m}><button className="link-btn" onClick={() => setCarpeta(m)}>{m.split('/').at(-1)}</button><i>›</i></span>))}
+            </nav>
+          ) : (
+            <>
+              <button className={`chip${carpeta === null ? ' on' : ''}`} onClick={() => setCarpeta(null)}>Todas <span className="cuenta">{base.length}</span></button>
+              {cuenta('') > 0 && <button className="chip" onClick={() => setCarpeta('')}>Sin carpeta <span className="cuenta">{cuenta('')}</span></button>}
+            </>
+          )}
+          {visibles.map((c) => (
+            <button key={c.nombre} className="chip" onClick={() => setCarpeta(c.nombre)}><Icon name="folder" />{c.etiqueta || c.nombre} <span className="cuenta">{cuenta(c.nombre)}</span></button>
+          ))}
+        </div>
+      )}
       <div className="elegir-grid">
         {lista.map((p) => (
           <button key={p.id} className="elegir-item" onClick={() => { onCerrar(); onElegida(p, fecha); }}>
             <Miniatura p={p} />
             <span>{p.titulo || 'Sin título'}</span>
-            <small>{textoTipo(p.formato)}{p.fecha ? ` · ${diaCorto(p.fecha)}` : ''}</small>
+            <small>{textoTipo(p.formato)}{p.fecha ? ` · ${diaCorto(p.fecha)}` : ''}{p.carpeta && p.carpeta !== carpeta ? ` · ${p.carpeta.split('/').at(-1)}` : ''}</small>
           </button>
         ))}
       </div>
-      {!lista.length && <div className="vacio">{b ? 'Nada coincide con la búsqueda.' : ambito === 'biblioteca' ? 'La biblioteca está vacía.' : 'No hay más piezas.'}</div>}
+      {!lista.length && <div className="vacio">{b ? 'Nada coincide con la búsqueda.' : carpeta !== null ? 'No hay nada en esta carpeta.' : ambito === 'biblioteca' ? 'La biblioteca está vacía.' : 'No hay más piezas.'}</div>}
       <div className="modal-pie">
         <span className="ayuda">¿No está? Créala ahora.</span>
         <button className="btn" onClick={() => { onCerrar(); onNuevo(fecha); }}><Icon name="plus" size={13} />Crear uno nuevo</button>
@@ -84,7 +114,7 @@ function ElegirPieza({ fecha, piezas, onCerrar, onElegida, onNuevo }) {
   );
 }
 
-export function Calendario({ piezas, dia, setDia, onAbrir, onNuevo, onMover, onProgramar }) {
+export function Calendario({ piezas, carpetas = [], dia, setDia, onAbrir, onNuevo, onMover, onProgramar }) {
   const ESTADOS = useFases();
   const [mes, setMes] = useState(() => mesDe(dia));
   const [sobre, setSobre] = useState(null);
@@ -184,7 +214,7 @@ export function Calendario({ piezas, dia, setDia, onAbrir, onNuevo, onMover, onP
       </div>
 
       {menu && <MenuDia menu={menu} lista={porDia.get(menu.fecha) || []} onCerrar={() => setMenu(null)} onAbrir={onAbrir} onElegir={setEligiendo} onNuevo={onNuevo} />}
-      {eligiendo && <ElegirPieza fecha={eligiendo} piezas={piezas} onCerrar={() => setEligiendo(null)} onElegida={onProgramar} onNuevo={onNuevo} />}
+      {eligiendo && <ElegirPieza fecha={eligiendo} piezas={piezas} carpetas={carpetas} onCerrar={() => setEligiendo(null)} onElegida={onProgramar} onNuevo={onNuevo} />}
     </>
   );
 }

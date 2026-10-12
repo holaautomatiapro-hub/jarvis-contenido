@@ -2,7 +2,8 @@ import { useEffect, useRef, useState } from 'react';
 import { alternarNegrita } from '../lib/negrita.js';
 
 // Caption con barra: B pone en negrita lo seleccionado (negrita Unicode, la que se ve en Instagram;
-// otra vez B la quita; Ctrl+B también) y 😀 abre los emojis, que se insertan donde está el cursor.
+// otra vez B la quita; Ctrl+B también), 😀 abre los emojis, que se insertan donde está el cursor, y «Crear con IA»
+// (si se pasa onIA) pide a JARVIS un caption con tu voz; si ya había texto, lo usa de base y se puede deshacer.
 
 const EMOJIS = [
   { id: 'frecuentes', icono: '⭐', nombre: 'Para captions', l: ['👇', '👉', '✅', '❌', '🔥', '💪', '🚀', '💡', '📌', '⚠️', '🎯', '📈', '💬', '📩', '🔗', '🎁', '⏰', '🙌', '👀', '✨', '💥', '⬇️', '➡️', '1️⃣', '2️⃣', '3️⃣', '4️⃣', '5️⃣'] },
@@ -15,13 +16,23 @@ const EMOJIS = [
 const LS = 'jarvis-emojis-recientes';
 const leerRecientes = () => { try { return JSON.parse(localStorage.getItem(LS) || '[]').slice(0, 16); } catch { return []; } };
 
-export default function CampoCaption({ value, onChange, rows = 6, placeholder }) {
+export default function CampoCaption({ value, onChange, rows = 6, placeholder, onIA }) {
   const ref = useRef(null);
   const caja = useRef(null);
   const seleccion = useRef(null);
   const [abierto, setAbierto] = useState(false);
   const [cat, setCat] = useState('frecuentes');
   const [recientes, setRecientes] = useState(leerRecientes);
+  const [ia, setIa] = useState({ estado: '', anterior: null, error: '' });
+
+  const conIA = async () => {
+    setIa({ estado: 'escribiendo', anterior: null, error: '' });
+    try {
+      const texto = await onIA();
+      setIa({ estado: '', anterior: value, error: '' });
+      onChange(texto);
+    } catch (e) { setIa({ estado: '', anterior: null, error: e.message || 'No se ha podido crear el caption' }); }
+  };
 
   // Tras cambiar el texto desde la barra, devolver el cursor (o la selección) a su sitio
   useEffect(() => {
@@ -79,7 +90,10 @@ export default function CampoCaption({ value, onChange, rows = 6, placeholder })
       <div className="caption-barra">
         <button type="button" className="caption-btn caption-b" onMouseDown={(e) => e.preventDefault()} onClick={negrita} title="Negrita (Ctrl+B): selecciona el texto y pulsa. Se ve en negrita en Instagram">B</button>
         <button type="button" className={`caption-btn${abierto ? ' on' : ''}`} onMouseDown={(e) => e.preventDefault()} onClick={() => setAbierto((x) => !x)} title="Emojis" aria-expanded={abierto}>😀</button>
-        <span className="caption-ayuda">Selecciona y pulsa <b>B</b> para negrita · también vale **así**</span>
+        {onIA && <button type="button" className="caption-btn caption-ia" onClick={conIA} disabled={ia.estado === 'escribiendo'} title="JARVIS escribe el caption con tu voz (si ya hay texto, lo usa de base)"><span>✨</span>{ia.estado === 'escribiendo' ? 'Escribiendo…' : value.trim() ? 'Mejorar con IA' : 'Crear con IA'}</button>}
+        {ia.anterior !== null
+          ? <span className="caption-ayuda">Caption de JARVIS · <button type="button" className="link-btn" onClick={() => { onChange(ia.anterior); setIa({ estado: '', anterior: null, error: '' }); }}>Deshacer</button></span>
+          : <span className="caption-ayuda">{ia.error ? <span className="caption-error">{ia.error}</span> : <>Selecciona y pulsa <b>B</b> para negrita · también vale **así**</>}</span>}
       </div>
       {abierto && (
         <div className="caption-emojis panel" role="dialog" aria-label="Emojis">

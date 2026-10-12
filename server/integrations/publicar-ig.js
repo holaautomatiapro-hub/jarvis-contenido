@@ -32,7 +32,9 @@ export function createPublicadorIg({ db, jarvis, instagram, almacen, archivos, f
     if (!p) throw new PublicarError('Esa pieza no existe');
     let a = [];
     try { a = JSON.parse(p.archivos || '[]'); } catch { /* sin archivos */ }
-    return { ...p, archivos: Array.isArray(a) ? a : [] };
+    let portada = null;
+    try { portada = p.portada ? JSON.parse(p.portada) : null; } catch { /* sin portada */ }
+    return { ...p, archivos: Array.isArray(a) ? a : [], portada: portada?.url ? portada : null };
   };
 
   function estado() {
@@ -121,6 +123,13 @@ export function createPublicadorIg({ db, jarvis, instagram, almacen, archivos, f
       }
       guardar();
     }
+    // Portada del reel (la que se hizo con «Generar portada»): Instagram la descarga de un enlace público
+    if (tipo === 'REELS' && p.portada && !st.portada) {
+      const a = p.portada;
+      st.portada = /^https?:\/\//.test(a.url || '') ? { url: a.url }
+        : await almacen.subir(archivos.ruta(a.path), { destino: `${p.id}-${Date.now()}-portada-${String(a.path || a.nombre || 'portada.jpg').split('/').pop()}`, mime: a.mime });
+      guardar();
+    }
     // Instagram no entiende **markdown**: lo que vaya entre ** se publica en negrita Unicode
     const caption = tipo === 'STORIES' ? undefined : markdownANegrita(p.caption) || undefined;
 
@@ -143,7 +152,7 @@ export function createPublicadorIg({ db, jarvis, instagram, almacen, archivos, f
     } else if (!st.contenedor) {
       paso('preparando la publicación en Instagram…');
       const s = st.subidos[0];
-      const params = tipo === 'REELS' ? { media_type: 'REELS', video_url: s.url, caption, share_to_feed: true }
+      const params = tipo === 'REELS' ? { media_type: 'REELS', video_url: s.url, caption, share_to_feed: true, ...(st.portada?.url ? { cover_url: st.portada.url } : {}) }
         : tipo === 'STORIES' ? { media_type: 'STORIES', ...(s.video ? { video_url: s.url } : { image_url: s.url }) }
           : { image_url: s.url, caption };
       st.contenedor = (await g.post(`${c.igUserId}/media`, params)).id;

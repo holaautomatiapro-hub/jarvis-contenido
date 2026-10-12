@@ -110,6 +110,24 @@ describe('publicador', () => {
     assert.equal(llamadas.filter((l) => l.supabase === 'POST').length, 1, 'no sube el vídeo dos veces');
   });
 
+  test('un reel con portada la manda como cover_url', async () => {
+    const { jarvis, pub, llamadas } = entorno();
+    assert.throws(() => jarvis.crearPieza({ titulo: 'X', formato: 'Reel', portada: mp4() }), /tiene que ser una imagen/);
+    const p = jarvis.crearPieza({ titulo: 'Reel con portada', formato: 'Reel', archivos: [mp4()], portada: jpg() });
+    assert.equal(jarvis.listarPiezas().find((x) => x.id === p.id).portada.nombre, 'foto.jpg');
+    pub.publicarAhora(p.id);
+    await new Promise((ok) => setTimeout(ok, 30));
+    await pub.revisar();
+    const f = jarvis.listarPiezas().find((x) => x.id === p.id);
+    assert.ok(llamadas.some((l) => l.ruta === 'ig1/media'), `${f.ig_estado}: ${f.ig_error}`);
+    const cont = llamadas.find((l) => l.ruta === 'ig1/media').body;
+    assert.equal(cont.media_type, 'REELS');
+    assert.match(String(cont.cover_url), /^https?:\/\//);
+    assert.equal(llamadas.filter((l) => l.supabase === 'POST').length, 2, 'sube el vídeo y la portada');
+    // Quitar la portada
+    assert.equal(jarvis.actualizarPieza(p.id, { portada: null }).portada, null);
+  });
+
   test('carrusel: un contenedor por archivo y luego el carrusel', async () => {
     const { jarvis, pub, llamadas } = entorno();
     const p = jarvis.crearPieza({ titulo: 'Carr', formato: 'Carrusel', archivos: [jpg(), mp4()] });

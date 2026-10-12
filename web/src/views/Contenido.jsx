@@ -128,7 +128,7 @@ export default function Contenido({ onCaptura }) {
         )}
       </div>
 
-      {vista === 'calendario' && <Calendario piezas={piezas} dia={dia} setDia={setDia} onAbrir={setEditando} onNuevo={nuevo} onMover={mover} onProgramar={(p, f) => setProgramando({ p, f })} />}
+      {vista === 'calendario' && <Calendario piezas={piezas} carpetas={carpetas} dia={dia} setDia={setDia} onAbrir={setEditando} onNuevo={nuevo} onMover={mover} onProgramar={(p, f) => setProgramando({ p, f })} />}
       {vista === 'lista' && <Lista piezas={filtradas} cargando={!data} onAbrir={setEditando} onMover={mover} />}
       {vista === 'biblioteca' && <Biblioteca piezas={biblioteca} publicados={publicados} carpetas={carpetas} onAbrir={setEditando} onProgramar={(p) => setProgramando({ p })} onRepublicar={republicar} recargar={recargar} />}
       {vista === 'pipeline' && <Pipeline piezas={piezas} onAbrir={setEditando} onMover={mover} onNuevaIdea={() => onCaptura('idea')} />}
