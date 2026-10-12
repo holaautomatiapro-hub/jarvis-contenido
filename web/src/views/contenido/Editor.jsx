@@ -1,9 +1,10 @@
 import { useEffect, useRef, useState } from 'react';
 import Icon from '../../components/Icon.jsx';
+import CampoCaption from '../../components/CampoCaption.jsx';
 import { api } from '../../lib/api.js';
 import { diaLargo, hoyIso, sumarDias } from '../../lib/fechas.js';
 import { NOMBRE_TIPO_IG, planDePublicacion } from '../../lib/planIg.js';
-import { CampoLeadMagnet, useFases, MAX_CAPTION, Miniatura, Modal, TIPOS, borrarArchivo, esMedio, esStory, esVideo, subirArchivo, tamanoLegible, tipoDe } from './comun.jsx';
+import { CampoLeadMagnet, OpcionesCarpetas, useFases, MAX_CAPTION, Miniatura, Modal, TIPOS, borrarArchivo, esMedio, esStory, esVideo, subirArchivo, tamanoLegible, tipoDe } from './comun.jsx';
 
 // ---------- Visor a pantalla completa ----------
 export function Visor({ archivos, inicio = 0, onClose }) {
@@ -201,7 +202,7 @@ export function EditorContenido({ pieza, carpetas, ig, onClose, onGuardado, onVi
               <label className="campo-et">Carpeta</label>
               <select className="campo" value={d.carpeta} onChange={cambia('carpeta')}>
                 <option value="">Sin carpeta</option>
-                {carpetas.map((c) => <option key={c.nombre} value={c.nombre}>{c.nombre}</option>)}
+                <OpcionesCarpetas carpetas={carpetas} />
               </select>
             </>
           )}
@@ -221,7 +222,7 @@ export function EditorContenido({ pieza, carpetas, ig, onClose, onGuardado, onVi
           </div>
           {!d.fecha && <div className="ayuda">Sin fecha se queda en la biblioteca hasta que la programes.</div>}
           <label className="campo-et">Caption <span className={`contador${largo ? ' pasado' : ''}`}>{d.caption.length} / {MAX_CAPTION}</span></label>
-          <textarea className="campo" rows={7} value={d.caption} onChange={cambia('caption')} placeholder="El texto que acompaña a la publicación…" />
+          <CampoCaption rows={7} value={d.caption} onChange={cambia('caption')} placeholder="El texto que acompaña a la publicación…" />
           <label className="campo-et">URL del vídeo</label>
           <div className="fila" style={{ marginBottom: 0 }}>
             <input className="campo" value={d.video_url} onChange={cambia('video_url')} placeholder="https://drive.google.com/… o el enlace de la publicación" />
@@ -328,7 +329,7 @@ export function ProgramarContenido({ pieza, fecha, ig, onClose, onGuardado }) {
       {!story && (
         <>
           <label className="campo-et">Caption <span className={`contador${d.caption.length > MAX_CAPTION ? ' pasado' : ''}`}>{d.caption.length} / {MAX_CAPTION}</span></label>
-          <textarea className="campo" rows={5} value={d.caption} onChange={(e) => setD({ ...d, caption: e.target.value })} placeholder="El texto que acompaña a la publicación…" />
+          <CampoCaption rows={5} value={d.caption} onChange={(v) => setD((x) => ({ ...x, caption: v }))} placeholder="El texto que acompaña a la publicación…" />
         </>
       )}
       <CampoLeadMagnet activo={d.leadmagnet} url={d.leadmagnet_url} onCambio={(c) => setD((x) => ({ ...x, ...c }))} />

@@ -47,6 +47,8 @@ describe('Laboratorio', () => {
     assert.ok(existsSync(path.join(lab.dir, '.jarvis', 'plugins-anteriores')));
     assert.throws(() => lab.importarPlugin(crearZip([{ nombre: 'x/README.md', contenido: Buffer.from('x') }])), /no es el plugin de testimonios/);
     assert.throws(() => lab.importarPlugin(crearZip([{ nombre: 'p/motor/montar.py', contenido: Buffer.from('x') }])), /testimonio-completo/);
+    assert.throws(() => lab.importarPlugin(crearZip([{ nombre: 'kit/kit.json', contenido: Buffer.from('{}') }])), /sistema de diseño/);
+    assert.throws(() => lab.importarPlugin(crearZip([{ nombre: 'otra/cosa/a.txt', contenido: Buffer.from('x') }])), /Lleva: otra\/cosa/);
   });
 
   test('acepta el plugin recomprimido sin .claude-plugin y un .zip dentro de otro', () => {

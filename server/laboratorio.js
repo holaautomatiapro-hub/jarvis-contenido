@@ -7,6 +7,7 @@ import { ROOT } from './config.js';
 import { leerZip } from './diseno/zip.js';
 import { nombreSeguro } from './archivos.js';
 import { rutaFfmpeg } from './diseno/motor.js';
+import { createLeadMagnets } from './leadmagnets.js';
 
 // Laboratorio: clips de testimonios y edición de reels con el plugin «testimonios» de la persona.
 // Todo vive en una carpeta de trabajo propia (fuera del vault: los vídeos pesan mucho):
@@ -18,13 +19,13 @@ export class LaboratorioError extends Error {
   constructor(m) { super(m); this.publico = true; }
 }
 
-const CARPETAS = ['crudo', 'fichas/clips', 'fichas/testimonios', 'fichas/reels', 'transcripciones', 'marca', 'fotos', 'clips', 'testimonios', 'reels'];
+const CARPETAS = ['crudo', 'fichas/clips', 'fichas/testimonios', 'fichas/reels', 'transcripciones', 'marca', 'fotos', 'clips', 'testimonios', 'reels', 'leadmagnets'];
 const VIDEO = /\.(mp4|mov|m4v|mkv|webm)$/i;
 const IMAGEN = /\.(jpe?g|png|webp)$/i;
-const MIME = { mp4: 'video/mp4', mov: 'video/quicktime', m4v: 'video/x-m4v', mkv: 'video/x-matroska', webm: 'video/webm', jpg: 'image/jpeg', jpeg: 'image/jpeg', png: 'image/png', webp: 'image/webp', md: 'text/markdown; charset=utf-8', json: 'application/json' };
+const MIME = { mp4: 'video/mp4', mov: 'video/quicktime', m4v: 'video/x-m4v', mkv: 'video/x-matroska', webm: 'video/webm', jpg: 'image/jpeg', jpeg: 'image/jpeg', png: 'image/png', webp: 'image/webp', md: 'text/markdown; charset=utf-8', json: 'application/json', html: 'text/html; charset=utf-8' };
 const MAX_SUBIDA = 8 * 1024 ** 3;
 // Lo que se enseña en el Laboratorio y se puede abrir desde el navegador
-const VISIBLES = ['clips', 'testimonios', 'reels', 'marca', 'fotos', 'crudo'];
+const VISIBLES = ['clips', 'testimonios', 'reels', 'marca', 'fotos', 'crudo', 'leadmagnets'];
 export const PIEZAS_TESTIMONIO = {
   stories: 'Stories en vídeo (9:16)', carrusel: 'Carrusel en vídeo (4:5)', reel: 'Clips en reel (9:16)',
   carrusel4x5: 'Clips en 4:5', youtube: 'Entrevista completa para YouTube', portada: 'Portada', captions: 'Los 3 captions',
@@ -33,8 +34,9 @@ export const PLANTILLAS_REEL = { pantalla: 'Pantalla completa (9:16)', ventana: 
 
 const slug = (s) => nombreSeguro(String(s || '').trim() || 'cliente').replace(/\.[^.]*$/, '');
 
-export function createLaboratorio({ dir, archivos, jarvis, vaultPath = null, env = process.env, reelScript = path.join(ROOT, 'laboratorio', 'reel.py'), log = () => {} }) {
+export function createLaboratorio({ dir, archivos, jarvis, vaultPath = null, env = process.env, reelScript = path.join(ROOT, 'laboratorio', 'reel.py'), leadmagnetsOpc = {}, log = () => {} }) {
   const base = path.resolve(dir);
+  const leadmagnets = createLeadMagnets({ base, vaultPath, jarvis, env, log, ...leadmagnetsOpc });
   const pluginDir = path.join(base, '.jarvis', 'plugin');
   const venv = path.join(base, '.venv');
   const binVenv = path.join(venv, process.platform === 'win32' ? 'Scripts' : 'bin');
@@ -74,7 +76,12 @@ export function createLaboratorio({ dir, archivos, jarvis, vaultPath = null, env
     // La raíz del plugin es la carpeta que tiene motor/montar.py (con o sin .claude-plugin/plugin.json:
     // al recomprimir en Windows a veces se pierde esa carpeta que empieza por punto; entonces se crea)
     const motor = entradas.find((a) => /(^|\/)motor\/montar\.py$/.test(a.nombre));
-    if (!motor) throw new LaboratorioError('Este .zip no es el plugin de testimonios: no encuentro motor/montar.py. Elige el .zip original del plugin.');
+    if (!motor) {
+      // Decir qué se ha subido ayuda a ver si es otro .zip (p. ej. el sistema de diseño)
+      if (entradas.some((a) => /(^|\/)kit\.json$/.test(a.nombre))) throw new LaboratorioError('Este .zip es tu sistema de diseño (lleva kit.json), no el plugin de testimonios. El sistema de diseño se importa en Laboratorio → Diseño; aquí va el .zip del plugin (el que tiene las carpetas motor/ y skills/).');
+      const arriba = [...new Set(entradas.map((a) => a.nombre.split('/').slice(0, a.nombre.split('/').length > 2 ? 2 : 1).join('/')))].slice(0, 6);
+      throw new LaboratorioError(`Este .zip no es el plugin de testimonios: no encuentro motor/montar.py. Lleva: ${arriba.join(', ') || 'nada'}${entradas.length > 6 ? '…' : ''}. Elige el .zip del plugin (con las carpetas motor/ y skills/).`);
+    }
     const raiz = motor.nombre.replace(/motor\/montar\.py$/, '');
     const dentro = entradas.filter((a) => a.nombre.startsWith(raiz));
     const tiene = (rel) => dentro.some((a) => a.nombre === raiz + rel);
@@ -302,7 +309,8 @@ export function createLaboratorio({ dir, archivos, jarvis, vaultPath = null, env
 Plugin «testimonios»: ${pluginDir} (es el <PLUGIN> de sus skills; la carpeta actual es <TRABAJO>).
 Python con todas las librerías: el comando \`python\` (ya está en el PATH).
 Editor de reels: python "${reelScript}" (sin argumentos explica la ficha y los comandos).
-Lo que generes aparece solo en el Laboratorio de JARVIS; la persona lo pasa a la biblioteca desde allí.${vaultPath ? `
+Lo que generes aparece solo en el Laboratorio de JARVIS; la persona lo pasa a la biblioteca desde allí.
+Lead magnets: en leadmagnets/<nombre>/index.html; compruébalos en móvil con node "${path.join(ROOT, 'laboratorio', 'captura.mjs')}" <ruta del html>.${vaultPath ? `
 Su vault (memoria de JARVIS): ${path.resolve(vaultPath)} — CLAUDE.md (su negocio), _voz.md (su voz) y _diseno/ (su sistema de diseño: colores, letras, @usuario). Si la skill necesita su marca y no está fijada, sácala de ahí antes de preguntar.` : ''}`,
     };
   }
@@ -368,7 +376,7 @@ Pasos:
     throw new LaboratorioError('Trabajo no válido');
   }
 
-  return { dir: base, pluginDir, iniciar, estado, requisitos, importarPlugin, subir, resultados, archivo, texto, borrar, aBiblioteca, entorno, prompt, ruta };
+  return { dir: base, pluginDir, leadmagnets, iniciar, estado, requisitos, importarPlugin, subir, resultados, archivo, texto, borrar, aBiblioteca, entorno, prompt, ruta };
 }
 
 export const carpetaPorDefecto = (envObj = process.env) => envObj.LABORATORIO_PATH || path.join(os.homedir(), 'JARVIS-Laboratorio');

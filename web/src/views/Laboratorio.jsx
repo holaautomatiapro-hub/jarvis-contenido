@@ -6,12 +6,15 @@ import { EditorContenido, ProgramarContenido, Visor } from './contenido/Editor.j
 import { Preparar } from './laboratorio/comun.jsx';
 import Testimonios from './laboratorio/Testimonios.jsx';
 import Reels from './laboratorio/Reels.jsx';
+import LeadMagnets from './laboratorio/LeadMagnets.jsx';
 
-// Laboratorio: donde se crea lo visual. Diseño (carruseles y stories), clips de testimonios, edición de reels e imágenes.
+// Laboratorio: donde se crea lo visual. Diseño (carruseles y stories), clips de testimonios, edición de reels,
+// lead magnets (páginas web publicadas en Vercel) e imágenes.
 const SECCIONES = [
   { id: 'diseno', label: 'Diseño', icon: 'palette', ayuda: 'Carruseles y stories con tu sistema de diseño' },
   { id: 'testimonios', label: 'Testimonios', icon: 'users', ayuda: 'De la entrevista a clips, stories, carrusel, portada y captions' },
   { id: 'reels', label: 'Reels', icon: 'play', ayuda: 'Tus vídeos: mejores momentos, subtítulos y sin muletillas' },
+  { id: 'leadmagnets', label: 'Lead magnets', icon: 'target', ayuda: 'Guías, checklists y tests en una página web, publicados con un enlace' },
   { id: 'imagenes', label: 'Imágenes', icon: 'eye', ayuda: 'Imágenes, B-roll y avatares con IA' },
 ];
 const guardada = () => { try { const v = localStorage.getItem('lab_seccion'); return SECCIONES.some((s) => s.id === v) ? v : 'diseno'; } catch { return 'diseno'; } };
@@ -19,7 +22,7 @@ const guardada = () => { try { const v = localStorage.getItem('lab_seccion'); re
 export default function Laboratorio() {
   const [seccion, setSeccionEstado] = useState(guardada);
   const setSeccion = (v) => { setSeccionEstado(v); try { localStorage.setItem('lab_seccion', v); } catch { /* sin localStorage */ } };
-  const [lab, recargarLab, errorLab] = useRecurso(seccion === 'testimonios' || seccion === 'reels' ? '/api/laboratorio' : null, null);
+  const [lab, recargarLab, errorLab] = useRecurso(['testimonios', 'reels', 'leadmagnets'].includes(seccion) ? '/api/laboratorio' : null, null);
   const [contenido, recargarContenido] = useRecurso(seccion === 'diseno' ? '/api/contenido' : null, null);
   const [editando, setEditando] = useState(null);
   const [programando, setProgramando] = useState(null);
@@ -52,6 +55,7 @@ export default function Laboratorio() {
           {seccion === 'testimonios' ? <Testimonios data={lab} recargar={recargarLab} /> : <Reels data={lab} />}
         </>
       ))}
+      {seccion === 'leadmagnets' && <LeadMagnets trabajando={Boolean(lab?.trabajando)} />}
       {seccion === 'imagenes' && (
         <div className="panel panel-pad lab-pronto">
           <Icon name="sparkle" size={22} color="var(--accent-2)" />

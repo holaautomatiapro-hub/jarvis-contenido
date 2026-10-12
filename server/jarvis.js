@@ -102,7 +102,7 @@ export function createJarvis({ db, vault }) {
     if (set.fecha && !/^\d{4}-\d{2}-\d{2}$/.test(set.fecha)) throw new JarvisError('La fecha debe ser AAAA-MM-DD');
     if (set.hora && !/^\d{2}:\d{2}$/.test(set.hora)) throw new JarvisError('La hora debe ser HH:MM');
     if (set.caption) set.caption = set.caption.slice(0, 5000);
-    if (set.carpeta) set.carpeta = set.carpeta.slice(0, 80);
+    if (set.carpeta) set.carpeta = nombreCarpeta(set.carpeta);
     // Lead magnet: la casilla y su enlace. Sin casilla no se guarda enlace; con enlace, la casilla se marca sola.
     if ('leadmagnet' in c) set.leadmagnet = c.leadmagnet ? 1 : 0;
     if (set.leadmagnet_url) {
@@ -165,36 +165,81 @@ export function createJarvis({ db, vault }) {
   }
 
   // ---------- Biblioteca: carpetas y carruseles ----------
+  // Las carpetas pueden tener subcarpetas: se guardan con su ruta, «Clientes/Andrea/Stories»
+  const SEP = '/';
   const nombreCarpeta = (v) => {
-    const s = typeof v === 'string' ? v.trim().replace(/\s+/g, ' ') : '';
-    if (!s) throw new JarvisError('Ponle nombre a la carpeta.');
-    return s.slice(0, 80);
+    const partes = (typeof v === 'string' ? v : '').split(SEP).map((x) => x.trim().replace(/\s+/g, ' ').slice(0, 60)).filter(Boolean);
+    if (!partes.length) throw new JarvisError('Ponle nombre a la carpeta.');
+    if (partes.length > 6) throw new JarvisError('Como mucho 6 niveles de subcarpetas.');
+    const n = partes.join(SEP);
+    if (n.length > 200) throw new JarvisError('El nombre de la carpeta es demasiado largo.');
+    return n;
+  };
+  const padreDe = (n) => (n.includes(SEP) ? n.slice(0, n.lastIndexOf(SEP)) : null);
+  const dentroDe = (n, raiz) => n === raiz || n.startsWith(raiz + SEP);
+  const ordenRuta = (a, b) => {
+    const x = a.split(SEP), y = b.split(SEP);
+    for (let i = 0; i < Math.min(x.length, y.length); i++) {
+      const c = x[i].localeCompare(y[i], 'es', { numeric: true, sensitivity: 'base' });
+      if (c) return c;
+    }
+    return x.length - y.length;
   };
   function carpetas() {
-    return rows(q.carpetas).map((r) => ({ nombre: r.nombre, piezas: q.usoCarpeta.get(r.nombre).n }))
-      .sort((a, b) => a.nombre.localeCompare(b.nombre, 'es', { numeric: true }));
+    const nombres = new Set();
+    for (const r of rows(q.carpetas)) {
+      // Las carpetas de arriba existen aunque solo se haya guardado la de dentro
+      for (let n = r.nombre; n; n = padreDe(n)) nombres.add(n);
+    }
+    const lista = [...nombres].sort(ordenRuta);
+    const directas = new Map(lista.map((n) => [n, q.usoCarpeta.get(n).n]));
+    return lista.map((n) => ({
+      nombre: n, padre: padreDe(n), etiqueta: n.split(SEP).at(-1), nivel: n.split(SEP).length - 1,
+      piezas: directas.get(n), total: lista.filter((m) => dentroDe(m, n)).reduce((a, m) => a + directas.get(m), 0),
+      subcarpetas: lista.filter((m) => padreDe(m) === n).length,
+    }));
   }
-  function crearCarpeta(nombre) {
-    const n = nombreCarpeta(nombre);
-    if (carpetas().some((c) => c.nombre.toLowerCase() === n.toLowerCase())) throw new JarvisError('Ya hay una carpeta con ese nombre.');
+  const existeCarpeta = (n, salvo = null) => carpetas().some((c) => c.nombre.toLowerCase() === n.toLowerCase() && (!salvo || !dentroDe(c.nombre, salvo)));
+  // nombre: la carpeta nueva; padre (opcional): dentro de cuál va
+  function crearCarpeta(nombre, padre = null) {
+    if (padre && !String(nombre ?? '').replace(/\//g, '').trim()) throw new JarvisError('Ponle nombre a la carpeta.');
+    const n = nombreCarpeta(padre ? `${nombreCarpeta(padre)}${SEP}${nombre}` : nombre);
+    if (existeCarpeta(n)) throw new JarvisError('Ya hay una carpeta con ese nombre.');
     q.insCarpeta.run(n);
     return { nombre: n };
   }
+  // Renombra o mueve una carpeta con todo lo de dentro (subcarpetas y piezas)
   function renombrarCarpeta(viejo, nuevo) {
     const v = nombreCarpeta(viejo), n = nombreCarpeta(nuevo);
     if (v === n) return { nombre: n };
-    if (carpetas().some((c) => c.nombre.toLowerCase() === n.toLowerCase() && c.nombre.toLowerCase() !== v.toLowerCase())) throw new JarvisError('Ya hay una carpeta con ese nombre.');
-    db.prepare('DELETE FROM contenido_carpetas WHERE nombre = ?').run(v);
-    if (!q.getCarpeta.get(n)) q.insCarpeta.run(n);
-    db.prepare('UPDATE piezas SET carpeta = ? WHERE carpeta = ?').run(n, v);
+    if (dentroDe(n, v)) throw new JarvisError('Una carpeta no puede ir dentro de sí misma.');
+    if (existeCarpeta(n, v)) throw new JarvisError('Ya hay una carpeta con ese nombre.');
+    const cambiar = (x) => n + x.slice(v.length);
+    const guardadas = rows(db.prepare('SELECT nombre FROM contenido_carpetas')).map((r) => r.nombre).filter((x) => dentroDe(x, v));
+    const enPiezas = rows(db.prepare('SELECT DISTINCT carpeta FROM piezas WHERE carpeta = ? OR substr(carpeta, 1, ?) = ?'), v, v.length + 1, v + SEP);
+    db.exec('BEGIN');
+    try {
+      for (const x of guardadas) db.prepare('DELETE FROM contenido_carpetas WHERE nombre = ?').run(x);
+      for (const x of guardadas) if (!q.getCarpeta.get(cambiar(x))) q.insCarpeta.run(cambiar(x));
+      if (!q.getCarpeta.get(n)) q.insCarpeta.run(n);
+      for (const { carpeta: x } of enPiezas) db.prepare('UPDATE piezas SET carpeta = ? WHERE carpeta = ?').run(cambiar(x), x);
+      db.exec('COMMIT');
+    } catch (e) { db.exec('ROLLBACK'); throw e; }
     return { nombre: n };
   }
-  // Las piezas de la carpeta no se borran: se quedan sueltas
+  // Las piezas no se borran: pasan a la carpeta de arriba (o se quedan sin carpeta). Las subcarpetas se van con ella.
   function borrarCarpeta(nombre) {
     const n = nombreCarpeta(nombre);
-    db.prepare('DELETE FROM contenido_carpetas WHERE nombre = ?').run(n);
-    const { changes } = db.prepare('UPDATE piezas SET carpeta = NULL WHERE carpeta = ?').run(n);
-    return { ok: true, sueltas: changes };
+    const destino = padreDe(n);
+    let movidas = 0;
+    db.exec('BEGIN');
+    try {
+      for (const { nombre: x } of rows(db.prepare('SELECT nombre FROM contenido_carpetas'))) if (dentroDe(x, n)) db.prepare('DELETE FROM contenido_carpetas WHERE nombre = ?').run(x);
+      if (destino && !q.getCarpeta.get(destino)) q.insCarpeta.run(destino);
+      movidas = db.prepare('UPDATE piezas SET carpeta = ? WHERE carpeta = ? OR substr(carpeta, 1, ?) = ?').run(destino, n, n.length + 1, n + SEP).changes;
+      db.exec('COMMIT');
+    } catch (e) { db.exec('ROLLBACK'); throw e; }
+    return { ok: true, sueltas: movidas, destino };
   }
   const idsDe = (ids) => {
     if (!Array.isArray(ids) || !ids.length) throw new JarvisError('Marca al menos una pieza');

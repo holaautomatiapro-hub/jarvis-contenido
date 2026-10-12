@@ -269,15 +269,31 @@ export function createApp({ jarvis, archivos, publicadorIg, asistente, instagram
     app.get('/api/laboratorio/archivo', (req, res) => {
       let a;
       try { a = laboratorio.archivo(String(req.query.ruta || '')); } catch (e) { return res.status(404).json({ error: e.message }); }
-      res.type(a.mime).sendFile(a.abs, { dotfiles: 'allow', headers: { 'Cache-Control': 'private, no-cache' } });
+      // Las páginas (lead magnets) se ven aisladas: sin acceso a JARVIS desde su JavaScript
+      const aislada = /^text\/html/.test(a.mime) ? { 'Content-Security-Policy': 'sandbox allow-scripts allow-forms allow-popups allow-popups-to-escape-sandbox allow-modals' } : {};
+      res.type(a.mime).sendFile(a.abs, { dotfiles: 'allow', headers: { 'Cache-Control': 'private, no-cache', ...aislada } });
     });
     app.get('/api/laboratorio/texto', h((req) => laboratorio.texto(String(req.query.ruta || ''))));
     app.delete('/api/laboratorio/archivo', h((req) => laboratorio.borrar(String(req.query.ruta || '')), true));
     app.post('/api/laboratorio/biblioteca', h((req) => laboratorio.aBiblioteca(req.body || {}), true));
     app.post('/api/laboratorio/empezar', h((req) => {
       if (!asistente) throw Object.assign(new Error('JARVIS (Claude Code) no está disponible'), { publico: true });
+      if (req.body?.tipo === 'leadmagnet') {
+        if (asistente.estado({ conversacion: 'laboratorio' }).ocupadoAqui) throw new OcupadoError('El Laboratorio está terminando otro trabajo. Espera a que acabe o cancélalo.');
+        const { slug, prompt } = laboratorio.leadmagnets.nuevo(req.body?.datos || {});
+        return Promise.resolve(asistente.preguntar({ conversacion: 'laboratorio', texto: prompt })).then((r) => ({ ...(r && typeof r === 'object' ? r : {}), slug }));
+      }
       return asistente.preguntar({ conversacion: 'laboratorio', texto: laboratorio.prompt(req.body?.tipo, req.body?.datos || {}) });
     }));
+    // Lead magnets (páginas web) y su publicación en Vercel
+    const lm = laboratorio.leadmagnets;
+    app.get('/api/laboratorio/leadmagnets', h(() => lm.estado()));
+    app.post('/api/laboratorio/leadmagnets/banner', h((req) => lm.subirBanner(req, { cual: String(req.query.cual || ''), nombre: String(req.query.nombre || '') }), true));
+    app.put('/api/laboratorio/leadmagnets/vercel', h((req) => lm.conectarVercel(req.body || {}), true));
+    app.post('/api/laboratorio/leadmagnets/:slug/publicar', h((req) => lm.publicar(req.params.slug), true));
+    app.post('/api/laboratorio/leadmagnets/:slug/despublicar', h((req) => lm.despublicar(req.params.slug), true));
+    app.put('/api/laboratorio/leadmagnets/:slug/pieza', h((req) => lm.asignar(req.params.slug, req.body?.pieza || null), true));
+    app.delete('/api/laboratorio/leadmagnets/:slug', h((req) => lm.borrar(req.params.slug), true));
   }
 
   // Fases del pipeline de contenido (configurables)
@@ -316,7 +332,7 @@ export function createApp({ jarvis, archivos, publicadorIg, asistente, instagram
   }, true));
   app.delete('/api/piezas/:id', h((req) => { const r = jarvis.borrarPieza(req.params.id); borrarArchivosDe([r.pieza]); return { ok: true }; }, true));
   app.get('/api/contenido', h(() => ({ piezas: jarvis.listarPiezas(), carpetas: jarvis.carpetas(), archivos: Boolean(archivos), instagram: publicadorIg?.estado() || { disponible: false, motivo: 'La publicación en Instagram no está disponible' } })));
-  app.post('/api/contenido/carpetas', h((req) => jarvis.crearCarpeta(req.body?.nombre), true));
+  app.post('/api/contenido/carpetas', h((req) => jarvis.crearCarpeta(req.body?.nombre, req.body?.padre || null), true));
   app.patch('/api/contenido/carpetas', h((req) => jarvis.renombrarCarpeta(req.body?.de, req.body?.a), true));
   app.delete('/api/contenido/carpetas', h((req) => jarvis.borrarCarpeta(req.query.nombre), true));
   app.post('/api/contenido/mover', h((req) => jarvis.moverACarpeta(req.body?.ids, req.body?.carpeta || null), true));
