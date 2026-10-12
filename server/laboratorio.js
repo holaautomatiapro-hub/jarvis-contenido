@@ -8,6 +8,7 @@ import { leerZip } from './diseno/zip.js';
 import { nombreSeguro } from './archivos.js';
 import { rutaFfmpeg } from './diseno/motor.js';
 import { createLeadMagnets } from './leadmagnets.js';
+import { createImagenes } from './imagenes.js';
 
 // Laboratorio: clips de testimonios y edición de reels con el plugin «testimonios» de la persona.
 // Todo vive en una carpeta de trabajo propia (fuera del vault: los vídeos pesan mucho):
@@ -19,13 +20,13 @@ export class LaboratorioError extends Error {
   constructor(m) { super(m); this.publico = true; }
 }
 
-const CARPETAS = ['crudo', 'fichas/clips', 'fichas/testimonios', 'fichas/reels', 'transcripciones', 'marca', 'fotos', 'clips', 'testimonios', 'reels', 'leadmagnets'];
+const CARPETAS = ['crudo', 'fichas/clips', 'fichas/testimonios', 'fichas/reels', 'transcripciones', 'marca', 'fotos', 'clips', 'testimonios', 'reels', 'leadmagnets', 'imagenes/_referencias', 'imagenes/_mi-cara'];
 const VIDEO = /\.(mp4|mov|m4v|mkv|webm)$/i;
 const IMAGEN = /\.(jpe?g|png|webp)$/i;
 const MIME = { mp4: 'video/mp4', mov: 'video/quicktime', m4v: 'video/x-m4v', mkv: 'video/x-matroska', webm: 'video/webm', jpg: 'image/jpeg', jpeg: 'image/jpeg', png: 'image/png', webp: 'image/webp', md: 'text/markdown; charset=utf-8', json: 'application/json', html: 'text/html; charset=utf-8' };
 const MAX_SUBIDA = 8 * 1024 ** 3;
 // Lo que se enseña en el Laboratorio y se puede abrir desde el navegador
-const VISIBLES = ['clips', 'testimonios', 'reels', 'marca', 'fotos', 'crudo', 'leadmagnets'];
+const VISIBLES = ['clips', 'testimonios', 'reels', 'marca', 'fotos', 'crudo', 'leadmagnets', 'imagenes'];
 export const PIEZAS_TESTIMONIO = {
   stories: 'Stories en vídeo (9:16)', carrusel: 'Carrusel en vídeo (4:5)', reel: 'Clips en reel (9:16)',
   carrusel4x5: 'Clips en 4:5', youtube: 'Entrevista completa para YouTube', portada: 'Portada', captions: 'Los 3 captions',
@@ -34,9 +35,10 @@ export const PLANTILLAS_REEL = { pantalla: 'Pantalla completa (9:16)', ventana: 
 
 const slug = (s) => nombreSeguro(String(s || '').trim() || 'cliente').replace(/\.[^.]*$/, '');
 
-export function createLaboratorio({ dir, archivos, jarvis, vaultPath = null, env = process.env, reelScript = path.join(ROOT, 'laboratorio', 'reel.py'), leadmagnetsOpc = {}, log = () => {} }) {
+export function createLaboratorio({ dir, archivos, jarvis, vaultPath = null, env = process.env, reelScript = path.join(ROOT, 'laboratorio', 'reel.py'), leadmagnetsOpc = {}, imagenesOpc = {}, log = () => {} }) {
   const base = path.resolve(dir);
   const leadmagnets = createLeadMagnets({ base, vaultPath, jarvis, env, log, ...leadmagnetsOpc });
+  const imagenes = createImagenes({ base, jarvis, env, ...imagenesOpc });
   const pluginDir = path.join(base, '.jarvis', 'plugin');
   const venv = path.join(base, '.venv');
   const binVenv = path.join(venv, process.platform === 'win32' ? 'Scripts' : 'bin');
@@ -147,6 +149,12 @@ export function createLaboratorio({ dir, archivos, jarvis, vaultPath = null, env
     } else if (tipo === 'foto') {
       if (!IMAGEN.test(n)) throw new LaboratorioError('Sube una foto (jpg, png o webp)');
       carpeta = `fotos/${slug(cliente)}`;
+    } else if (tipo === 'referencia') {
+      if (!IMAGEN.test(n) && !VIDEO.test(n)) throw new LaboratorioError('Sube una imagen (jpg, png, webp) o un vídeo');
+      carpeta = 'imagenes/_referencias';
+    } else if (tipo === 'cara') {
+      if (!IMAGEN.test(n)) throw new LaboratorioError('Sube fotos (jpg, png o webp)');
+      carpeta = 'imagenes/_mi-cara';
     } else if (tipo === 'logo') {
       if (!IMAGEN.test(n)) throw new LaboratorioError('Sube el logo en png o jpg');
       carpeta = 'marca';
@@ -268,7 +276,7 @@ export function createLaboratorio({ dir, archivos, jarvis, vaultPath = null, env
   function borrar(rel) {
     const abs = ruta(rel);
     const raiz = String(rel).split('/')[0];
-    if (!['clips', 'testimonios', 'reels', 'crudo'].includes(raiz)) throw new LaboratorioError('Eso no se puede borrar desde aquí');
+    if (!['clips', 'testimonios', 'reels', 'crudo', 'imagenes'].includes(raiz)) throw new LaboratorioError('Eso no se puede borrar desde aquí');
     rmSync(abs, { recursive: true, force: true });
     return { ok: true };
   }
@@ -290,12 +298,14 @@ export function createLaboratorio({ dir, archivos, jarvis, vaultPath = null, env
   // ---------- Claude con el plugin ----------
   // Permisos de Bash: solo los programas del montaje (y moverse por carpetas). Nada de borrar ni instalar.
   const BASH = ['python', 'python3', 'py', 'ffmpeg', 'ffprobe', 'npx', 'npm', 'node', 'ls', 'cd', 'mkdir', 'cp', 'mv', 'cat', 'head', 'tail', 'wc', 'echo', 'pwd'].map((c) => `Bash(${c}:*)`);
+  // El conector de Higgsfield (si está añadido y con sesión iniciada): imágenes y vídeo con tus créditos
+  const MCP_EXTRA = ['mcp__higgsfield'];
   function entorno() {
     const extraPath = [python() ? binVenv : null].filter(Boolean);
     return {
       cwd: base,
       pluginDirs: plugin().instalado ? [pluginDir] : [],
-      herramientasExtra: BASH,
+      herramientasExtra: [...BASH, ...MCP_EXTRA],
       env: {
         PATH: [...extraPath, env.PATH || process.env.PATH || ''].join(path.delimiter),
         TESTIMONIOS_TRABAJO: base,
@@ -310,6 +320,7 @@ Plugin «testimonios»: ${pluginDir} (es el <PLUGIN> de sus skills; la carpeta a
 Python con todas las librerías: el comando \`python\` (ya está en el PATH).
 Editor de reels: python "${reelScript}" (sin argumentos explica la ficha y los comandos).
 Lo que generes aparece solo en el Laboratorio de JARVIS; la persona lo pasa a la biblioteca desde allí.
+Imágenes y vídeo con Higgsfield (herramientas mcp__higgsfield): lo generado se baja a imagenes/<encargo>/ con node "${path.join(ROOT, 'laboratorio', 'higgsfield.mjs')}"; mira siempre el coste antes de generar.
 Lead magnets: en leadmagnets/<nombre>/index.html; compruébalos en móvil con node "${path.join(ROOT, 'laboratorio', 'captura.mjs')}" <ruta del html>.${vaultPath ? `
 Su vault (memoria de JARVIS): ${path.resolve(vaultPath)} — CLAUDE.md (su negocio), _voz.md (su voz) y _diseno/ (su sistema de diseño: colores, letras, @usuario). Si la skill necesita su marca y no está fijada, sácala de ahí antes de preguntar.` : ''}`,
     };
@@ -376,7 +387,7 @@ Pasos:
     throw new LaboratorioError('Trabajo no válido');
   }
 
-  return { dir: base, pluginDir, leadmagnets, iniciar, estado, requisitos, importarPlugin, subir, resultados, archivo, texto, borrar, aBiblioteca, entorno, prompt, ruta };
+  return { dir: base, pluginDir, leadmagnets, imagenes, iniciar, estado, requisitos, importarPlugin, subir, resultados, archivo, texto, borrar, aBiblioteca, entorno, prompt, ruta };
 }
 
 export const carpetaPorDefecto = (envObj = process.env) => envObj.LABORATORIO_PATH || path.join(os.homedir(), 'JARVIS-Laboratorio');

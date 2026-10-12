@@ -76,7 +76,16 @@ rm -f "$LOG_LAB"
 
 paso "Claude Code"
 if ! command -v claude >/dev/null; then $SUDO npm install -g @anthropic-ai/claude-code --loglevel=error >/dev/null; fi
+# Al día: las versiones nuevas traen lo que usa JARVIS (p. ej. iniciar sesión en conectores sin navegador)
+timeout 180 claude update >/dev/null 2>&1 || true
 ok "claude $(claude --version 2>/dev/null | head -1)"
+# Conector de Higgsfield (Laboratorio → Imágenes) con tu cuenta: se añade una vez; la sesión se inicia a mano
+if ! claude mcp get higgsfield 2>/dev/null | grep -q '^higgsfield:'; then
+  claude mcp add --transport http --scope user higgsfield https://mcp.higgsfield.ai/mcp >/dev/null 2>&1 && ok "Conector de Higgsfield añadido"
+fi
+if claude mcp get higgsfield 2>/dev/null | grep -qi 'needs auth'; then
+  aviso "Higgsfield: falta iniciar sesión con tu cuenta. Ejecuta  claude mcp login higgsfield --no-browser  (guía en Laboratorio → Imágenes)"
+fi
 [ -f "$HOME/.claude/.credentials.json" ] || [ -f "$HOME/.claude.json" ] || aviso "Falta iniciar sesión: ejecuta  claude  una vez y entra con tu cuenta Pro/Max"
 
 paso "Servicio jarvis (arranca solo)"

@@ -1,4 +1,4 @@
-# Laboratorio: diseño, testimonios, reels y lead magnets
+# Laboratorio: diseño, testimonios, reels, lead magnets e imágenes
 
 El **Laboratorio** es la pestaña donde se crea lo visual. Tiene cinco secciones:
 
@@ -8,7 +8,7 @@ El **Laboratorio** es la pestaña donde se crea lo visual. Tiene cinco secciones
 | **Testimonios** | De la entrevista de un cliente a stories y carrusel en vídeo, clips (reel, 4:5 y YouTube), portada y 3 captions |
 | **Reels** | Tus vídeos hablando a cámara: los mejores momentos, sin silencios ni muletillas, con tus subtítulos y tu título |
 | **Lead magnets** | Guías, checklists, tests y generadores en una página web con tu diseño, publicados en Vercel con un enlace |
-| **Imágenes** | Imágenes, B-roll y avatares con IA (próximamente) |
+| **Imágenes** | Con Higgsfield (tu cuenta): imágenes para tus diseños, fotos contigo (tu personaje con tu cara), B-roll y animar una imagen |
 
 Testimonios y Reels usan **tu plugin «testimonios»** (el de Automatia Pro), con su motor de montaje y su entrevista de marca.
 
@@ -76,6 +76,31 @@ Páginas web **interactivas** (no PDF) para mandar a quien comenta tu palabra cl
 
 Todos tus lead magnets publicados van en el mismo proyecto de Vercel: cada vez que publicas uno, JARVIS sube también los demás que siguen publicados.
 
+## Imágenes con Higgsfield
+
+Usa **el conector de Higgsfield de tu cuenta** (el mismo que en Claude), así que gasta los créditos de tu plan.
+
+**Conectar (una vez).** El instalador del VPS añade el conector. Solo falta iniciar sesión:
+1. En PowerShell: `ssh -t root@TU-IP`
+2. En el VPS: `claude mcp login higgsfield --no-browser`
+3. Abre en tu navegador el enlace que sale y entra con tu cuenta de Higgsfield.
+4. El navegador acaba en una página de `localhost` que no carga: copia esa dirección entera y pégala en la terminal del VPS.
+5. En Laboratorio → Imágenes, pulsa **Comprobar**: tiene que poner «Conectado».
+
+Si Higgsfield pide volver a entrar algún día, repite los pasos 1 a 4.
+
+**Tu cara (una vez).** Sube de 5 a 20 fotos tuyas (mejor 10-20: solo tú, cara bien visible, luz y ángulos distintos) y pulsa **Crear mi personaje**. JARVIS las sube a Higgsfield y entrena tu personaje (Soul), que tarda unos 10 minutos. Su número queda en `imagenes/_mi-cara/personaje.json`.
+
+**Crear.** Elige qué quieres:
+- **Imagen**: fondos, escenas, objetos o portadas para tus carruseles y stories.
+- **Foto contigo**: con tu personaje.
+- **B-roll**: un vídeo corto para meter entre lo que dices en tus reels.
+- **Animar una imagen**: una foto o un diseño que subas, con movimiento.
+
+Después describe la imagen y elige el formato (9:16, 4:5, 1:1 o 16:9), cuántas quieres, las referencias (si quieres) y un **presupuesto de créditos**. JARVIS escribe el prompt, elige el modelo y mira el coste antes de generar. Si cuesta más que tu presupuesto, te pregunta en el chat. Nunca usa tus generaciones ilimitadas si no se lo pides.
+
+Lo generado se baja a `imagenes/<encargo>/`. Desde ahí lo pasas a la biblioteca con un clic, y así ya lo tienes para tus diseños (Diseño usa los medios de la biblioteca) y tus reels.
+
 ## Captions con negrita y emojis
 
 En **Contenido**, el caption tiene una barra:
@@ -98,6 +123,9 @@ testimonios/<Cliente>/  stories, carrusel en vídeo, portadas y _caption.md
 reels/<Nombre>/         tus reels editados, por plantilla, y _caption.md
 leadmagnets/<nombre>/   index.html (la página), captura.png y _capturas/ (revisión a 375 px)
 leadmagnets/_comun/     los banners de Skool y WhatsApp
+imagenes/<encargo>/     lo generado con Higgsfield y _encargo.md (prompt y modelo)
+imagenes/_referencias/  fotos y vídeos de referencia
+imagenes/_mi-cara/      tus fotos para tu personaje y personaje.json
 ```
 
 ## Cómo trabaja JARVIS aquí
