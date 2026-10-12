@@ -2,9 +2,16 @@ import { useEffect, useRef, useState } from 'react';
 import Icon from '../../components/Icon.jsx';
 import CampoCaption from '../../components/CampoCaption.jsx';
 import { api } from '../../lib/api.js';
+import { markdownANegrita } from '../../lib/negrita.js';
 import { diaLargo, hoyIso, sumarDias } from '../../lib/fechas.js';
 import { NOMBRE_TIPO_IG, planDePublicacion } from '../../lib/planIg.js';
 import { CampoLeadMagnet, OpcionesCarpetas, useFases, MAX_CAPTION, Miniatura, Modal, TIPOS, borrarArchivo, esMedio, esStory, esVideo, subirArchivo, tamanoLegible, tipoDe } from './comun.jsx';
+
+// Caption con IA: JARVIS lo escribe con tu voz a partir de lo que tenga la pieza (título, guion, lead magnet…)
+const crearCaption = async (datos) => {
+  const { caption } = await api('/api/caption', { method: 'POST', body: { titulo: datos.titulo, formato: datos.formato, nota: datos.nota || null, caption: datos.caption, leadmagnet: Boolean(datos.leadmagnet), leadmagnet_url: datos.leadmagnet_url || null, archivos: (datos.archivos || []).map((a) => a.nombre) } });
+  return markdownANegrita(caption); // la negrita se ve ya como en Instagram
+};
 
 // ---------- Visor a pantalla completa ----------
 export function Visor({ archivos, inicio = 0, onClose }) {
@@ -222,7 +229,7 @@ export function EditorContenido({ pieza, carpetas, ig, onClose, onGuardado, onVi
           </div>
           {!d.fecha && <div className="ayuda">Sin fecha se queda en la biblioteca hasta que la programes.</div>}
           <label className="campo-et">Caption <span className={`contador${largo ? ' pasado' : ''}`}>{d.caption.length} / {MAX_CAPTION}</span></label>
-          <CampoCaption rows={7} value={d.caption} onChange={cambia('caption')} placeholder="El texto que acompaña a la publicación…" />
+          <CampoCaption rows={7} value={d.caption} onChange={cambia('caption')} placeholder="El texto que acompaña a la publicación…" onIA={() => crearCaption({ ...d, nota: pieza.nota, archivos })} />
           <label className="campo-et">URL del vídeo</label>
           <div className="fila" style={{ marginBottom: 0 }}>
             <input className="campo" value={d.video_url} onChange={cambia('video_url')} placeholder="https://drive.google.com/… o el enlace de la publicación" />
@@ -329,7 +336,7 @@ export function ProgramarContenido({ pieza, fecha, ig, onClose, onGuardado }) {
       {!story && (
         <>
           <label className="campo-et">Caption <span className={`contador${d.caption.length > MAX_CAPTION ? ' pasado' : ''}`}>{d.caption.length} / {MAX_CAPTION}</span></label>
-          <CampoCaption rows={5} value={d.caption} onChange={(v) => setD((x) => ({ ...x, caption: v }))} placeholder="El texto que acompaña a la publicación…" />
+          <CampoCaption rows={5} value={d.caption} onChange={(v) => setD((x) => ({ ...x, caption: v }))} placeholder="El texto que acompaña a la publicación…" onIA={() => crearCaption({ ...pieza, ...d })} />
         </>
       )}
       <CampoLeadMagnet activo={d.leadmagnet} url={d.leadmagnet_url} onCambio={(c) => setD((x) => ({ ...x, ...c }))} />

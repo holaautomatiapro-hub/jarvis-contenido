@@ -46,7 +46,7 @@ Después, ábrelo con el acceso directo **JARVIS** del escritorio o en http://lo
 - **Reels**: sube tu vídeo hablando a cámara y JARVIS elige los mejores momentos, quita silencios y muletillas y le pone tus subtítulos y tu título, a pantalla completa, en ventana con marco o en 4:5.
 - **Lead magnets**: guías, checklists, tests y generadores en una **página web** con tu sistema de diseño. JARVIS los escribe con tu voz, los revisa a 375 px y tú los **publicas en Vercel** con un clic; el enlace se copia o se pone solo en la pieza que lo anuncia.
 - **Imágenes**: con **Higgsfield** (tu cuenta y tus créditos), imágenes para tus diseños, **fotos contigo** (tu personaje entrenado con tus fotos), **B-roll** y animar una imagen. JARVIS mira el coste antes de generar y lo deja listo para pasar a la biblioteca.
-- **Captions**: botón **B** para negrita que se ve en Instagram y selector de **emojis** (en Contenido).
+- **Captions**: botón **B** para negrita que se ve en Instagram, selector de **emojis** y **Crear con IA** (JARVIS lo escribe con tu voz) al crear o programar un post.
 - El plugin se importa en un .zip y se queda solo en tu servidor. En el VPS, `bash ~/instalar-vps.sh` prepara Python, sus librerías y el modelo de transcripción. Guía: [docs/LABORATORIO.md](docs/LABORATORIO.md).
 
 ## JARVIS en un VPS (24 h)

@@ -181,5 +181,32 @@ export function createAsistente({ db, jarvis, vaultPath, emitir = () => {}, ejec
     };
   }
 
-  return { preguntar, cancelar, nuevaSesion, estado, enrutamiento };
+  // Un texto suelto (p. ej. un caption): sin conversación ni memoria, en paralelo a lo demás. Devuelve solo el texto.
+  function redactar({ prompt, sistema = null, modelo = 'sonnet', limiteMs = 180_000 }) {
+    const texto = String(prompt || '').trim();
+    if (!texto) throw new Error('Falta "texto"');
+    const { lastInsertRowid } = q.ins.run('redactar', modelo, `Claude ${modelo[0].toUpperCase()}${modelo.slice(1)}`, 'texto');
+    const t0 = Date.now();
+    return new Promise((resolve, reject) => {
+      let hecho = false;
+      const acabar = (ok, valor) => {
+        if (hecho) return;
+        hecho = true;
+        clearTimeout(reloj);
+        q.fin.run(ok ? 1 : 0, Date.now() - t0, null, lastInsertRowid);
+        if (ok) resolve(valor); else reject(Object.assign(new Error(valor), { publico: true }));
+      };
+      const run = ejecutarImpl({
+        prompt: texto, cwd: vaultPath, modelo, sistema, mcpConfig: mcpConfigDe(vaultPath),
+        onEvento: (e) => {
+          if (e.tipo === 'fin') acabar(true, String(e.texto || '').trim());
+          if (e.tipo === 'error') acabar(false, e.mensaje || 'JARVIS no ha podido escribirlo');
+        },
+      });
+      const reloj = setTimeout(() => { run.cancelar?.(); acabar(false, 'JARVIS está tardando demasiado. Vuelve a probar.'); }, limiteMs);
+      run.terminado?.then(() => acabar(false, 'JARVIS no ha devuelto nada'));
+    });
+  }
+
+  return { preguntar, cancelar, nuevaSesion, estado, enrutamiento, redactar };
 }

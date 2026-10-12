@@ -1371,6 +1371,10 @@ input.filtro-select { padding-right: 10px; }
 .caption-rejilla { display: grid; grid-template-columns: repeat(8, 1fr); gap: 2px; max-height: 190px; overflow-y: auto; }
 .caption-rejilla button { border: 0; background: none; font-size: 20px; padding: 4px 0; border-radius: 7px; line-height: 1.2; }
 .caption-rejilla button:hover { background: color-mix(in srgb, var(--accent) 14%, transparent); }
+.caption-ia { width: auto; padding: 0 10px; gap: 5px; display: inline-flex; align-items: center; font-size: 12px; font-weight: 600; white-space: nowrap; }
+.caption-ia span { font-size: 13px; }
+.caption-ia:disabled { opacity: .7; cursor: progress; }
+.caption-error { color: var(--rojo-texto, var(--pink)); white-space: normal; }
 .lm-marca { display: inline-grid; place-items: center; width: 18px; height: 18px; border-radius: 5px; background: color-mix(in srgb, var(--accent-2) 18%, transparent); color: var(--accent-texto); cursor: pointer; font-size: 10px; flex: none; }
 .lm-marca.ok { background: rgba(34,197,94,.2); color: var(--green); }
 .cal-chip-lm { display: inline-flex; vertical-align: -1px; margin-right: 3px; color: var(--accent-2); }
