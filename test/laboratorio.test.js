@@ -45,8 +45,19 @@ describe('Laboratorio', () => {
     assert.ok(existsSync(path.join(lab.pluginDir, 'motor', 'montar.py')));
     lab.importarPlugin(pluginZip());
     assert.ok(existsSync(path.join(lab.dir, '.jarvis', 'plugins-anteriores')));
-    assert.throws(() => lab.importarPlugin(crearZip([{ nombre: 'x/README.md', contenido: Buffer.from('x') }])), /plugin de Claude Code/);
-    assert.throws(() => lab.importarPlugin(crearZip([{ nombre: '.claude-plugin/plugin.json', contenido: Buffer.from('{}') }])), /testimonios/);
+    assert.throws(() => lab.importarPlugin(crearZip([{ nombre: 'x/README.md', contenido: Buffer.from('x') }])), /no es el plugin de testimonios/);
+    assert.throws(() => lab.importarPlugin(crearZip([{ nombre: 'p/motor/montar.py', contenido: Buffer.from('x') }])), /testimonio-completo/);
+  });
+
+  test('acepta el plugin recomprimido sin .claude-plugin y un .zip dentro de otro', () => {
+    const sinManifiesto = crearZip([
+      { nombre: 'testimonios/motor/montar.py', contenido: Buffer.from('x') },
+      { nombre: 'testimonios/skills/testimonio-completo/SKILL.md', contenido: Buffer.from('x') },
+    ]);
+    assert.equal(lab.importarPlugin(sinManifiesto).plugin.instalado, true);
+    assert.ok(existsSync(path.join(lab.pluginDir, '.claude-plugin', 'plugin.json')));
+    const anidado = crearZip([{ nombre: 'testimonios-plugin.zip', contenido: pluginZip() }, { nombre: '__MACOSX/._x', contenido: Buffer.from('x') }]);
+    assert.deepEqual(lab.importarPlugin(anidado).plugin.skills.sort(), ['clips-reel', 'testimonio-completo']);
   });
 
   test('sube la entrevista a crudo/ y la foto a fotos/<cliente>/, sin pisar ni salirse', async () => {

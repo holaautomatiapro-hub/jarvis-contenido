@@ -64,13 +64,22 @@ export function createLaboratorio({ dir, archivos, jarvis, vaultPath = null, env
 
   function importarPlugin(buf) {
     let entradas;
-    try { entradas = leerZip(buf, { maxArchivos: 2000, maxTotal: 500 * 1024 ** 2 }); } catch (e) { throw new LaboratorioError(e.message); }
-    const manifiesto = entradas.find((a) => /(^|\/)\.claude-plugin\/plugin\.json$/.test(a.nombre));
-    if (!manifiesto) throw new LaboratorioError('El .zip no es un plugin de Claude Code: le falta .claude-plugin/plugin.json');
-    const raiz = manifiesto.nombre.replace(/\.claude-plugin\/plugin\.json$/, '');
-    const dentro = entradas.filter((a) => a.nombre.startsWith(raiz) && !/(^|\/)(__MACOSX|\.DS_Store|Thumbs\.db)(\/|$)/.test(a.nombre));
+    const leer = (b) => { try { return leerZip(b, { maxArchivos: 2000, maxTotal: 500 * 1024 ** 2 }); } catch (e) { throw new LaboratorioError(e.message); } };
+    entradas = leer(buf);
+    // Un .zip dentro de otro .zip (pasa al descargarlo o reenviarlo): se usa el de dentro
+    const sinBasura = (l) => l.filter((a) => !/(^|\/)(__MACOSX|\.DS_Store|Thumbs\.db)(\/|$)/.test(a.nombre));
+    const zips = sinBasura(entradas).filter((a) => /\.zip$/i.test(a.nombre));
+    if (zips.length === 1 && !entradas.some((a) => /(^|\/)motor\/montar\.py$/.test(a.nombre))) entradas = leer(zips[0].contenido);
+    entradas = sinBasura(entradas);
+    // La raíz del plugin es la carpeta que tiene motor/montar.py (con o sin .claude-plugin/plugin.json:
+    // al recomprimir en Windows a veces se pierde esa carpeta que empieza por punto; entonces se crea)
+    const motor = entradas.find((a) => /(^|\/)motor\/montar\.py$/.test(a.nombre));
+    if (!motor) throw new LaboratorioError('Este .zip no es el plugin de testimonios: no encuentro motor/montar.py. Elige el .zip original del plugin.');
+    const raiz = motor.nombre.replace(/motor\/montar\.py$/, '');
+    const dentro = entradas.filter((a) => a.nombre.startsWith(raiz));
     const tiene = (rel) => dentro.some((a) => a.nombre === raiz + rel);
-    if (!tiene('motor/montar.py') || !tiene('skills/testimonio-completo/SKILL.md')) throw new LaboratorioError('Este plugin no parece el de testimonios: le falta motor/montar.py o la skill testimonio-completo');
+    if (!tiene('skills/testimonio-completo/SKILL.md')) throw new LaboratorioError('A este plugin le falta la skill testimonio-completo (skills/testimonio-completo/SKILL.md)');
+    if (!tiene('.claude-plugin/plugin.json')) dentro.push({ nombre: `${raiz}.claude-plugin/plugin.json`, contenido: Buffer.from(JSON.stringify({ name: 'testimonios', version: '1.0.0', description: 'Plugin de testimonios (importado sin plugin.json)' }, null, 2)) });
     iniciar();
     const tmp = `${pluginDir}.importando`;
     rmSync(tmp, { recursive: true, force: true });
