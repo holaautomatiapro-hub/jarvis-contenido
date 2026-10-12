@@ -22,7 +22,7 @@ Testimonios y Reels usan **tu plugin «testimonios»** (el de Automatia Pro), co
    - El modelo de transcripción (Whisper large-v3-turbo, unos 1,6 GB) y el de recortar fotos.
 
    Se puede repetir sin miedo: solo instala lo que falta.
-3. **Tu marca.** La primera vez, pulsa **Configurar mi marca**: JARVIS te pregunta en el chat tus colores, tu letra, tu logo, tu @ y cómo escribes los captions. Te enseña una tarjeta de muestra y no sigue hasta que digas que sí. Para cambiarla, **Cambiar mi marca**.
+3. **Tu marca.** La primera vez, pulsa **Configurar mi marca**. JARVIS lee lo que ya sabe de ti (tu sistema de diseño de Laboratorio → Diseño, tu `_voz.md` y el `CLAUDE.md` de tu vault) y te lo enseña relleno para que lo confirmes. Solo te pregunta lo que no está en ningún sitio: logo, palabra de cierre, tacos… Si tu letra está en `.woff2`, la pasa a `.ttf` para los clips y la portada. Después te enseña una tarjeta de muestra y no sigue hasta que digas que sí. Para cambiarla, **Cambiar mi marca**.
 
 **Comprobar requisitos** (o `npm run doctor`) te dice qué falta.
 

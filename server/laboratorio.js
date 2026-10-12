@@ -33,7 +33,7 @@ export const PLANTILLAS_REEL = { pantalla: 'Pantalla completa (9:16)', ventana: 
 
 const slug = (s) => nombreSeguro(String(s || '').trim() || 'cliente').replace(/\.[^.]*$/, '');
 
-export function createLaboratorio({ dir, archivos, jarvis, env = process.env, reelScript = path.join(ROOT, 'laboratorio', 'reel.py'), log = () => {} }) {
+export function createLaboratorio({ dir, archivos, jarvis, vaultPath = null, env = process.env, reelScript = path.join(ROOT, 'laboratorio', 'reel.py'), log = () => {} }) {
   const base = path.resolve(dir);
   const pluginDir = path.join(base, '.jarvis', 'plugin');
   const venv = path.join(base, '.venv');
@@ -293,15 +293,36 @@ export function createLaboratorio({ dir, archivos, jarvis, env = process.env, re
 Plugin «testimonios»: ${pluginDir} (es el <PLUGIN> de sus skills; la carpeta actual es <TRABAJO>).
 Python con todas las librerías: el comando \`python\` (ya está en el PATH).
 Editor de reels: python "${reelScript}" (sin argumentos explica la ficha y los comandos).
-Lo que generes aparece solo en el Laboratorio de JARVIS; la persona lo pasa a la biblioteca desde allí.`,
+Lo que generes aparece solo en el Laboratorio de JARVIS; la persona lo pasa a la biblioteca desde allí.${vaultPath ? `
+Su vault (memoria de JARVIS): ${path.resolve(vaultPath)} — CLAUDE.md (su negocio), _voz.md (su voz) y _diseno/ (su sistema de diseño: colores, letras, @usuario). Si la skill necesita su marca y no está fijada, sácala de ahí antes de preguntar.` : ''}`,
     };
+  }
+
+  // Dónde está ya la marca de la persona dentro de JARVIS (sistema de diseño del vault, su voz, su negocio)
+  function fuentesDeMarca() {
+    if (!vaultPath) return [];
+    const v = path.resolve(vaultPath);
+    const out = [];
+    const kit = path.join(v, '_diseno');
+    if (existsSync(path.join(kit, 'kit.json'))) {
+      out.push(`Su sistema de diseño (el que usa Diseño): ${kit}/ — kit.json (nombre, handle, verificado, fuentes, CSS), la guía que indica kit.json (colores con su hex, tipografías, tamaños) y sus referencias/ (imágenes de sus carruseles y portadas; busca también un logo).`);
+    }
+    if (existsSync(path.join(v, '_voz.md'))) out.push(`Su voz al escribir (tono de los captions): ${path.join(v, '_voz.md')}`);
+    if (existsSync(path.join(v, 'CLAUDE.md'))) out.push(`Su negocio y a quién se dirige: ${path.join(v, 'CLAUDE.md')}`);
+    return out;
   }
 
   function prompt(tipo, d = {}) {
     if (!plugin().instalado) throw new LaboratorioError('Primero importa el plugin de testimonios (.zip)');
     const linea = (k, v) => (v ? `${k}: ${v}\n` : '');
     if (tipo === 'marca') {
-      return `Usa la skill configurar-marca del plugin testimonios para fijar mi marca.\n${linea('Lo que quiero cambiar', d.cambios)}${linea('Mi logo', d.logo)}`;
+      const fuentes = fuentesDeMarca();
+      return `Usa la skill configurar-marca del plugin testimonios para fijar mi marca.
+${fuentes.length ? `Mi marca YA ESTÁ en JARVIS: léela antes de preguntar nada y úsala como hallazgos de la fase 1 (con su fuente):
+${fuentes.map((f) => `- ${f}`).join('\n')}
+Rellena con eso todo lo que se pueda (colores, tipografía, fondo/rejilla, @usuario y verificado, nombre, público, tono de los captions) y enséñamelo en una tabla para que lo confirme.
+Si mi letra solo está en .woff2 en el sistema de diseño, pásala tú a .ttf en fuentes/ con los nombres que pide el plugin (<Familia>-ExtraBold.ttf, -Bold.ttf, -SemiBold.ttf) usando fontTools (python: from fontTools.ttLib import TTFont; f = TTFont(origen); f.flavor = None; f.save(destino)); si falta un peso, usa el más cercano. Pregúntame solo lo que no esté en ningún sitio (logo si no lo encuentras, palabra de cierre, tacos, colores de los clips si no se deducen).
+` : ''}${linea('Lo que quiero cambiar', d.cambios)}${linea('Mi logo', d.logo)}`;
     }
     if (tipo === 'testimonio') {
       if (!d.entrevista) throw new LaboratorioError('Sube la entrevista');
