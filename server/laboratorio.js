@@ -74,7 +74,12 @@ export function createLaboratorio({ dir, archivos, jarvis, vaultPath = null, env
     // La raíz del plugin es la carpeta que tiene motor/montar.py (con o sin .claude-plugin/plugin.json:
     // al recomprimir en Windows a veces se pierde esa carpeta que empieza por punto; entonces se crea)
     const motor = entradas.find((a) => /(^|\/)motor\/montar\.py$/.test(a.nombre));
-    if (!motor) throw new LaboratorioError('Este .zip no es el plugin de testimonios: no encuentro motor/montar.py. Elige el .zip original del plugin.');
+    if (!motor) {
+      // Decir qué se ha subido ayuda a ver si es otro .zip (p. ej. el sistema de diseño)
+      if (entradas.some((a) => /(^|\/)kit\.json$/.test(a.nombre))) throw new LaboratorioError('Este .zip es tu sistema de diseño (lleva kit.json), no el plugin de testimonios. El sistema de diseño se importa en Laboratorio → Diseño; aquí va el .zip del plugin (el que tiene las carpetas motor/ y skills/).');
+      const arriba = [...new Set(entradas.map((a) => a.nombre.split('/').slice(0, a.nombre.split('/').length > 2 ? 2 : 1).join('/')))].slice(0, 6);
+      throw new LaboratorioError(`Este .zip no es el plugin de testimonios: no encuentro motor/montar.py. Lleva: ${arriba.join(', ') || 'nada'}${entradas.length > 6 ? '…' : ''}. Elige el .zip del plugin (con las carpetas motor/ y skills/).`);
+    }
     const raiz = motor.nombre.replace(/motor\/montar\.py$/, '');
     const dentro = entradas.filter((a) => a.nombre.startsWith(raiz));
     const tiene = (rel) => dentro.some((a) => a.nombre === raiz + rel);
