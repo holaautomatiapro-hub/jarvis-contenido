@@ -1,6 +1,7 @@
 import { createGraph, MetaError } from './meta.js';
 import { AlmacenError } from './almacen.js';
 import { planDePublicacion, instanteDe, NOMBRE_TIPO_IG } from '../../web/src/lib/planIg.js';
+import { markdownANegrita } from '../../web/src/lib/negrita.js';
 import { row, rows } from '../db.js';
 
 // Publica en Instagram, con la API oficial, las piezas que TÚ marcas en el dashboard
@@ -120,7 +121,8 @@ export function createPublicadorIg({ db, jarvis, instagram, almacen, archivos, f
       }
       guardar();
     }
-    const caption = tipo === 'STORIES' ? undefined : p.caption || undefined;
+    // Instagram no entiende **markdown**: lo que vaya entre ** se publica en negrita Unicode
+    const caption = tipo === 'STORIES' ? undefined : markdownANegrita(p.caption) || undefined;
 
     // 2 y 3. Contenedores
     if (tipo === 'CAROUSEL') {

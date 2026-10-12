@@ -1,12 +1,13 @@
-# Laboratorio: diseño, testimonios y reels
+# Laboratorio: diseño, testimonios, reels y lead magnets
 
-El **Laboratorio** es la pestaña donde se crea lo visual. Tiene cuatro secciones:
+El **Laboratorio** es la pestaña donde se crea lo visual. Tiene cinco secciones:
 
 | Sección | Qué hace |
 |---|---|
 | **Diseño** | Carruseles y stories con tu sistema de diseño (ver [DISENO.md](DISENO.md)) |
 | **Testimonios** | De la entrevista de un cliente a stories y carrusel en vídeo, clips (reel, 4:5 y YouTube), portada y 3 captions |
 | **Reels** | Tus vídeos hablando a cámara: los mejores momentos, sin silencios ni muletillas, con tus subtítulos y tu título |
+| **Lead magnets** | Guías, checklists, tests y generadores en una página web con tu diseño, publicados en Vercel con un enlace |
 | **Imágenes** | Imágenes, B-roll y avatares con IA (próximamente) |
 
 Testimonios y Reels usan **tu plugin «testimonios»** (el de Automatia Pro), con su motor de montaje y su entrevista de marca.
@@ -63,6 +64,25 @@ Por dentro, el editor es `laboratorio/reel.py`:
 - añade la plantilla a pantalla completa y la limpieza de muletillas;
 - la ficha de cada reel está en `fichas/reels/<nombre>.json`.
 
+## Lead magnets
+
+Páginas web **interactivas** (no PDF) para mandar a quien comenta tu palabra clave: guía paso a paso, checklist para marcar, test con resultado, generador, pack de recursos o calculadora. No hace falta el plugin.
+
+1. **Conecta Vercel (una vez).** En Lead magnets → **Conectar**, pega un token de [vercel.com/account/tokens](https://vercel.com/account/tokens). JARVIS lo comprueba y lo guarda en el `.env` de tu servidor (`VERCEL_TOKEN`). No lo pegues nunca en el chat. Puedes elegir el nombre del proyecto (tus enlaces serán `https://<proyecto>.vercel.app/<lead-magnet>`) o un dominio propio que ya hayas añadido a ese proyecto en Vercel.
+2. **Sube los banners del cierre (una vez):** la imagen de tu Skool y la de tu WhatsApp. JARVIS los mete dentro de la página.
+3. **Crea uno:** de qué va, el tipo, la palabra clave y, si quieres, la pieza que lo anuncia y tu contenido de base. JARVIS (Claude Opus) sigue la sección «Lead magnets» de tu sistema de diseño y parte de su plantilla HTML. Escribe con tu voz, revisa la página a 375 px (`laboratorio/captura.mjs`: capturas, lo que se sale por los lados y errores) y corrige hasta que esté bien. Al final te da un caption para anunciarlo.
+4. **Revísalo** con **Ver** (como en el móvil). Para cambiar algo, **Pedir cambios**.
+5. **Publicar** lo sube a Vercel y te da el enlace para copiar. Si lo has unido a una pieza, el enlace se pone solo en ella (casilla «Lleva lead magnet»). **Quitar de internet** lo retira; el enlace deja de funcionar.
+
+Todos tus lead magnets publicados van en el mismo proyecto de Vercel: cada vez que publicas uno, JARVIS sube también los demás que siguen publicados.
+
+## Captions con negrita y emojis
+
+En **Contenido**, el caption tiene una barra:
+- **B** pone en negrita lo que selecciones (o la palabra donde está el cursor). También funciona **Ctrl+B**, y si lo pulsas otra vez, se quita. Es la negrita que se ve en Instagram: letras Unicode, las únicas que Instagram enseña en negrita.
+- **😀** abre los emojis por grupos, con tus recientes primero.
+- Si un caption trae `**PALABRA**` (por ejemplo, uno escrito por JARVIS), al publicar en Instagram se convierte en negrita.
+
 ## Dónde queda cada cosa
 
 En `~/JARVIS-Laboratorio` (cámbialo con `LABORATORIO_PATH` en `.env`):
@@ -76,6 +96,8 @@ fotos/<cliente>/        fotos de los clientes
 clips/<Cliente>/        reels, 4:5 y YouTube de cada testimonio
 testimonios/<Cliente>/  stories, carrusel en vídeo, portadas y _caption.md
 reels/<Nombre>/         tus reels editados, por plantilla, y _caption.md
+leadmagnets/<nombre>/   index.html (la página), captura.png y _capturas/ (revisión a 375 px)
+leadmagnets/_comun/     los banners de Skool y WhatsApp
 ```
 
 ## Cómo trabaja JARVIS aquí

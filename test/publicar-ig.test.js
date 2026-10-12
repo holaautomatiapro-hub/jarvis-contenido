@@ -76,7 +76,7 @@ function entorno({ procesando = 0, fallarPublicar = false } = {}) {
 describe('publicador', () => {
   test('una foto programada se publica a su hora, y no antes', async () => {
     const { jarvis, pub, llamadas, mover } = entorno();
-    const p = jarvis.crearPieza({ titulo: 'Foto', formato: 'Post', fecha: '2026-10-20', hora: '18:00', caption: 'Hola', archivos: [jpg()] });
+    const p = jarvis.crearPieza({ titulo: 'Foto', formato: 'Post', fecha: '2026-10-20', hora: '18:00', caption: 'Hola **GUÍA**', archivos: [jpg()] });
     const m = pub.marcar(p.id, true);
     assert.equal(m.publicar_ig, 1);
     assert.equal(m.estado, 'listo');
@@ -86,7 +86,7 @@ describe('publicador', () => {
     assert.equal((await pub.revisar()).publicadas, 1);
     const crear = llamadas.find((l) => l.ruta === 'ig1/media');
     assert.match(crear.body.image_url, /^https:\/\/abc\.supabase\.co\/storage\/v1\/object\/public\/contenido\/jarvis\//);
-    assert.equal(crear.body.caption, 'Hola');
+    assert.equal(crear.body.caption, 'Hola 𝗚𝗨𝗜́𝗔', 'lo que va entre ** se publica en negrita Unicode');
     const f = jarvis.listarPiezas().find((x) => x.id === p.id);
     assert.equal(f.ig_estado, 'publicado');
     assert.equal(f.estado, 'publicado');

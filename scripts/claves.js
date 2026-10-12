@@ -16,6 +16,7 @@ export const CLAVES = [
   { grupo: 'Competencia', id: 'COMPETIDORES', ayuda: 'Usuarios de Instagram separados por comas (sin @).', normalizar: (v) => v.split(',').map((x) => x.trim().replace(/^@/, '')).filter(Boolean).join(',') },
   { grupo: 'Publicar en Instagram (dónde se suben los archivos)', id: 'CRM_SUPABASE_URL', ayuda: 'Instagram descarga el vídeo de un enlace público: JARVIS lo sube antes a un bucket público de Supabase (contenido). Supabase → Project Settings → API → Project URL.', normalizar: (v) => v.replace(/\/+$/, ''), validar: (v) => /^https:\/\/[a-z0-9-]+\.supabase\.co$/i.test(v) || 'Es la URL de Supabase: https://xxxx.supabase.co' },
   { grupo: 'Publicar en Instagram (dónde se suben los archivos)', id: 'CRM_SUPABASE_ANON_KEY', secreto: true, ayuda: 'En el mismo sitio: la clave anon (public).', validar: (v) => v.length > 30 || 'La clave anon de Supabase es larga (empieza por eyJ…)' },
+  { grupo: 'Lead magnets (publicar en Vercel)', id: 'VERCEL_TOKEN', secreto: true, ayuda: 'vercel.com/account/tokens → Create Token. También se puede poner desde Laboratorio → Lead magnets → Conectar.', validar: (v) => /^[A-Za-z0-9_-]{16,}$/.test(v) || 'El token de Vercel son letras y números, sin espacios' },
   { grupo: 'Métricas de Instagram con Windsor', id: 'WINDSOR_API_KEY', secreto: true, ayuda: 'onboard.windsor.ai → tu API key (con tu Instagram ya conectado en Windsor). Sirve en lugar de la app de Meta para las métricas.', validar: (v) => /^[A-Za-z0-9_-]{16,}$/.test(v) || 'La API key de Windsor son letras y números, sin espacios' },
 ];
 

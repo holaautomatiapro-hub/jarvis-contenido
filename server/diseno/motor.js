@@ -222,7 +222,7 @@ export function instalarChromium({ ejecutar = spawn } = {}) {
   return instalacion;
 }
 
-async function lanzarNavegador({ log = () => {} } = {}) {
+export async function lanzarNavegador({ log = () => {} } = {}) {
   try { return await intentarLanzar(); } catch { /* se intenta instalar */ }
   if (process.platform === 'win32') throw new Error('No encuentro un navegador para dibujar los diseños: instala Microsoft Edge o Google Chrome.');
   log('Instalando Chromium para dibujar los diseños (solo la primera vez, tarda un par de minutos)…');
