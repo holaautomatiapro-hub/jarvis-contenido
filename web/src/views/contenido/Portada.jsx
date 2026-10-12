@@ -3,9 +3,10 @@ import Icon from '../../components/Icon.jsx';
 import { api } from '../../lib/api.js';
 import { Modal, esVideo, subirArchivo } from './comun.jsx';
 
-// «Generar portada»: eliges una plantilla de tu sistema de diseño (carrusel, reel, testimonio…), el título,
-// qué quieres y, si quieres, una foto. JARVIS la diseña (una diapositiva), se exporta a JPG y se añade sola
-// a la pieza: en un reel queda como su portada; en un carrusel o un post, como primera imagen.
+// «Generar portada»: eliges una de tus plantillas (cada una es una portada tuya de referencia: Carrusel,
+// Testimonio… y las que añadas), el título, qué quieres y, si quieres, una foto. JARVIS copia el diseño de la
+// referencia (salvo lo que pidas distinto), se exporta a JPG y se añade sola a la pieza: en un reel queda como
+// su portada; en un carrusel o un post, como primera imagen.
 const FORMATOS_VIDEO = ['Reel', 'Short', 'Reel split', 'B-roll'];
 export const esFormatoVideo = (f) => FORMATOS_VIDEO.includes(f);
 
@@ -22,12 +23,34 @@ export default function GenerarPortada({ pieza, onHecha, onClose }) {
   useEffect(() => {
     api('/api/portadas').then((r) => {
       setTipos(r.tipos);
-      const preferido = r.tipos.find((t) => (esFormatoVideo(pieza.formato) ? t.id.startsWith('reel-') : t.id.startsWith('carrusel-'))) || r.tipos[0];
+      const preferido = r.tipos.find((t) => t.muestra && (esFormatoVideo(pieza.formato) ? t.formato === 'story' : t.formato === 'carrusel')) || r.tipos.find((t) => t.muestra) || r.tipos[0];
       setF((x) => ({ ...x, tipo: x.tipo || preferido?.id || '' }));
     }).catch((e) => setError(e.message));
   }, [pieza.formato]);
 
   const fotosPieza = (pieza.archivos || []).filter((a) => !esVideo(a)).slice(0, 8);
+  // Plantillas: subir o cambiar la imagen de referencia, añadir otra y borrar
+  const ref = useRef(null);
+  const [subiendoRef, setSubiendoRef] = useState('');
+  const [nueva, setNueva] = useState(null); // { nombre, formato }
+  const subirReferencia = async (file, { id, nombre, formato } = {}) => {
+    if (!file) return;
+    setSubiendoRef(id || 'nueva'); setError('');
+    try {
+      const q = new URLSearchParams({ nombre_archivo: file.name, ...(id ? { id } : { nombre: nombre || '', formato: formato || 'carrusel' }) });
+      const r = await fetch(`/api/portadas/plantillas?${q}`, { method: 'POST', headers: { 'content-type': 'application/octet-stream' }, body: file });
+      const d = await r.json().catch(() => ({}));
+      if (!r.ok) throw new Error(d.error || 'No se ha podido subir la imagen');
+      setTipos(d.tipos);
+      if (!id) { setNueva(null); setF((x) => ({ ...x, tipo: d.tipos.at(-1).id })); }
+    } catch (e) { setError(e.message); }
+    setSubiendoRef('');
+  };
+  const borrarPlantilla = async (t) => {
+    if (!window.confirm(`¿Borrar la plantilla «${t.nombre}»?`)) return;
+    try { const d = await api(`/api/portadas/plantillas/${t.id}`, { method: 'DELETE' }); setTipos(d.tipos); setF((x) => ({ ...x, tipo: x.tipo === t.id ? d.tipos[0]?.id || '' : x.tipo })); } catch (e) { setError(e.message); }
+  };
+  const actual = tipos?.find((t) => t.id === f.tipo);
   const subir = async (file) => {
     if (!file) return;
     setSubiendo(true); setError('');
@@ -75,21 +98,44 @@ export default function GenerarPortada({ pieza, onHecha, onClose }) {
       ) : (
         <>
           <label className="campo-et">Plantilla</label>
-          {!tipos ? <div className="ayuda">{error || 'Cargando plantillas…'}</div> : !tipos.length ? <div className="ayuda">Tu sistema de diseño no tiene plantillas. Impórtalo en Laboratorio → Diseño.</div> : (
+          {!tipos ? <div className="ayuda">{error || 'Cargando plantillas…'}</div> : (
             <div className="portada-tipos">
               {tipos.map((t) => (
-                <button type="button" key={t.id} className={`portada-tipo${f.tipo === t.id ? ' on' : ''}`} onClick={() => setF({ ...f, tipo: t.id })}>
-                  <span className={`portada-muestra ${t.formato}`}>{t.muestra ? <img src={t.muestra} alt="" loading="lazy" /> : <Icon name="palette" size={18} />}</span>
+                <div key={t.id} className={`portada-tipo${f.tipo === t.id ? ' on' : ''}`}>
+                  <button type="button" className={`portada-muestra ${t.formato}`} onClick={() => (t.muestra ? setF({ ...f, tipo: t.id }) : (setF({ ...f, tipo: t.id }), ref.current?.click()))} title={t.muestra ? `Usar «${t.nombre}»` : 'Subir la portada de referencia'}>
+                    {t.muestra ? <img src={t.muestra} alt="" loading="lazy" /> : <span className="portada-sin"><Icon name="plus" size={18} /><small>{subiendoRef === t.id ? 'Subiendo…' : 'Sube tu portada de referencia'}</small></span>}
+                  </button>
                   <b>{t.nombre}</b>
                   <small>{t.formato === 'story' ? '9:16' : '4:5'}{t.descripcion ? ` · ${t.descripcion}` : ''}</small>
-                </button>
+                  {f.tipo === t.id && (
+                    <span className="portada-acciones">
+                      <button type="button" className="link-btn" onClick={() => ref.current?.click()}>{t.muestra ? 'Cambiar imagen' : 'Subir imagen'}</button>
+                      {tipos.length > 1 && <button type="button" className="link-btn peligro" onClick={() => borrarPlantilla(t)}>Borrar</button>}
+                    </span>
+                  )}
+                </div>
               ))}
+              {nueva ? (
+                <div className="portada-tipo portada-nueva">
+                  <input className="campo" autoFocus value={nueva.nombre} onChange={(e) => setNueva({ ...nueva, nombre: e.target.value })} placeholder="Nombre (p. ej. Lanzamiento)" maxLength={40} />
+                  <select className="campo" value={nueva.formato} onChange={(e) => setNueva({ ...nueva, formato: e.target.value })}>
+                    <option value="carrusel">Carrusel / post 4:5</option>
+                    <option value="story">Reel / story 9:16</option>
+                  </select>
+                  <button type="button" className="btn btn-sec" disabled={!nueva.nombre.trim() || subiendoRef === 'nueva'} onClick={() => ref.current?.click()}><Icon name="plus" size={13} />{subiendoRef === 'nueva' ? 'Subiendo…' : 'Elegir su imagen'}</button>
+                  <button type="button" className="link-btn" onClick={() => setNueva(null)}>Cancelar</button>
+                </div>
+              ) : (
+                <button type="button" className="portada-tipo portada-anadir" onClick={() => setNueva({ nombre: '', formato: 'carrusel' })}><Icon name="plus" size={16} /><b>Añadir plantilla</b><small>Sube otra portada tuya de referencia</small></button>
+              )}
+              <input ref={ref} type="file" accept="image/png,image/jpeg,image/webp" hidden onChange={(e) => { const file = e.target.files?.[0]; e.target.value = ''; if (nueva) subirReferencia(file, nueva); else subirReferencia(file, { id: f.tipo }); }} />
             </div>
           )}
+          {actual && !actual.muestra && <div className="ayuda">Sube la imagen de «{actual.nombre}»: JARVIS copiará su diseño y solo cambiará el texto y la foto.</div>}
           <label className="campo-et">Título</label>
           <input className="campo" value={f.titulo} onChange={(e) => setF({ ...f, titulo: e.target.value })} placeholder="3 errores al contratar a tu primer setter" maxLength={160} />
           <label className="campo-et">Qué quieres</label>
-          <textarea className="campo" rows={3} value={f.descripcion} onChange={(e) => setF({ ...f, descripcion: e.target.value })} placeholder="Palabra clave en mostaza, yo a la derecha mirando a cámara, un móvil con el chat de WhatsApp…" />
+          <textarea className="campo" rows={3} value={f.descripcion} onChange={(e) => setF({ ...f, descripcion: e.target.value })} placeholder="Lo que quieras distinto a la plantilla, p. ej. «fondo blanco con letras negras», «la palabra SETTER en amarillo», «yo a la derecha»…" />
           <label className="campo-et">Foto (opcional)</label>
           <div className="portada-fotos">
             {f.foto && !fotosPieza.some((a) => a.url === f.foto.url) && (
@@ -107,7 +153,7 @@ export default function GenerarPortada({ pieza, onHecha, onClose }) {
       {error && <div className="caja-error">{error}</div>}
       <div className="modal-pie">
         <button type="button" className="btn btn-sec" onClick={onClose} disabled={trabajando}>Cancelar</button>
-        <button type="button" className="btn" onClick={generar} disabled={trabajando || !f.tipo || !f.titulo.trim() || subiendo}><Icon name="sparkle" size={14} />{trabajando ? 'Generando…' : 'Generar'}</button>
+        <button type="button" className="btn" onClick={generar} disabled={trabajando || !f.tipo || !actual?.muestra || !f.titulo.trim() || subiendo}><Icon name="sparkle" size={14} />{trabajando ? 'Generando…' : 'Generar'}</button>
       </div>
     </Modal>
   );

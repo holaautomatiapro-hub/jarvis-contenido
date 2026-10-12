@@ -207,14 +207,25 @@ describe('diseños: API, exportar a la biblioteca y Claude', () => {
   });
 
   test('portadas: plantillas del kit, generar una diapositiva y exportarla a una imagen para la pieza', async () => {
+    // De serie: Carrusel (4:5) y Testimonio (9:16), sin imagen hasta que se sube la de referencia
     const { data: t } = await api('/api/portadas');
-    assert.deepEqual(t.tipos.map((x) => x.id), ['carrusel-rejilla', 'carrusel-cine', 'reel-rejilla', 'testimonio']);
-    assert.equal(t.tipos.find((x) => x.id === 'reel-rejilla').formato, 'story');
-    assert.equal(t.tipos.find((x) => x.id === 'testimonio').formato, 'story');
+    assert.deepEqual(t.tipos.map((x) => [x.id, x.formato, x.muestra]), [['carrusel', 'carrusel', null], ['testimonio', 'story', null]]);
+    assert.match((await api('/api/portadas', { tipo: 'testimonio', titulo: 'x' })).data.error, /Sube primero la imagen de referencia de «Testimonio»/);
+    const subir = (q, cuerpo = Buffer.from('png')) => fetch(`${base}/api/portadas/plantillas?${q}`, { method: 'POST', headers: { 'content-type': 'application/octet-stream' }, body: cuerpo }).then(async (r) => ({ status: r.status, data: await r.json() }));
+    assert.equal((await subir('id=testimonio&nombre_archivo=andrea.gif')).status, 400);
+    const s1 = await subir('id=testimonio&nombre_archivo=andrea.JPEG');
+    assert.match(s1.data.tipos.find((x) => x.id === 'testimonio').muestra, /^\/api\/portadas\/muestra\/testimonio\?v=/);
+    const img = await fetch(`${base}/api/portadas/muestra/testimonio`);
+    assert.equal(img.status, 200);
+    assert.equal(await img.text(), 'png');
+    // Añadir otra plantilla y borrarla
+    const s2 = await subir('nombre=Lanzamiento&formato=story&nombre_archivo=l.png');
+    assert.deepEqual(s2.data.tipos.at(-1), { ...s2.data.tipos.at(-1), id: 'lanzamiento', nombre: 'Lanzamiento', formato: 'story' });
+    assert.equal((await api('/api/portadas/plantillas/lanzamiento', null, 'DELETE')).data.tipos.length, 2);
     assert.equal((await api('/api/portadas', { tipo: 'nada', titulo: 'x' })).status, 400);
-    assert.match((await api('/api/portadas', { tipo: 'carrusel-cine' })).data.error, /título/);
+    assert.match((await api('/api/portadas', { tipo: 'testimonio' })).data.error, /título/);
     const pieza = jarvis.crearPieza({ titulo: 'Reel del setter', formato: 'Reel' });
-    const { data: d } = await api('/api/portadas', { tipo: 'reel-rejilla', titulo: 'El martirio del setter', descripcion: 'Yo a la derecha', foto: { url: '/api/contenido/archivos/2026-10/yo.jpg', mime: 'image/jpeg' }, pieza_id: pieza.id });
+    const { data: d } = await api('/api/portadas', { tipo: 'testimonio', titulo: 'Contraté antes a un setter IA', descripcion: 'Fondo blanco con letras negras', foto: { url: '/api/contenido/archivos/2026-10/yo.jpg', mime: 'image/jpeg' }, pieza_id: pieza.id });
     assert.equal(d.uso, 'portada');
     assert.equal(d.formato, 'story');
     const e = await esperar(d.id, 'error');
@@ -223,7 +234,7 @@ describe('diseños: API, exportar a la biblioteca y Claude', () => {
     assert.equal((await api(`/api/disenos/${d.id}/datos`, { slides: [slide(1)] }, 'PUT')).status, 200);
     const { data: a } = await api(`/api/portadas/${d.id}/exportar`, {});
     assert.equal(a.mime, 'image/jpeg');
-    assert.match(a.nombre, /portada-el-martirio-del-setter/);
+    assert.match(a.nombre, /portada-contrate-antes-a-un-setter-ia/);
     assert.deepEqual((await api(`/api/portadas/${d.id}/exportar`, {})).data, a, 'no la exporta dos veces');
     // No sale en la lista de Diseño
     assert.ok(!(await api('/api/disenos')).data.disenos.some((x) => x.id === d.id));

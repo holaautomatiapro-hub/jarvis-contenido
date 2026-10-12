@@ -2,7 +2,7 @@
 // Claude escribe el diseño (guardar_diseno en el MCP) → el motor dibuja la vista previa y revisa la calidad →
 // la persona lo ajusta en el chat y lo exporta (JPG o MP4) a la biblioteca, desde donde se programa o publica.
 import path from 'node:path';
-import { createReadStream, existsSync, mkdirSync, readdirSync, rmSync, writeFileSync } from 'node:fs';
+import { createReadStream, existsSync, mkdirSync, readFileSync, readdirSync, rmSync, statSync, writeFileSync } from 'node:fs';
 import { Readable } from 'node:stream';
 import { row, rows } from '../db.js';
 import { FORMATOS } from './kit.js';
@@ -15,7 +15,7 @@ export class DisenoError extends Error {
 const ESTADOS = ['nuevo', 'generando', 'renderizando', 'listo', 'exportando', 'error'];
 const json = (v, d) => { try { return v ? JSON.parse(v) : d; } catch { return d; } };
 
-export function createDisenos({ db, jarvis, kit, motor, archivos = null, previasDir, asistente = null, emitir = () => {}, alCambiar = () => {} }) {
+export function createDisenos({ db, jarvis, kit, motor, archivos = null, previasDir, portadasDir = path.join(path.dirname(previasDir), 'portadas'), asistente = null, emitir = () => {}, alCambiar = () => {} }) {
   const q = {
     get: db.prepare('SELECT * FROM disenos WHERE id = ?'),
     // Las portadas que se hacen desde una pieza no salen en la lista de Diseño
@@ -138,51 +138,88 @@ Pasos: 1) ver_kit_diseno; 2) lee con Read la guía del kit y el ejemplo de esta 
   }
 
   // ---------- Portadas (desde una pieza: «Generar portada») ----------
-  // Las plantillas salen del sistema de diseño: la portada de cada plantilla de carrusel, la de reel (9:16) de
-  // las que tienen stories y una de testimonio. Cada una con su imagen de muestra de referencias/ si la hay.
-  function tiposPortada() {
-    const k = kit.leer();
-    const refs = (() => { try { return readdirSync(path.join(k.dir, 'referencias')).filter((f) => /\.(png|jpe?g|webp)$/i.test(f)); } catch { return []; } })();
-    const muestraDe = (i) => refs.find((f) => new RegExp(`plantilla-${i + 1}-portada`, 'i').test(f)) || refs.find((f) => new RegExp(`plantilla-${i + 1}`, 'i').test(f)) || null;
-    const corto = (n) => String(n).replace(/^plantilla\s*\d+\s*[·:-]\s*/i, '');
-    const out = [];
-    k.plantillas.forEach((pl, i) => {
-      if (pl.formatos.includes('carrusel')) out.push({ id: `carrusel-${pl.id}`, nombre: `Carrusel · ${corto(pl.nombre)}`, descripcion: pl.descripcion || '', formato: 'carrusel', plantilla: pl.id, muestra: muestraDe(i) });
-    });
-    k.plantillas.forEach((pl, i) => {
-      if (pl.formatos.includes('story')) out.push({ id: `reel-${pl.id}`, nombre: `Reel · ${corto(pl.nombre)}`, descripcion: 'Portada vertical 9:16 para un reel, con la misma composición que la del carrusel.', formato: 'story', plantilla: pl.id, muestra: muestraDe(i) });
-    });
-    const conStory = k.plantillas.find((pl) => pl.formatos.includes('story'));
-    const plTest = conStory || k.plantillas[0];
-    if (plTest) out.push({ id: 'testimonio', nombre: 'Testimonio', descripcion: 'Foto del cliente, su nombre y una frase suya entre comillas.', formato: conStory ? 'story' : 'carrusel', plantilla: plTest.id, muestra: refs.find((f) => /testimonio|stories?-/i.test(f)) || null });
-    return out.map((t) => ({ ...t, muestra: t.muestra ? `/api/portadas/muestra/${encodeURIComponent(t.id)}` : null, archivoMuestra: t.muestra ? `referencias/${t.muestra}` : null }));
+  // Las plantillas de portada son TUS portadas de referencia (una imagen cada una): Claude copia su diseño
+  // (composición, letras, colores, efectos) y solo cambia el texto y la foto, salvo que pidas otra cosa.
+  // Viven en el vault (.jarvis/portadas/): portadas.json + una imagen por plantilla. De serie, Carrusel y Testimonio.
+  const portadasIndice = path.join(portadasDir, 'portadas.json');
+  const PORTADAS_BASE = [
+    { id: 'carrusel', nombre: 'Carrusel', formato: 'carrusel', descripcion: 'La portada de tus carruseles' },
+    { id: 'testimonio', nombre: 'Testimonio', formato: 'story', descripcion: 'Foto del cliente y una frase suya entre comillas' },
+  ];
+  const IMAGEN_REF = /\.(png|jpe?g|webp)$/i;
+  function leerPlantillasPortada() {
+    try { const l = JSON.parse(readFileSync(portadasIndice, 'utf8')); if (Array.isArray(l) && l.length) return l; } catch { /* de serie */ }
+    return PORTADAS_BASE;
   }
-  function muestraPortada(id) {
-    const t = tiposPortada().find((x) => x.id === id);
-    return t?.archivoMuestra ? kit.archivo(kit.leer(), t.archivoMuestra) : null;
+  const imagenDe = (id) => { try { const f = readdirSync(portadasDir).find((n) => n.startsWith(`${id}.`) && IMAGEN_REF.test(n)); return f ? path.join(portadasDir, f) : null; } catch { return null; } };
+  function tiposPortada() {
+    return leerPlantillasPortada().map((t) => {
+      const img = imagenDe(t.id);
+      return { id: t.id, nombre: t.nombre, formato: FORMATOS[t.formato] ? t.formato : 'carrusel', descripcion: t.descripcion || '', muestra: img ? `/api/portadas/muestra/${encodeURIComponent(t.id)}?v=${Math.round(statSync(img).mtimeMs)}` : null };
+    });
+  }
+  const muestraPortada = (id) => (/^[a-z0-9-]{1,40}$/.test(String(id)) ? imagenDe(id) : null);
+
+  // Sube (o cambia) la imagen de una plantilla; si el id no existe, crea la plantilla con ese nombre y formato
+  function guardarPlantillaPortada({ id, nombre, formato, ext, datos }) {
+    if (!Buffer.isBuffer(datos) || !datos.length) throw new DisenoError('Sube la imagen de la portada de referencia');
+    if (datos.length > 20 * 1024 ** 2) throw new DisenoError('La imagen pesa más de 20 MB');
+    const e = String(ext || '').toLowerCase().replace(/^\./, '').replace('jpeg', 'jpg');
+    if (!['jpg', 'png', 'webp'].includes(e)) throw new DisenoError('Sube la imagen en jpg, png o webp');
+    const lista = leerPlantillasPortada().map((t) => ({ ...t }));
+    let t = lista.find((x) => x.id === id);
+    if (!t) {
+      const n = String(nombre || '').trim().slice(0, 40);
+      if (!n) throw new DisenoError('Ponle nombre a la plantilla');
+      const base = slug(n) || 'portada';
+      let nid = base;
+      for (let k = 2; lista.some((x) => x.id === nid); k++) nid = `${base}-${k}`;
+      t = { id: nid, nombre: n, formato: FORMATOS[formato] ? formato : 'carrusel', descripcion: '' };
+      lista.push(t);
+    }
+    mkdirSync(portadasDir, { recursive: true });
+    for (const f of readdirSync(portadasDir)) if (f.startsWith(`${t.id}.`) && IMAGEN_REF.test(f)) rmSync(path.join(portadasDir, f), { force: true });
+    writeFileSync(path.join(portadasDir, `${t.id}.${e}`), datos);
+    writeFileSync(portadasIndice, JSON.stringify(lista, null, 2));
+    return { tipos: tiposPortada() };
+  }
+  function borrarPlantillaPortada(id) {
+    const lista = leerPlantillasPortada().filter((t) => t.id !== id);
+    if (!lista.length) throw new DisenoError('Deja al menos una plantilla');
+    const img = imagenDe(id);
+    if (img) rmSync(img, { force: true });
+    mkdirSync(portadasDir, { recursive: true });
+    writeFileSync(portadasIndice, JSON.stringify(lista, null, 2));
+    return { tipos: tiposPortada() };
   }
 
   function crearPortada({ tipo, titulo, descripcion, foto, pieza } = {}) {
     const t = tiposPortada().find((x) => x.id === tipo);
     if (!t) throw new DisenoError('Elige una plantilla de portada');
+    const ref = imagenDe(t.id);
+    if (!ref) throw new DisenoError(`Sube primero la imagen de referencia de «${t.nombre}» (la portada en la que se tiene que basar)`);
     const tit = String(titulo || '').trim().slice(0, 160);
     if (!tit) throw new DisenoError('Escribe el título de la portada');
     if (!asistente) throw new DisenoError('El chat con Claude no está disponible');
     if (asistente.estado().ocupado) throw new DisenoError('JARVIS está terminando otra petición. Espera a que acabe y vuelve a pulsar Generar.');
+    const k = kit.leer();
+    const pl = k.plantillas.find((x) => x.formatos.includes(t.formato)) || k.plantillas[0];
+    if (!pl) throw new DisenoError('Tu sistema de diseño no tiene plantillas');
+    const formato = pl.formatos.includes(t.formato) ? t.formato : pl.formatos[0];
     const desc = String(descripcion || '').trim().slice(0, 2000);
     const f = foto?.url && /^image\//.test(String(foto.mime || 'image/')) ? { url: String(foto.url), nombre: String(foto.nombre || '') } : null;
     const medios = (Array.isArray(pieza?.archivos) ? pieza.archivos : []).filter((a) => a?.url).slice(0, 6).map((a) => `${a.url} (${/^video\//.test(a.mime || '') ? 'vídeo' : 'foto'})`);
     const guion = [tit, desc].filter(Boolean).join('\n\n');
-    const { lastInsertRowid } = db.prepare("INSERT INTO disenos (titulo, formato, plantilla, guion, uso) VALUES (?, ?, ?, ?, 'portada')").run(tit, t.formato, t.plantilla, guion);
+    const { lastInsertRowid } = db.prepare("INSERT INTO disenos (titulo, formato, plantilla, guion, uso) VALUES (?, ?, ?, ?, 'portada')").run(tit, formato, pl.id, guion);
     const id = Number(lastInsertRowid);
-    const fmt = FORMATOS[t.formato];
-    const prompt = `Diseña SOLO UNA PORTADA (una única diapositiva) en el diseño #${id} de JARVIS.
-- Tipo de portada: ${t.nombre}${t.id === 'testimonio' ? ' — portada de testimonio: foto del cliente, su nombre y una frase literal suya entre comillas (como las stories de testimonio de la guía, sección de Stories)' : ''}
-- Formato: ${fmt.nombre.toLowerCase()} (${fmt.ancho}×${fmt.alto} px)${t.formato === 'story' ? ', respetando las zonas seguras de arriba y abajo' : ''}
-- Plantilla: id "${t.plantilla}"
+    const fmt = FORMATOS[formato];
+    const prompt = `Diseña SOLO UNA PORTADA (una única diapositiva) en el diseño #${id} de JARVIS, copiando el diseño de mi portada de referencia.
+- Plantilla de portada: ${t.nombre}. Referencia (mírala con Read antes de nada): ${ref}
+- Formato: ${fmt.nombre.toLowerCase()} (${fmt.ancho}×${fmt.alto} px)${formato === 'story' ? ', respetando las zonas seguras de arriba y abajo' : ''}
 - Título: ${tit}
-${desc ? `- Qué quiero: ${desc}\n` : ''}${f ? `- Foto que quiero usar (ponla tal cual en <img src>): ${f.url}\n` : ''}${pieza?.titulo ? `- Es la portada de la pieza «${pieza.titulo}» (${pieza.formato || 'pieza'}).${medios.length ? ` Sus archivos (puedes usar un fotograma de un vídeo o una foto si encaja): ${medios.join(', ')}` : ''}\n` : ''}
-Pasos: 1) ver_kit_diseno; 2) lee con Read la guía del kit (sobre todo lo que dice de portadas) y el ejemplo de esta plantilla; 3) escribe UNA diapositiva de portada (gancho grande, como dice la guía; sin paginación ni cierre) y guárdala con guardar_diseno (id ${id}); 4) corrige los avisos y vuelve a guardar; 5) termina con una línea diciendo qué has puesto.`;
+${desc ? `- Qué quiero: ${desc}\n` : ''}${f ? `- Foto que quiero usar (ponla tal cual en <img src>${t.id === 'testimonio' ? '; si tiene fondo, intégrala como en la referencia' : ''}): ${f.url}\n` : ''}${pieza?.titulo ? `- Es la portada de la pieza «${pieza.titulo}» (${pieza.formato || 'pieza'}).${medios.length ? ` Sus archivos (puedes usar una foto o un fotograma de un vídeo si encaja): ${medios.join(', ')}` : ''}\n` : ''}
+Cómo: reproduce la referencia lo más fiel posible: misma composición y jerarquía, mismas tipografías (o las más parecidas de Google Fonts), mismos colores, mismos efectos (brillos, resplandores, degradados, fondos), mismo tipo de comillas, subrayados y marca; solo cambian el texto${f ? ' y la foto' : ''}. Si en «Qué quiero» pido algo distinto (por ejemplo, fondo blanco con letras negras), eso manda sobre la referencia. Usa la plantilla "${pl.id}" del kit solo como soporte técnico (tamaño, fuentes y CSS base); el aspecto es el de la referencia. Sin paginación ni cierre.
+Pasos: 1) Read de la referencia; 2) ver_kit_diseno (formato técnico de las diapositivas); 3) escribe la diapositiva y guárdala con guardar_diseno (id ${id}); 4) mira la vista previa con Read, compárala con la referencia y corrige lo que no se parezca (y los avisos); 5) termina con una línea diciendo qué has puesto.`;
     generarConClaude(id, { prompt });
     return obtener(id);
   }
@@ -328,7 +365,7 @@ Pasos: 1) ver_kit_diseno; 2) lee con Read la guía del kit (sobre todo lo que di
   // Al arrancar: lo que se quedó a medias (JARVIS se cerró) vuelve a estar disponible
   db.prepare("UPDATE disenos SET estado = CASE WHEN version > 0 THEN 'listo' ELSE 'error' END, error = CASE WHEN version > 0 THEN error ELSE 'Se interrumpió al cerrar JARVIS' END, progreso = NULL WHERE estado IN ('generando', 'renderizando', 'exportando')").run();
 
-  return { listar, obtener, crear, generar: generarConClaude, alEventoClaude, guardarDatos, exportar, borrar, rutaPrevia, tiposPortada, muestraPortada, crearPortada, exportarPortada, ESTADOS };
+  return { listar, obtener, crear, generar: generarConClaude, alEventoClaude, guardarDatos, exportar, borrar, rutaPrevia, tiposPortada, muestraPortada, guardarPlantillaPortada, borrarPlantillaPortada, crearPortada, exportarPortada, ESTADOS };
 }
 
 const slug = (s) => String(s).normalize('NFD').replace(/[̀-ͯ]/g, '').replace(/[^A-Za-z0-9]+/g, '-').replace(/^-+|-+$/g, '').slice(0, 40).toLowerCase() || 'diseno';
