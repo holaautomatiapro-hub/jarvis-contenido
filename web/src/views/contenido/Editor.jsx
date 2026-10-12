@@ -1,6 +1,7 @@
 import { useEffect, useRef, useState } from 'react';
 import Icon from '../../components/Icon.jsx';
 import CampoCaption from '../../components/CampoCaption.jsx';
+import GenerarPortada, { esFormatoVideo } from './Portada.jsx';
 import { api } from '../../lib/api.js';
 import { markdownANegrita } from '../../lib/negrita.js';
 import { diaLargo, hoyIso, sumarDias } from '../../lib/fechas.js';
@@ -98,6 +99,9 @@ export function EditorContenido({ pieza, carpetas, ig, onClose, onGuardado, onVi
     publicar_ig: Boolean(pieza.publicar_ig), leadmagnet: Boolean(pieza.leadmagnet), leadmagnet_url: pieza.leadmagnet_url || '',
   }));
   const [archivos, setArchivos] = useState(pieza.archivos || []);
+  const [portada, setPortada] = useState(pieza.portada || null); // la de un reel (Instagram la usa de cover)
+  const [generandoPortada, setGenerandoPortada] = useState(false);
+  const [avisoPortada, setAvisoPortada] = useState('');
   const subidos = useRef(new Set()); // subidos en esta edición: si se cancela, se borran
   const [quitados, setQuitados] = useState([]); // ya guardados y quitados ahora: se borran al guardar
   const [subiendo, setSubiendo] = useState(0);
@@ -178,7 +182,7 @@ export function EditorContenido({ pieza, carpetas, ig, onClose, onGuardado, onVi
     }
     setGuardando(true); setError('');
     if (d.leadmagnet && d.leadmagnet_url && !/^https?:\/\//i.test(d.leadmagnet_url)) return setError('El enlace del lead magnet debe empezar por https://');
-    const body = { ...d, carpeta: d.carpeta || null, fecha: d.fecha || null, hora: d.hora || null, archivos, publicar_ig: ahora ? false : conIg ? d.publicar_ig : false, leadmagnet_url: d.leadmagnet ? d.leadmagnet_url.trim() || null : null };
+    const body = { ...d, carpeta: d.carpeta || null, fecha: d.fecha || null, hora: d.hora || null, archivos, portada: esFormatoVideo(d.formato) ? portada : null, publicar_ig: ahora ? false : conIg ? d.publicar_ig : false, leadmagnet_url: d.leadmagnet ? d.leadmagnet_url.trim() || null : null };
     if (!conIg) delete body.publicar_ig;
     try {
       const r = nueva ? await api('/api/piezas', { method: 'POST', body }) : await api(`/api/piezas/${pieza.id}`, { method: 'PATCH', body });
@@ -237,10 +241,12 @@ export function EditorContenido({ pieza, carpetas, ig, onClose, onGuardado, onVi
           </div>
           <CampoLeadMagnet activo={d.leadmagnet} url={d.leadmagnet_url} onCambio={(c) => setD((x) => ({ ...x, ...c }))} />
           <CajaInstagram ig={ig} pieza={pieza} plan={plan} marcado={d.publicar_ig} onMarcar={marcarIg} ocupado={ocupado} onAhora={conIg ? () => guardar(null, { ahora: true }) : null} onConvertir={convertirAJpg} onRepublicar={!nueva && onRepublicar ? () => { cerrar(); onRepublicar(pieza); } : null} />
-          <div className="aviso-publicar">
-            <Icon name="publish" size={14} color="var(--accent-2)" />
-            <span>{conIg ? 'Si no marcas la casilla, JARVIS no publica nada.' : 'JARVIS no publica por ti.'} Para las demás redes, adapta el texto en <a href="#publicar" onClick={cerrar}>Publicar</a> y súbela tú.</span>
-          </div>
+          {d.formato !== 'Story' && (
+            <div className="portada-boton">
+              <button type="button" className="btn btn-sec" onClick={() => setGenerandoPortada(true)} disabled={ocupado}><Icon name="sparkle" size={14} />Generar portada</button>
+              <span className="ayuda">{avisoPortada || (esFormatoVideo(d.formato) ? 'Con tu sistema de diseño; queda como portada del reel.' : 'Con tu sistema de diseño; entra como primera imagen.')}</span>
+            </div>
+          )}
         </div>
 
         <div className="editor-archivos">
@@ -258,6 +264,15 @@ export function EditorContenido({ pieza, carpetas, ig, onClose, onGuardado, onVi
             <span>{subiendo ? `Subiendo ${subiendo}…` : 'Arrastra aquí o pulsa para subir'}</span>
             <input ref={input} type="file" accept="image/*,video/*" multiple hidden onChange={(e) => { subir(e.target.files); e.target.value = ''; }} />
           </div>
+          {portada && esFormatoVideo(d.formato) && (
+            <div className="portada-actual">
+              <div className="archivo" title={portada.nombre}>
+                <Miniatura p={{ archivos: [portada] }} onClick={() => onVisor([portada], 0)} />
+                <span className="archivo-n">Portada</span>
+                <div className="archivo-acciones"><button type="button" onClick={() => setPortada(null)} aria-label="Quitar la portada">✕</button></div>
+              </div>
+            </div>
+          )}
           <div className="archivos-grid">
             {archivos.map((a, i) => (
               <div key={a.path || a.url} className="archivo" title={`${a.nombre} · ${tamanoLegible(a.tamano)}`}>
@@ -275,6 +290,16 @@ export function EditorContenido({ pieza, carpetas, ig, onClose, onGuardado, onVi
         </div>
       </form>
       {error && <div className="caja-error">{error}</div>}
+      {generandoPortada && (
+        <GenerarPortada
+          pieza={{ ...pieza, titulo: d.titulo, formato: d.formato, archivos }}
+          onClose={() => setGenerandoPortada(false)}
+          onHecha={(a) => {
+            if (esFormatoVideo(d.formato)) setPortada(a); else setArchivos((l) => [a, ...l]);
+            setAvisoPortada('✓ Portada añadida. Pulsa Guardar para quedártela.');
+          }}
+        />
+      )}
       <div className="modal-pie">
         {nueva ? <span /> : <button type="button" className="btn btn-sec peligro" onClick={eliminar} disabled={ocupado}>Eliminar</button>}
         <div style={{ display: 'flex', gap: 8 }}>

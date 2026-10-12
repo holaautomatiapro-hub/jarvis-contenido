@@ -226,6 +226,8 @@ export function openDb(file) {
   // Lead magnet de cada pieza: si lleva uno y su enlace (para copiarlo al responder comentarios o DMs)
   migrar('ALTER TABLE piezas ADD COLUMN leadmagnet INTEGER NOT NULL DEFAULT 0');
   migrar('ALTER TABLE piezas ADD COLUMN leadmagnet_url TEXT');
+  // Portada de un reel (JSON de un archivo de imagen): Instagram la usa como cover
+  migrar('ALTER TABLE piezas ADD COLUMN portada TEXT');
   // Windsor: todas las métricas de cada publicación (JSON) e historias
   migrar('ALTER TABLE ig_media ADD COLUMN extra TEXT');
   db.exec(`CREATE TABLE IF NOT EXISTS ig_historias (
@@ -261,6 +263,8 @@ export function openDb(file) {
     actualizado TEXT NOT NULL DEFAULT (datetime('now','localtime'))
   );
   CREATE INDEX IF NOT EXISTS piezas_fecha ON piezas(fecha);`);
+  // Diseños que son la portada de una pieza (no salen en la lista de Diseño)
+  migrar('ALTER TABLE disenos ADD COLUMN uso TEXT');
   return db;
 }
 

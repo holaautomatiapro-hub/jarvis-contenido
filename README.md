@@ -37,6 +37,8 @@ Después, ábrelo con el acceso directo **JARVIS** del escritorio o en http://lo
 - **Biblioteca**: lo que aún no tiene día. Arrastra vídeos, fotos o **carpetas enteras** (eliges si son un carrusel, stories o piezas sueltas), ordénalas en carpetas y **subcarpetas** (dentro de una carpeta, «+ Subcarpeta»; al borrar una, sus piezas suben a la de arriba), junta varias en un carrusel y **Programa** cada una.
 - **Pipeline**: el tablero por fases (de serie idea → guion → grabar → editar → listo → publicado). Con **Editar fases** añades, renombras, ordenas o borras fases; Idea, Listo y Publicado se renombran pero no se borran.
 - La ficha de cada pieza guarda tipo, estado, fecha y hora, caption, enlace al vídeo y sus archivos.
+- **Generar portada** (en la ficha de la pieza): eliges una plantilla de tu sistema de diseño (carrusel, reel, testimonio), el título, qué quieres y, si quieres, una foto. JARVIS la diseña y se añade sola: en un reel queda como su portada (se manda a Instagram al publicar); en un carrusel o un post, como primera imagen.
+- **Al elegir qué publicar** en el calendario, navegas por las carpetas y subcarpetas de la biblioteca.
 - **Publicar en Instagram** (con Instagram conectado con Facebook): marca «Publicar sola en Instagram» y se publica a su hora como foto, reel, carrusel o story, o pulsa «Publicar ahora». Solo lo activas tú desde el dashboard (Hermes y Claude Code no pueden) y JARVIS tiene que estar abierto. Para las demás redes, la adaptas en **Publicar** y la subes tú. Guía: [docs/INSTAGRAM.md](docs/INSTAGRAM.md#publicar-en-instagram-desde-jarvis).
 
 ## Laboratorio (pestaña Laboratorio)

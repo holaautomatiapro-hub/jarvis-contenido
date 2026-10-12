@@ -1,0 +1,114 @@
+import { useEffect, useRef, useState } from 'react';
+import Icon from '../../components/Icon.jsx';
+import { api } from '../../lib/api.js';
+import { Modal, esVideo, subirArchivo } from './comun.jsx';
+
+// «Generar portada»: eliges una plantilla de tu sistema de diseño (carrusel, reel, testimonio…), el título,
+// qué quieres y, si quieres, una foto. JARVIS la diseña (una diapositiva), se exporta a JPG y se añade sola
+// a la pieza: en un reel queda como su portada; en un carrusel o un post, como primera imagen.
+const FORMATOS_VIDEO = ['Reel', 'Short', 'Reel split', 'B-roll'];
+export const esFormatoVideo = (f) => FORMATOS_VIDEO.includes(f);
+
+export default function GenerarPortada({ pieza, onHecha, onClose }) {
+  const [tipos, setTipos] = useState(null);
+  const [error, setError] = useState('');
+  const [f, setF] = useState({ tipo: '', titulo: pieza.titulo || '', descripcion: '', foto: null });
+  const [estado, setEstado] = useState(null); // null | { id, texto }
+  const [subiendo, setSubiendo] = useState(false);
+  const input = useRef(null);
+  const vivo = useRef(true);
+  useEffect(() => () => { vivo.current = false; }, []);
+
+  useEffect(() => {
+    api('/api/portadas').then((r) => {
+      setTipos(r.tipos);
+      const preferido = r.tipos.find((t) => (esFormatoVideo(pieza.formato) ? t.id.startsWith('reel-') : t.id.startsWith('carrusel-'))) || r.tipos[0];
+      setF((x) => ({ ...x, tipo: x.tipo || preferido?.id || '' }));
+    }).catch((e) => setError(e.message));
+  }, [pieza.formato]);
+
+  const fotosPieza = (pieza.archivos || []).filter((a) => !esVideo(a)).slice(0, 8);
+  const subir = async (file) => {
+    if (!file) return;
+    setSubiendo(true); setError('');
+    try { const a = await subirArchivo(file); setF((x) => ({ ...x, foto: a })); } catch (e) { setError(e.message); }
+    setSubiendo(false);
+  };
+
+  const esperar = async (id) => {
+    for (let i = 0; i < 300 && vivo.current; i++) {
+      await new Promise((ok) => setTimeout(ok, 2000));
+      const d = await api(`/api/disenos/${id}`).catch(() => null);
+      if (!d) continue;
+      if (d.estado === 'error') throw new Error(d.error || 'No se ha podido hacer la portada');
+      if (d.estado === 'listo' && d.previas.length) return d;
+      if (d.estado === 'listo' && d.error) throw new Error(d.error);
+      setEstado({ id, texto: d.estado === 'renderizando' ? 'Dibujando la portada…' : 'JARVIS está diseñando la portada con tu sistema de diseño…', previa: d.previas[0] || null });
+    }
+    throw new Error('Está tardando demasiado. Mira el diseño en Laboratorio → Diseño.');
+  };
+
+  const generar = async () => {
+    setError('');
+    try {
+      const r = await api('/api/portadas', { method: 'POST', body: { tipo: f.tipo, titulo: f.titulo, descripcion: f.descripcion, foto: f.foto, ...(pieza.id ? { pieza_id: pieza.id } : { pieza: { titulo: pieza.titulo, formato: pieza.formato, archivos: pieza.archivos } }) } });
+      setEstado({ id: r.id, texto: 'JARVIS está diseñando la portada con tu sistema de diseño…' });
+      const d = await esperar(r.id);
+      if (!vivo.current) return;
+      setEstado({ id: r.id, texto: 'Guardando la imagen…', previa: d.previas[0] });
+      const archivo = await api(`/api/portadas/${r.id}/exportar`, { method: 'POST' });
+      if (!vivo.current) return;
+      onHecha(archivo);
+      onClose();
+    } catch (e) { if (vivo.current) { setEstado(null); setError(e.message); } }
+  };
+
+  const trabajando = Boolean(estado);
+  return (
+    <Modal titulo="Generar portada" onClose={() => { if (!trabajando || window.confirm('JARVIS sigue haciendo la portada. Si cierras, no se añadirá a la pieza (la tendrás en Laboratorio → Diseño). ¿Cerrar?')) onClose(); }} ancho={760} cerrarFuera={false}>
+      {estado ? (
+        <div className="portada-haciendo">
+          {estado.previa ? <img src={estado.previa} alt="" /> : <div className="portada-spinner"><Icon name="sparkle" size={22} /></div>}
+          <b>{estado.texto}</b>
+          <span className="ayuda">Tarda uno o dos minutos. Cuando esté, se añade sola a la pieza{esFormatoVideo(pieza.formato) ? ' como portada del reel' : ' como primera imagen'}.</span>
+        </div>
+      ) : (
+        <>
+          <label className="campo-et">Plantilla</label>
+          {!tipos ? <div className="ayuda">{error || 'Cargando plantillas…'}</div> : !tipos.length ? <div className="ayuda">Tu sistema de diseño no tiene plantillas. Impórtalo en Laboratorio → Diseño.</div> : (
+            <div className="portada-tipos">
+              {tipos.map((t) => (
+                <button type="button" key={t.id} className={`portada-tipo${f.tipo === t.id ? ' on' : ''}`} onClick={() => setF({ ...f, tipo: t.id })}>
+                  <span className={`portada-muestra ${t.formato}`}>{t.muestra ? <img src={t.muestra} alt="" loading="lazy" /> : <Icon name="palette" size={18} />}</span>
+                  <b>{t.nombre}</b>
+                  <small>{t.formato === 'story' ? '9:16' : '4:5'}{t.descripcion ? ` · ${t.descripcion}` : ''}</small>
+                </button>
+              ))}
+            </div>
+          )}
+          <label className="campo-et">Título</label>
+          <input className="campo" value={f.titulo} onChange={(e) => setF({ ...f, titulo: e.target.value })} placeholder="3 errores al contratar a tu primer setter" maxLength={160} />
+          <label className="campo-et">Qué quieres</label>
+          <textarea className="campo" rows={3} value={f.descripcion} onChange={(e) => setF({ ...f, descripcion: e.target.value })} placeholder="Palabra clave en mostaza, yo a la derecha mirando a cámara, un móvil con el chat de WhatsApp…" />
+          <label className="campo-et">Foto (opcional)</label>
+          <div className="portada-fotos">
+            {f.foto && !fotosPieza.some((a) => a.url === f.foto.url) && (
+              <button type="button" className="portada-foto on" onClick={() => setF({ ...f, foto: null })} title="Quitar"><img src={f.foto.url} alt="" /></button>
+            )}
+            {fotosPieza.map((a) => (
+              <button type="button" key={a.url} className={`portada-foto${f.foto?.url === a.url ? ' on' : ''}`} onClick={() => setF({ ...f, foto: f.foto?.url === a.url ? null : a })} title={a.nombre}><img src={a.url} alt="" /></button>
+            ))}
+            <button type="button" className="portada-foto portada-subir" onClick={() => input.current?.click()} disabled={subiendo}><Icon name="plus" size={15} /><small>{subiendo ? 'Subiendo…' : 'Subir'}</small></button>
+            <input ref={input} type="file" accept="image/*" hidden onChange={(e) => { subir(e.target.files?.[0]); e.target.value = ''; }} />
+          </div>
+          <div className="ayuda">Si eliges una foto, la portada se hace sobre ella.</div>
+        </>
+      )}
+      {error && <div className="caja-error">{error}</div>}
+      <div className="modal-pie">
+        <button type="button" className="btn btn-sec" onClick={onClose} disabled={trabajando}>Cancelar</button>
+        <button type="button" className="btn" onClick={generar} disabled={trabajando || !f.tipo || !f.titulo.trim() || subiendo}><Icon name="sparkle" size={14} />{trabajando ? 'Generando…' : 'Generar'}</button>
+      </div>
+    </Modal>
+  );
+}

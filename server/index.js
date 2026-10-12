@@ -320,7 +320,7 @@ export function createApp({ jarvis, archivos, publicadorIg, asistente, instagram
 
   // Contenido: piezas (pipeline, calendario y biblioteca), carpetas y archivos
   // Un archivo solo se borra del disco cuando ya no lo usa ninguna pieza (p. ej. tras juntar un carrusel)
-  const usados = () => new Set(jarvis.listarPiezas().flatMap((p) => p.archivos.map((a) => a.path)));
+  const usados = () => new Set(jarvis.listarPiezas().flatMap((p) => [...p.archivos, ...(p.portada ? [p.portada] : [])].map((a) => a.path)));
   const borrarArchivosDe = (lista) => {
     if (!archivos) return;
     const enUso = usados();
@@ -374,6 +374,20 @@ export function createApp({ jarvis, archivos, publicadorIg, asistente, instagram
       res.sendFile(ruta, { headers: { 'X-Content-Type-Options': 'nosniff', 'Cache-Control': 'private, max-age=31536000, immutable' } });
     });
     // Importar el sistema de diseño: el .zip llega tal cual en el cuerpo
+    // Portadas desde una pieza: plantillas, generar (Claude) y exportar la imagen para ponerla en la pieza
+    app.get('/api/portadas', h(() => ({ tipos: disenos.tiposPortada() })));
+    app.get('/api/portadas/muestra/:tipo', (req, res) => {
+      let abs = null;
+      try { abs = disenos.muestraPortada(req.params.tipo); } catch { /* sin kit */ }
+      if (!abs) return res.status(404).end();
+      res.sendFile(abs, { headers: { 'Cache-Control': 'private, max-age=3600' } });
+    });
+    app.post('/api/portadas', h((req) => {
+      const pid = Number(req.body?.pieza_id);
+      const pieza = pid ? jarvis.listarPiezas().find((p) => p.id === pid) : req.body?.pieza || null;
+      return disenos.crearPortada({ ...(req.body || {}), pieza });
+    }, true));
+    app.post('/api/portadas/:id/exportar', h((req) => disenos.exportarPortada(req.params.id), true));
     app.post('/api/disenos/kit', express.raw({ type: () => true, limit: '300mb' }), h((req) => kit.importar(req.body), true));
   }
 
