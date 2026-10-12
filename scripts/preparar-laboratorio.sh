@@ -10,7 +10,8 @@ set -euo pipefail
 
 LAB="${LABORATORIO_PATH:-$HOME/JARVIS-Laboratorio}"
 VENV="$LAB/.venv"
-LIBRERIAS="pillow numpy opencv-python-headless rembg onnxruntime faster-whisper huggingface_hub"
+# fonttools y brotli: para pasar las letras del sistema de diseño (.woff2) a .ttf, que es lo que usan los clips y la portada
+LIBRERIAS="pillow numpy opencv-python-headless rembg onnxruntime faster-whisper huggingface_hub fonttools brotli"
 # El modelo exacto que usa motor/transcribir.py del plugin (Whisper large-v3-turbo para faster-whisper)
 MODELO="mobiuslabsgmbh/faster-whisper-large-v3-turbo"
 REVISION="0a363e9161cbc7ed1431c9597a8ceaf0c4f78fcf"

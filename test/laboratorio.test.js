@@ -114,6 +114,21 @@ describe('Laboratorio', () => {
     assert.throws(() => lab.prompt('reel', {}), /Sube el vídeo/);
   });
 
+  test('configurar la marca: parte de lo que JARVIS ya sabe (sistema de diseño, voz y negocio)', () => {
+    const v = path.join(dir, 'VaultMarca');
+    mkdirSync(path.join(v, '_diseno'), { recursive: true });
+    writeFileSync(path.join(v, '_diseno', 'kit.json'), '{}');
+    writeFileSync(path.join(v, '_voz.md'), 'voz');
+    const l2 = createLaboratorio({ dir: lab.dir, jarvis, vaultPath: v, env: { PATH: '/usr/bin' } });
+    const p = l2.prompt('marca', {});
+    assert.match(p, /configurar-marca/);
+    assert.match(p, /YA ESTÁ en JARVIS/);
+    assert.ok(p.includes(path.join(v, '_diseno')) && p.includes(path.join(v, '_voz.md')));
+    assert.ok(!p.includes('CLAUDE.md:'), 'sin CLAUDE.md en el vault no lo cita');
+    assert.match(l2.entorno().sistema, /Su vault/);
+    assert.doesNotMatch(lab.prompt('marca', {}), /YA ESTÁ/, 'sin vault, la entrevista de siempre');
+  });
+
   test('entorno de Claude: carpeta del Laboratorio, plugin y Bash solo para el montaje', () => {
     const e = lab.entorno();
     assert.equal(e.cwd, lab.dir);

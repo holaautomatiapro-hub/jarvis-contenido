@@ -425,7 +425,7 @@ function main() {
   const onChange = () => emitir({ type: 'cambio', at: Date.now() });
   // Cuando JARVIS termina, el resto del dashboard se refresca (puede haber guardado ideas, tareas…)
   let disenos = null;
-  const laboratorio = createLaboratorio({ dir: carpetaPorDefecto(), archivos, jarvis, log: (m) => console.log(`  [Laboratorio] ${m}`) });
+  const laboratorio = createLaboratorio({ dir: carpetaPorDefecto(), archivos, jarvis, vaultPath: cfg.vaultPath, log: (m) => console.log(`  [Laboratorio] ${m}`) });
   try { laboratorio.iniciar(); } catch (e) { console.warn(`  [Laboratorio] ${e.message}`); }
   const asistente = createAsistente({ db, jarvis, vaultPath: cfg.vaultPath, entornos: { laboratorio: () => laboratorio.entorno() }, emitir: (e) => { emitir(e); if (e.tipo === 'fin') onChange(); disenos?.alEventoClaude(e); } });
   const instagram = createInstagram({ db, vault: jarvis.vault, alCambiar: onChange });
