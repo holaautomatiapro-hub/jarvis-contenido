@@ -1062,6 +1062,10 @@ input.filtro-select { padding-right: 10px; }
 .carpetas-chips { display: flex; gap: 6px; flex-wrap: wrap; align-items: center; margin: 14px 0 10px; }
 .carpeta-abierta { display: flex; gap: 14px; align-items: center; margin-bottom: 10px; font-size: 13px; }
 .carpeta-abierta b { display: inline-flex; gap: 6px; align-items: center; }
+.carpeta-migas { display: inline-flex; align-items: center; gap: 4px; flex-wrap: wrap; min-width: 0; }
+.carpeta-migas span { display: inline-flex; align-items: center; gap: 4px; }
+.carpeta-migas i { font-style: normal; color: var(--muted); }
+.carpetas-chips.subcarpetas { margin: -2px 0 12px; padding-left: 20px; }
 .bib-barra { display: flex; gap: 8px; align-items: center; margin-bottom: 12px; flex-wrap: wrap; min-height: 36px; }
 .bib-barra .campo { height: 32px; padding: 4px 26px 4px 10px; font-size: 12px; }
 .bib-barra .btn { height: 32px; }

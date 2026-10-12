@@ -4,7 +4,7 @@ import CampoCaption from '../../components/CampoCaption.jsx';
 import { api } from '../../lib/api.js';
 import { diaLargo, hoyIso, sumarDias } from '../../lib/fechas.js';
 import { NOMBRE_TIPO_IG, planDePublicacion } from '../../lib/planIg.js';
-import { CampoLeadMagnet, useFases, MAX_CAPTION, Miniatura, Modal, TIPOS, borrarArchivo, esMedio, esStory, esVideo, subirArchivo, tamanoLegible, tipoDe } from './comun.jsx';
+import { CampoLeadMagnet, OpcionesCarpetas, useFases, MAX_CAPTION, Miniatura, Modal, TIPOS, borrarArchivo, esMedio, esStory, esVideo, subirArchivo, tamanoLegible, tipoDe } from './comun.jsx';
 
 // ---------- Visor a pantalla completa ----------
 export function Visor({ archivos, inicio = 0, onClose }) {
@@ -202,7 +202,7 @@ export function EditorContenido({ pieza, carpetas, ig, onClose, onGuardado, onVi
               <label className="campo-et">Carpeta</label>
               <select className="campo" value={d.carpeta} onChange={cambia('carpeta')}>
                 <option value="">Sin carpeta</option>
-                {carpetas.map((c) => <option key={c.nombre} value={c.nombre}>{c.nombre}</option>)}
+                <OpcionesCarpetas carpetas={carpetas} />
               </select>
             </>
           )}

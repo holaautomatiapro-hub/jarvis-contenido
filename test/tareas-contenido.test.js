@@ -138,13 +138,57 @@ describe('contenido', () => {
     assert.throws(() => jarvis.crearCarpeta('octubre'), /Ya hay una carpeta/);
     assert.throws(() => jarvis.crearCarpeta('  '), /Ponle nombre/);
     jarvis.moverACarpeta([a.id, b.id], 'Octubre');
-    assert.deepEqual(jarvis.carpetas(), [{ nombre: 'Octubre', piezas: 2 }]);
+    assert.deepEqual(jarvis.carpetas(), [{ nombre: 'Octubre', padre: null, etiqueta: 'Octubre', nivel: 0, piezas: 2, total: 2, subcarpetas: 0 }]);
     jarvis.renombrarCarpeta('Octubre', 'Otoño');
     assert.equal(jarvis.listarPiezas().find((p) => p.id === a.id).carpeta, 'Otoño');
     assert.equal(jarvis.borrarCarpeta('Otoño').sueltas, 2);
     assert.deepEqual(jarvis.carpetas(), []);
     assert.equal(jarvis.listarPiezas().find((p) => p.id === b.id).carpeta, null);
     jarvis.borrarPieza(a.id); jarvis.borrarPieza(b.id);
+  });
+
+  test('subcarpetas: crear dentro, contar, renombrar y mover con lo de dentro, borrar sube las piezas', () => {
+    const a = jarvis.crearPieza({ titulo: 'Story 1' });
+    const b = jarvis.crearPieza({ titulo: 'Reel 1' });
+    const c = jarvis.crearPieza({ titulo: 'Suelta en Clientes' });
+    jarvis.crearCarpeta('Clientes');
+    assert.equal(jarvis.crearCarpeta('Andrea', 'Clientes').nombre, 'Clientes/Andrea');
+    assert.equal(jarvis.crearCarpeta(' Stories ', 'Clientes / Andrea').nombre, 'Clientes/Andrea/Stories');
+    assert.throws(() => jarvis.crearCarpeta('andrea', 'Clientes'), /Ya hay una carpeta/);
+    assert.throws(() => jarvis.crearCarpeta('  ', 'Clientes'), /Ponle nombre/);
+    assert.throws(() => jarvis.crearCarpeta('a/b/c/d/e/f/g'), /6 niveles/);
+    // Guardar solo la de dentro crea también las de arriba
+    jarvis.crearCarpeta('Lanzamientos/Octubre');
+    jarvis.moverACarpeta([a.id], 'Clientes/Andrea/Stories');
+    jarvis.moverACarpeta([b.id], 'Clientes/Andrea');
+    jarvis.moverACarpeta([c.id], 'Clientes');
+    const l = jarvis.carpetas();
+    assert.deepEqual(l.map((x) => x.nombre), ['Clientes', 'Clientes/Andrea', 'Clientes/Andrea/Stories', 'Lanzamientos', 'Lanzamientos/Octubre']);
+    const cl = l.find((x) => x.nombre === 'Clientes');
+    assert.deepEqual([cl.piezas, cl.total, cl.subcarpetas], [1, 3, 1]);
+    assert.deepEqual(l.find((x) => x.nombre === 'Clientes/Andrea/Stories'), { nombre: 'Clientes/Andrea/Stories', padre: 'Clientes/Andrea', etiqueta: 'Stories', nivel: 2, piezas: 1, total: 1, subcarpetas: 0 });
+
+    // Renombrar se lleva las subcarpetas y sus piezas; no se puede meter dentro de sí misma
+    jarvis.renombrarCarpeta('Clientes/Andrea', 'Clientes/Andrea Oliver');
+    assert.equal(jarvis.listarPiezas().find((p) => p.id === a.id).carpeta, 'Clientes/Andrea Oliver/Stories');
+    assert.ok(jarvis.carpetas().some((x) => x.nombre === 'Clientes/Andrea Oliver/Stories'));
+    assert.ok(!jarvis.carpetas().some((x) => x.nombre.startsWith('Clientes/Andrea/')));
+    assert.throws(() => jarvis.renombrarCarpeta('Clientes', 'Clientes/Andrea Oliver/Otra'), /dentro de sí misma/);
+    assert.throws(() => jarvis.renombrarCarpeta('Lanzamientos', 'clientes'), /Ya hay una carpeta/);
+    // Mover una carpeta dentro de otra
+    jarvis.renombrarCarpeta('Lanzamientos', 'Clientes/Lanzamientos');
+    assert.ok(jarvis.carpetas().some((x) => x.nombre === 'Clientes/Lanzamientos/Octubre'));
+    assert.ok(!jarvis.carpetas().some((x) => x.nombre === 'Lanzamientos'));
+
+    // Borrar: las piezas suben a la de arriba
+    const r = jarvis.borrarCarpeta('Clientes/Andrea Oliver');
+    assert.deepEqual([r.sueltas, r.destino], [2, 'Clientes']);
+    assert.equal(jarvis.listarPiezas().find((p) => p.id === a.id).carpeta, 'Clientes');
+    assert.equal(jarvis.carpetas().find((x) => x.nombre === 'Clientes').piezas, 3);
+    jarvis.borrarCarpeta('Clientes');
+    assert.deepEqual(jarvis.carpetas(), []);
+    assert.equal(jarvis.listarPiezas().find((p) => p.id === b.id).carpeta, null);
+    for (const p of [a, b, c]) jarvis.borrarPieza(p.id);
   });
 
   test('juntar en un carrusel en el orden marcado', () => {

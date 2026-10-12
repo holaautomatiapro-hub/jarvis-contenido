@@ -82,6 +82,11 @@ export async function subirArchivo(original) {
 }
 export const borrarArchivo = (a) => fetch(a.url, { method: 'DELETE' }).catch(() => {});
 
+// Opción de carpeta en los desplegables: las subcarpetas, sangradas debajo de su carpeta
+export const OpcionesCarpetas = ({ carpetas }) => carpetas.map((c) => (
+  <option key={c.nombre} value={c.nombre}>{'\u00a0\u00a0\u00a0'.repeat(c.nivel || 0)}{c.nivel ? '↳ ' : ''}{c.etiqueta || c.nombre}</option>
+));
+
 export function Miniatura({ p, className = '', onClick }) {
   const a = p.archivos?.[0];
   return (
