@@ -160,15 +160,18 @@ Reglas:
   }
 
   function nuevo(d = {}) {
-    const tipo = TIPOS_IMAGEN[d.tipo] ? d.tipo : 'imagen';
+    // Sin tipo (la sección simple): Claude decide por lo que pides si es imagen o vídeo y si sales tú
+    const tipo = TIPOS_IMAGEN[d.tipo] ? d.tipo : 'auto';
     const descripcion = String(d.descripcion || '').trim().slice(0, 3000);
     if (!descripcion) throw new ImagenesError('Describe lo que quieres');
     const formato = FORMATOS_IMAGEN[d.formato] ? d.formato : '9:16';
     const cantidad = Math.max(1, Math.min(4, Number(d.cantidad) || (tipo === 'broll' || tipo === 'animar' ? 1 : 2)));
     const presupuesto = Math.max(1, Math.min(2000, Number(d.presupuesto) || 60));
     const duracion = Math.max(3, Math.min(15, Number(d.duracion) || 5));
-    const refs = (Array.isArray(d.referencias) ? d.referencias : []).map(String).filter((r) => /^imagenes\/_referencias\/[^/]+$/.test(r)).slice(0, 8);
-    if (tipo === 'animar' && !refs.length) throw new ImagenesError('Sube la imagen que quieres animar');
+    const valida = (r) => /^imagenes\/_referencias\/[^/]+$/.test(String(r || ''));
+    const editar = valida(d.editar) ? String(d.editar) : null;
+    const refs = (Array.isArray(d.referencias) ? d.referencias : []).map(String).filter((r) => valida(r) && r !== editar).slice(0, 8);
+    if (tipo === 'animar' && !refs.length && !editar) throw new ImagenesError('Sube la imagen que quieres animar');
     const p = personaje();
     if (tipo === 'conmigo' && !p) throw new ImagenesError('Primero elige tu cara en «Tu cara»: busca lo que ya tienes en Higgsfield o sube tus fotos');
 
@@ -177,11 +180,13 @@ Reglas:
     for (let i = 2; existsSync(path.join(raiz, nombre)); i++) nombre = `${slug(titulo).slice(0, 45) || 'imagenes'}-${i}`;
     const carpeta = `imagenes/${nombre}`;
     mkdirSync(path.join(raiz, nombre), { recursive: true });
-    const meta = { titulo, tipo, formato, cantidad, creado: new Date().toISOString(), ...(d.pieza ? { pieza: Number(d.pieza) } : {}) };
+    const meta = { titulo, tipo, formato, cantidad, ...(editar ? { editar } : {}), creado: new Date().toISOString(), ...(d.pieza ? { pieza: Number(d.pieza) } : {}) };
     writeFileSync(path.join(raiz, nombre, '_encargo.json'), JSON.stringify(meta, null, 2));
 
     const pieza = d.pieza && jarvis ? (() => { try { return jarvis.listarPiezas().find((x) => x.id === Number(d.pieza)); } catch { return null; } })() : null;
+    const miCara = p ? comoMiCara(p) : 'Busca mi cara en mi Higgsfield (show_characters con type soul_2, soul_cinematic y soul, status ready; show_reference_elements; y si no, mis fotos de show_medias). Si hay varias opciones, pregúntame cuál; guarda la elegida en imagenes/_mi-cara/personaje.json ({"soul_id","soul_tipo"} o {"element_id"} o {"media_ids": [...]}, con "nombre" y "estado": "listo") y úsala.';
     const que = {
+      auto: `${cantidad} ${cantidad === 1 ? 'resultado' : 'variantes'}. Decide tú por lo que pido: si es vídeo (B-roll, «que se mueva», «animar», un plano con movimiento) haz vídeo de unos ${duracion} s; si no, imagen. Elige el modelo que mejor encaje (models_explore action:'recommend' si dudas). Si salgo yo («yo», «conmigo», «mi cara», «salgo»): ${miCara}`,
       imagen: `${cantidad} ${cantidad === 1 ? 'imagen' : 'variantes de imagen'}. Modelo: el general por defecto del conector (o el que mejor encaje: models_explore action:'recommend').`,
       conmigo: `${cantidad} ${cantidad === 1 ? 'foto' : 'fotos'} MÍAS. ${comoMiCara(p)}`,
       broll: `${cantidad} ${cantidad === 1 ? 'clip' : 'clips'} de B-roll de unos ${duracion} s, sin texto en pantalla ni marcas de agua. Modelo de vídeo general por defecto del conector.`,
@@ -189,11 +194,11 @@ Reglas:
     }[tipo];
     return {
       nombre,
-      prompt: `Genera con Higgsfield: ${TIPOS_IMAGEN[tipo]}.
+      prompt: `Genera con Higgsfield${tipo === 'auto' ? '' : `: ${TIPOS_IMAGEN[tipo]}`}.
 Qué quiero: ${descripcion}
 ${que}
-Formato: ${formato} (${FORMATOS_IMAGEN[formato]}).
-${refs.length ? `Referencias (súbelas primero y úsalas como medias con el rol que pida el modelo): ${refs.join(', ')}\n` : ''}${pieza ? `Es para la pieza «${pieza.titulo}» (${pieza.formato || 'pieza'})${pieza.caption ? `; caption: «${String(pieza.caption).slice(0, 300)}»` : ''}.\n` : ''}${d.indicaciones ? `Indicaciones: ${String(d.indicaciones).slice(0, 1500)}\n` : ''}
+Formato: ${FORMATOS_IMAGEN[formato]}.
+${editar ? `Foto a editar: ${editar}. Súbela y parte de ella: cambia solo lo que pido y conserva lo demás (persona, encuadre, luz), con un modelo que edite con referencia (o anímala si lo que pido es vídeo).\n` : ''}${refs.length ? `Referencias (súbelas primero y úsalas como medias con el rol que pida el modelo): ${refs.join(', ')}\n` : ''}${pieza ? `Es para la pieza «${pieza.titulo}» (${pieza.formato || 'pieza'})${pieza.caption ? `; caption: «${String(pieza.caption).slice(0, 300)}»` : ''}.\n` : ''}${d.indicaciones ? `Indicaciones: ${String(d.indicaciones).slice(0, 1500)}\n` : ''}
 Escribe tú el prompt para el modelo (en inglés si el modelo lo agradece): concreto, con luz, encuadre y estilo. Si es para mi marca, mira los colores de mi sistema de diseño (_diseno/ del vault) y nada de texto dentro de la imagen salvo que lo pida.
 Guárdalo todo en ${carpeta}/ y escribe ${carpeta}/_encargo.md con el prompt que has usado y el modelo.
 ${pasosComunes(carpeta, presupuesto)}`,
