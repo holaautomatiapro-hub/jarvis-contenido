@@ -6,6 +6,7 @@ import Donut from '../components/charts/Donut.jsx';
 import { api, normaliza, useRecurso } from '../lib/api.js';
 import { fechaCorta, hace, num, numLargo, segundos } from '../lib/formato.js';
 import Replicar, { FORMATO_DE_IG } from '../components/Replicar.jsx';
+import QueFunciona from './instagram/QueFunciona.jsx';
 
 // Colores de formato validados para el fondo oscuro (separación para daltonismo y contraste)
 const COLOR_FORMATO = { Reels: '#3987e5', Carruseles: '#d95926', 'Imágenes': '#199e70' };
@@ -252,6 +253,7 @@ export default function Instagram() {
         <div className="seg">
           <button className={vista === 'cuenta' ? 'on' : ''} onClick={() => setVista('cuenta')}><Icon name="chart" />Rendimiento de la cuenta</button>
           <button className={vista === 'contenido' ? 'on' : ''} onClick={() => setVista('contenido')}><Icon name="layers" />Análisis de contenido</button>
+          <button className={vista === 'funciona' ? 'on' : ''} onClick={() => setVista('funciona')}><Icon name="target" />Qué me funciona</button>
         </div>
         <div className="ig-controles">
           <div className="seg">
@@ -341,6 +343,8 @@ export default function Instagram() {
           <TodasLasMetricas todas={data.todas} dias={dias} />
           <TablaContenido piezas={data.piezas.slice(0, 6)} medias={data.medias} demo={data.demo} />
         </>
+      ) : vista === 'funciona' ? (
+        <QueFunciona dias={dias} />
       ) : (
         <TablaContenido piezas={data.piezas} medias={data.medias} demo={data.demo} />
       )}

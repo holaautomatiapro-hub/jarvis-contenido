@@ -7,6 +7,8 @@ import path from 'node:path';
 
 export const ESTADOS = ['idea', 'guion', 'grabar', 'editar', 'listo', 'publicado'];
 export const CATEGORIAS = ['ideas', 'contenido', 'analisis', 'administracion', 'aprendizaje'];
+// Objetivo de una pieza: atraer (alcance, gente nueva), nutrir (confianza) o convertir (ventas, leads)
+export const OBJETIVOS = ['atraer', 'nutrir', 'convertir'];
 export const TIPOS_ACTIVIDAD = ['Idea', 'Contenido', 'Nota', 'Tarea', 'Analisis', 'Hermes'];
 
 const SCHEMA = `
@@ -228,6 +230,19 @@ export function openDb(file) {
   migrar('ALTER TABLE piezas ADD COLUMN leadmagnet_url TEXT');
   // Portada de un reel (JSON de un archivo de imagen): Instagram la usa como cover
   migrar('ALTER TABLE piezas ADD COLUMN portada TEXT');
+  // Estrategia de cada pieza (para saber qué funciona) y de dónde sale: otra pieza (padre_id) o un trabajo
+  // del Laboratorio, un diseño… (origen_ref, texto: «Testimonio · Ana», «laboratorio:clips/Ana/clip-1.mp4»)
+  for (const sql of [
+    'ALTER TABLE piezas ADD COLUMN pilar TEXT',
+    'ALTER TABLE piezas ADD COLUMN objetivo TEXT',
+    'ALTER TABLE piezas ADD COLUMN gancho TEXT',
+    'ALTER TABLE piezas ADD COLUMN cta TEXT',
+    'ALTER TABLE piezas ADD COLUMN padre_id INTEGER',
+    'ALTER TABLE piezas ADD COLUMN origen_ref TEXT',
+  ]) migrar(sql);
+  // Cómo se unió la pieza con su publicación de Instagram: jarvis, enlace, caption, fecha, manual o ninguna (soltada a mano)
+  migrar('ALTER TABLE piezas ADD COLUMN ig_vinculo TEXT');
+  db.exec('CREATE INDEX IF NOT EXISTS piezas_padre ON piezas(padre_id); CREATE INDEX IF NOT EXISTS piezas_origen_ref ON piezas(origen_ref);');
   // Windsor: todas las métricas de cada publicación (JSON) e historias
   migrar('ALTER TABLE ig_media ADD COLUMN extra TEXT');
   db.exec(`CREATE TABLE IF NOT EXISTS ig_historias (

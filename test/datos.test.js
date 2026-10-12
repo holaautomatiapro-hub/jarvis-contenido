@@ -91,16 +91,76 @@ describe('tareas e inicio', () => {
     assert.throws(() => jarvis.crearTarea({ titulo: 'x', fecha: '10/10/2026' }), /AAAA-MM-DD/);
   });
 
-  test('inicio calcula KPIs, foco y actividad reales', () => {
-    const r = jarvis.inicio();
-    assert.equal(r.vacio, false);
-    const k = Object.fromEntries(r.kpis.map((x) => [x.id, x]));
-    assert.equal(k.tareas.value, 2);
-    assert.equal(k.ideas.value, 1); // solo cuentan las notas de 01-Ideas
-    assert.ok(k.notas.value >= 5);
-    assert.equal(k.tareas.series.length, 12);
-    assert.equal(r.foco.reduce((a, f) => a + f.pct, 0) >= 99, true);
-    assert.ok(r.actividad.some((a) => a.tag === 'Hermes'));
+  test('inicio: KPIs de contenido (publicado, programado, listo sin fecha e ideas)', () => {
+    const fecha = hoy();
+    const lista = jarvis.crearPieza({ titulo: 'Lista sin día', estado: 'listo' });
+    const prog = jarvis.crearPieza({ titulo: 'Para mañana', estado: 'listo', fecha });
+    const hecha = jarvis.crearPieza({ titulo: 'Ya salió', estado: 'publicado', fecha });
+    const k = Object.fromEntries(jarvis.inicio({ fecha }).kpis.map((x) => [x.id, x]));
+    assert.equal(k.publicadas.value, 1);
+    assert.equal(k.programadas.value, 1, 'lo publicado no cuenta como programado');
+    assert.equal(k.listas.value, 1);
+    assert.equal(k.ideas.value, jarvis.listarPiezas({ estado: 'idea' }).length);
+    assert.equal(k.publicadas.series.length, 12);
+    for (const p of [lista, prog, hecha]) jarvis.borrarPieza(p.id);
+  });
+
+  test('estrategia de la pieza: pilar, objetivo, gancho y CTA, y los pilares en uso', () => {
+    const p = jarvis.crearPieza({ titulo: 'Reel de setter', formato: 'Reel', pilar: '  Automatización ', objetivo: 'Atraer', gancho: 'Nadie te cuenta esto', cta: 'Comenta SETTER' });
+    assert.equal(p.pilar, 'Automatización');
+    assert.equal(p.objetivo, 'atraer');
+    assert.equal(p.gancho, 'Nadie te cuenta esto');
+    assert.throws(() => jarvis.actualizarPieza(p.id, { objetivo: 'viral' }), /Objetivo no válido/);
+    const otra = jarvis.crearPieza({ titulo: 'Otro', pilar: 'Automatización' });
+    assert.deepEqual(jarvis.pilares().find((x) => x.nombre === 'Automatización'), { nombre: 'Automatización', piezas: 2 });
+    assert.equal(jarvis.actualizarPieza(p.id, { objetivo: '' }).objetivo, null, 'se puede quitar');
+    jarvis.borrarPieza(otra.id);
+    jarvis.borrarPieza(p.id);
+  });
+
+  test('pieza madre: lo que sale de otra pieza, sin círculos, y al borrar sube al abuelo', () => {
+    const video = jarvis.crearPieza({ titulo: 'Directo de 1 hora', formato: 'Reel' });
+    const clip = jarvis.crearPieza({ titulo: 'Clip 1', padre_id: video.id });
+    const carrusel = jarvis.crearPieza({ titulo: 'Carrusel del clip', padre_id: clip.id });
+    assert.equal(clip.padre_id, video.id);
+    assert.throws(() => jarvis.actualizarPieza(video.id, { padre_id: carrusel.id }), /no puede salir de sí misma/);
+    assert.throws(() => jarvis.crearPieza({ titulo: 'x', padre_id: 999999 }), /no existe/);
+    assert.equal(jarvis.duplicarPieza(clip.id).padre_id, video.id, 'la copia para republicar sale de lo mismo');
+    jarvis.borrarPieza(clip.id);
+    assert.equal(jarvis.leerPieza(carrusel.id).padre_id, video.id);
+    for (const x of jarvis.listarPiezas().filter((x) => x.padre_id === video.id)) jarvis.borrarPieza(x.id);
+    jarvis.borrarPieza(video.id);
+  });
+
+  test('mi semana: huecos, días cubiertos, ritmo, reserva y lo que falta producir', () => {
+    const antes = new Set(jarvis.listarPiezas().map((p) => p.id));
+    const lunes = '2030-01-07'; // un lunes lejos de las fechas de los demás tests
+    const dia = (n) => { const d = new Date(`${lunes}T12:00:00`); d.setDate(d.getDate() + n); return d.toLocaleDateString('sv-SE'); };
+    assert.throws(() => jarvis.guardarRitmo({ dias: [] }), /al menos un día/);
+    assert.throws(() => jarvis.guardarRitmo({ objetivos: { Reel: 99 } }), /de 0 a 50/);
+    assert.deepEqual(jarvis.guardarRitmo({ objetivos: { Reel: 3, Carrusel: 1, Story: 0 }, dias: [1, 2, 3, 4, 5] }), { objetivos: { Reel: 3, Carrusel: 1 }, dias: [1, 2, 3, 4, 5] });
+
+    jarvis.crearPieza({ titulo: 'Reel lunes', formato: 'reel', estado: 'publicado', fecha: dia(0) });
+    jarvis.crearPieza({ titulo: 'Reel martes', formato: 'Reel', estado: 'listo', fecha: dia(1) });
+    const grabar = jarvis.crearPieza({ titulo: 'Carrusel miércoles', formato: 'Carrusel', estado: 'grabar', fecha: dia(2) });
+    jarvis.crearPieza({ titulo: 'Reel sábado', formato: 'Reel', estado: 'listo', fecha: dia(5) });
+    const reserva = jarvis.listarPiezas().filter((p) => p.estado === 'listo' && !p.fecha && p.estado !== 'publicado').length;
+    jarvis.crearPieza({ titulo: 'De reserva', formato: 'Reel', estado: 'listo' });
+
+    const m = jarvis.miSemana({ fecha: dia(1) }); // martes
+    assert.equal(m.desde, lunes);
+    assert.deepEqual(m.dias.map((d) => d.piezas.length), [1, 1, 1, 0, 0, 1, 0]);
+    assert.deepEqual(m.dias.filter((d) => d.hueco).map((d) => d.fecha), [dia(3), dia(4)], 'jueves y viernes; el sábado no publica y el lunes ya pasó');
+    assert.deepEqual(m.colchon, { dias: 2, hasta: dia(2) }, 'martes y miércoles cubiertos; el jueves es hueco');
+    assert.equal(m.huecos[0], dia(3));
+    const reel = m.progreso.find((x) => x.tipo === 'Reel');
+    assert.deepEqual([reel.publicadas, reel.programadas, reel.faltan], [1, 2, 0]);
+    assert.equal(m.progreso.find((x) => x.tipo === 'Carrusel').faltan, 0);
+    assert.equal(m.reserva, reserva + 1);
+    assert.deepEqual(m.producir.map((p) => [p.id, p.dias, p.urgente]), [[grabar.id, 1, true]]);
+    assert.match(jarvis.resumenDelDia().semana.diasCubiertos, /días de publicación cubiertos|nada programado/);
+    for (const p of jarvis.listarPiezas()) if (!antes.has(p.id)) jarvis.borrarPieza(p.id);
+    jarvis.guardarRitmo({ objetivos: {}, dias: [1, 2, 3, 4, 5] });
   });
 
   test('resumen del día', () => {

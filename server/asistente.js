@@ -1,15 +1,21 @@
-import { row, rows } from './db.js';
-import { clasificar } from './router-jev.js';
 import { ejecutar, mcpConfigDe } from './claude-runner.js';
 
-// Orquesta las conversaciones con JARVIS: JEV elige modelo → Claude Code responde en directo →
-// se registra en la actividad y en las estadísticas de enrutamiento.
+// Orquesta las conversaciones con JARVIS: Claude Code responde en directo y cada petición queda registrada
+// (modelo, duración y coste equivalente) en la tabla enrutamiento.
 
 export class OcupadoError extends Error {}
 
+export const MODELOS = ['haiku', 'sonnet', 'opus'];
+const etiquetaDe = (m) => `Claude ${m[0].toUpperCase()}${m.slice(1)}`;
+// Modelo de cada petición: el que se elige a mano, el fijo de la conversación o el suyo por defecto (Sonnet si no tiene)
+export function modeloPara(conv, elegido) {
+  if (MODELOS.includes(elegido)) return elegido;
+  return conv.modeloFijo || conv.modeloPorDefecto || 'sonnet';
+}
+
 // Conversaciones independientes, cada una con su sesión de Claude Code
 export const CONVERSACIONES = {
-  principal: { modeloPorDefecto: null, sistema: null },
+  principal: { modeloPorDefecto: 'sonnet', sistema: null },
   ads: {
     modeloPorDefecto: 'sonnet',
     sistema: `Estás en el ASISTENTE DE META ADS de JARVIS. Herramientas: ads_rendimiento (gasto, CTR, CPC y resultados por campaña), ads_biblioteca (anuncios de la competencia en la Ad Library), contenido_para_impulsar (publicaciones orgánicas que conviene promocionar) y proponer_campana.
@@ -24,7 +30,7 @@ Reglas que no se rompen:
     sistema: 'Estás en "Crea una vez, publica en todos lados" de JARVIS. Adaptas una pieza a cada red con versiones nativas y las guardas con guardar_versiones. NUNCA publicas nada: la persona copia cada versión y la publica ella.',
   },
   // Tareas automáticas de fondo (clasificar temas, perfil de voz…)
-  sistema: { modeloPorDefecto: null, sinMemoria: true, sistema: 'Estás ejecutando una tarea automática en segundo plano: no hagas preguntas, hazla y responde en una o tres líneas.' },
+  sistema: { modeloPorDefecto: 'haiku', sinMemoria: true, sistema: 'Estás ejecutando una tarea automática en segundo plano: no hagas preguntas, hazla y responde en una o tres líneas.' },
   guiones: {
     modeloPorDefecto: 'sonnet',
     sistema: `Estás en el CHAT PARA GUIONES de JARVIS. Antes de escribir cualquier guion:
@@ -70,10 +76,6 @@ export function createAsistente({ db, jarvis, vaultPath, emitir = () => {}, ejec
   const q = {
     ins: db.prepare('INSERT INTO enrutamiento (ruta, modelo, etiqueta, canal) VALUES (?, ?, ?, ?)'),
     fin: db.prepare('UPDATE enrutamiento SET ok = ?, duracion_ms = ?, coste = ? WHERE id = ?'),
-    stats: db.prepare("SELECT etiqueta, COUNT(*) AS n FROM enrutamiento WHERE ts >= datetime('now','localtime','-30 days') GROUP BY etiqueta"),
-    voz: db.prepare("SELECT COUNT(*) AS n FROM enrutamiento WHERE canal = 'voz' AND ts >= datetime('now','localtime','-30 days')"),
-    total: db.prepare("SELECT COUNT(*) AS n, COALESCE(SUM(coste), 0) AS coste FROM enrutamiento WHERE ts >= datetime('now','localtime','-30 days')"),
-    ultimo: db.prepare('SELECT * FROM enrutamiento ORDER BY id DESC LIMIT 1'),
   };
 
   const sesiones = Object.fromEntries(Object.keys(CONVERSACIONES).map((k) => [k, null])); // id de sesión de Claude Code por conversación
@@ -99,14 +101,11 @@ export function createAsistente({ db, jarvis, vaultPath, emitir = () => {}, ejec
     if (actuales[carril]) throw new OcupadoError(carril === 'principal' ? 'JARVIS está terminando otra petición. Espera un momento o cancélala.' : 'El Laboratorio está terminando otro trabajo. Espera a que acabe o cancélalo.');
     const extra = entornos[conversacion]?.() || {};
 
-    // Algunas conversaciones van siempre con el mismo modelo (Diseño: Opus, por la calidad del resultado)
-    if (!forzarModelo && conv.modeloFijo) forzarModelo = conv.modeloFijo;
-    let decision = clasificar(prompt, { forzarModelo });
-    // En el chat de guiones, lo rápido sube a Sonnet: escribir bien importa más que la velocidad
-    if (!forzarModelo && conv.modeloPorDefecto && decision.modelo === 'haiku') decision = clasificar(prompt, { forzarModelo: conv.modeloPorDefecto });
+    const modelo = modeloPara(conv, forzarModelo);
+    const decision = { modelo, etiqueta: etiquetaDe(modelo) };
     const id = ++n;
-    const { lastInsertRowid } = q.ins.run(decision.ruta, decision.modelo, decision.etiqueta, canal);
-    enviar({ id, conversacion, tipo: 'pregunta', texto: prompt, canal, ruta: decision.ruta, modelo: decision.modelo, etiqueta: decision.etiqueta, motivo: decision.motivo });
+    const { lastInsertRowid } = q.ins.run(conversacion, modelo, decision.etiqueta, canal);
+    enviar({ id, conversacion, tipo: 'pregunta', texto: prompt, canal, modelo, etiqueta: decision.etiqueta });
 
     const t0 = Date.now();
     const run = ejecutarImpl({
@@ -124,7 +123,6 @@ export function createAsistente({ db, jarvis, vaultPath, emitir = () => {}, ejec
         if (e.tipo === 'fin' || e.tipo === 'error') {
           if (e.sesion) sesiones[conversacion] = e.sesion;
           q.fin.run(e.tipo === 'fin' ? 1 : 0, e.duracion ?? Date.now() - t0, e.coste ?? null, lastInsertRowid);
-          if (e.tipo === 'fin' && decision.actividad) jarvis.registrar(decision.actividad, `JARVIS (${decision.etiqueta}): ${prompt}`, 'dashboard');
           if (actuales[carril]?.id === id) delete actuales[carril];
         }
         enviar({ id, conversacion, ...e });
@@ -161,31 +159,11 @@ export function createAsistente({ db, jarvis, vaultPath, emitir = () => {}, ejec
     };
   }
 
-  // Porcentajes para el widget "Enrutamiento" (últimos 30 días)
-  function enrutamiento() {
-    const total = row(q.total);
-    const por = Object.fromEntries(rows(q.stats).map((r) => [r.etiqueta, r.n]));
-    const pct = (k) => (total.n ? Math.round(((por[k] || 0) / total.n) * 100) : 0);
-    return {
-      total: total.n,
-      coste: Math.round(total.coste * 100) / 100,
-      ultimo: row(q.ultimo),
-      barras: [
-        { label: 'Claude Opus', pct: pct('Claude Opus'), color: 'var(--purple)' },
-        { label: 'Claude Sonnet', pct: pct('Claude Sonnet'), color: 'var(--accent-2)' },
-        { label: 'Claude Haiku', pct: pct('Claude Haiku'), color: 'var(--cyan)' },
-        { label: 'Obsidian', pct: pct('Obsidian'), color: 'var(--pink)' },
-        { label: 'Web', pct: pct('Web'), color: 'var(--orange)' },
-        { label: 'Por voz', pct: total.n ? Math.round((row(q.voz).n / total.n) * 100) : 0, color: 'var(--green)' },
-      ],
-    };
-  }
-
   // Un texto suelto (p. ej. un caption): sin conversación ni memoria, en paralelo a lo demás. Devuelve solo el texto.
   function redactar({ prompt, sistema = null, modelo = 'sonnet', limiteMs = 180_000 }) {
     const texto = String(prompt || '').trim();
     if (!texto) throw new Error('Falta "texto"');
-    const { lastInsertRowid } = q.ins.run('redactar', modelo, `Claude ${modelo[0].toUpperCase()}${modelo.slice(1)}`, 'texto');
+    const { lastInsertRowid } = q.ins.run('redactar', modelo, etiquetaDe(modelo), 'texto');
     const t0 = Date.now();
     return new Promise((resolve, reject) => {
       let hecho = false;
@@ -208,5 +186,5 @@ export function createAsistente({ db, jarvis, vaultPath, emitir = () => {}, ejec
     });
   }
 
-  return { preguntar, cancelar, nuevaSesion, estado, enrutamiento, redactar };
+  return { preguntar, cancelar, nuevaSesion, estado, redactar };
 }

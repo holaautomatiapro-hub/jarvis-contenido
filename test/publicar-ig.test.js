@@ -96,8 +96,9 @@ describe('publicador', () => {
   });
 
   test('un reel espera a que Instagram procese el vídeo, aunque haga falta otra vuelta', async () => {
-    const { jarvis, pub, llamadas } = entorno({ procesando: 2 });
+    const { db, jarvis, pub, llamadas } = entorno({ procesando: 2 });
     const p = jarvis.crearPieza({ titulo: 'Reel', formato: 'Reel', archivos: [mp4()] });
+    db.prepare("INSERT INTO pub_versiones (pieza_id, red, texto) VALUES (?, 'instagram_reel', 'guion'), (?, 'tiktok', 'guion')").run(p.id, p.id);
     pub.publicarAhora(p.id);
     await new Promise((ok) => setTimeout(ok, 20));
     let f = jarvis.listarPiezas().find((x) => x.id === p.id);
@@ -108,6 +109,8 @@ describe('publicador', () => {
     assert.equal(llamadas.filter((l) => l.ruta === 'ig1/media').length, 1, 'no crea el contenedor dos veces');
     assert.equal(llamadas.find((l) => l.ruta === 'ig1/media').body.media_type, 'REELS');
     assert.equal(llamadas.filter((l) => l.supabase === 'POST').length, 1, 'no sube el vídeo dos veces');
+    const vs = Object.fromEntries(db.prepare('SELECT red, estado FROM pub_versiones WHERE pieza_id = ?').all(p.id).map((v) => [v.red, v.estado]));
+    assert.deepEqual(vs, { instagram_reel: 'publicado', tiktok: 'listo' }, 'su versión de Instagram queda publicada; la de TikTok, no');
   });
 
   test('un reel con portada la manda como cover_url', async () => {

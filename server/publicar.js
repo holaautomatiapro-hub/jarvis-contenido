@@ -1,39 +1,29 @@
 import { row, rows } from './db.js';
 import { JarvisError } from './jarvis.js';
 import { nombreArchivo } from './vault.js';
+import { REDES } from '../web/src/lib/redes.js';
 
-// "Crea una vez, publica en todos lados": versiones de una pieza para cada red, listas para copiar
-// y programadas en el calendario. JARVIS NO publica: prepara y la persona publica.
+// "Crea una vez, publica en todos lados": versiones de una pieza para cada red, listas para copiar.
+// Viven en la ficha de la pieza y salen el mismo día que ella (su fecha propia, si la tienen, manda):
+// un solo calendario. JARVIS NO publica: prepara y la persona publica (Instagram aparte, si lo marca ella).
 
-export const REDES = [
-  { id: 'instagram_reel', nombre: 'Instagram Reel', corto: 'IG Reel', color: '#d6249f', grupo: 'Instagram' },
-  { id: 'instagram_carrusel', nombre: 'Instagram Carrusel', corto: 'Carrusel', color: '#e1306c', grupo: 'Instagram' },
-  { id: 'instagram_historia', nombre: 'Instagram Historias', corto: 'Historias', color: '#f77737', grupo: 'Instagram' },
-  { id: 'tiktok', nombre: 'TikTok', corto: 'TikTok', color: '#25f4ee', grupo: 'TikTok' },
-  { id: 'youtube_shorts', nombre: 'YouTube Shorts', corto: 'Shorts', color: '#ff0033', grupo: 'YouTube' },
-  { id: 'linkedin', nombre: 'LinkedIn', corto: 'LinkedIn', color: '#0a66c2', grupo: 'LinkedIn' },
-  { id: 'x', nombre: 'X (hilo)', corto: 'X', color: '#e7e9ea', grupo: 'X' },
-  { id: 'threads', nombre: 'Threads', corto: 'Threads', color: '#b4b4b4', grupo: 'Threads' },
-  { id: 'facebook', nombre: 'Facebook', corto: 'Facebook', color: '#1877f2', grupo: 'Facebook' },
-  { id: 'pinterest', nombre: 'Pinterest', corto: 'Pinterest', color: '#e60023', grupo: 'Pinterest' },
-  { id: 'telegram', nombre: 'Canal de Telegram', corto: 'Telegram', color: '#2aabee', grupo: 'Telegram' },
-  { id: 'newsletter', nombre: 'Newsletter', corto: 'Email', color: '#8b5cf6', grupo: 'Email' },
-];
+export { REDES };
 const IDS = new Set(REDES.map((r) => r.id));
-export const REDES_POR_DEFECTO = ['instagram_reel', 'instagram_carrusel', 'instagram_historia', 'tiktok', 'youtube_shorts', 'linkedin', 'x', 'threads'];
+export const REDES_POR_DEFECTO = ['tiktok', 'youtube_shorts', 'linkedin', 'x', 'threads'];
+// Versión de Instagram que corresponde a cada tipo de publicación (para marcarla al publicarse sola)
+export const RED_DE_TIPO_IG = { REELS: 'instagram_reel', CAROUSEL: 'instagram_carrusel', STORIES: 'instagram_historia' };
 
 export function promptAdaptar(pieza, redes, notaContenido = '') {
   const nombres = redes.map((r) => REDES.find((x) => x.id === r)?.nombre || r).join(', ');
   return `Usa la skill adaptar-a-todas-las-redes para la pieza #${pieza.id} «${pieza.titulo}»${pieza.formato ? ` (formato original: ${pieza.formato})` : ''}.
 Redes: ${nombres} (ids: ${redes.join(', ')}).
 ${notaContenido ? `Contenido de su nota (${pieza.nota}):\n"""\n${notaContenido.slice(0, 6000)}\n"""\n` : ''}Para cada red escribe una versión NATIVA (no copies y pegues): en reels, shorts y TikTok, un guion con gancho, texto en pantalla y caption; en carruseles, slide a slide; en historias, la secuencia; en LinkedIn, X y Threads, el texto listo para pegar. Lee _voz.md antes de escribir.
-Guarda TODAS las versiones con guardar_versiones (piezaId ${pieza.id}): en "texto" lo que se publica, en "extra" los hashtags o el CTA y en "notas" las indicaciones de grabación o diseño. Si la persona dio fechas, ponlas en "fecha" (AAAA-MM-DD). No publiques nada. Responde con un resumen de dos líneas.`;
+Guarda TODAS las versiones con guardar_versiones (piezaId ${pieza.id}): en "texto" lo que se publica, en "extra" los hashtags o el CTA y en "notas" las indicaciones de grabación o diseño. No pongas fecha: salen el mismo día que la pieza (solo si la persona pide otro día para una red, ponlo en "fecha", AAAA-MM-DD). No publiques nada. Responde con un resumen de dos líneas.`;
 }
 
 export function createPublicar({ db, jarvis, vault, alCambiar = () => {} }) {
   const q = {
     pieza: db.prepare('SELECT * FROM piezas WHERE id = ?'),
-    piezas: db.prepare("SELECT * FROM piezas WHERE estado != 'publicado' ORDER BY actualizado DESC LIMIT 60"),
     deDePieza: db.prepare('SELECT * FROM pub_versiones WHERE pieza_id = ? ORDER BY id'),
     porRed: db.prepare("SELECT * FROM pub_versiones WHERE pieza_id = ? AND red = ? AND estado != 'publicado'"),
     ins: db.prepare('INSERT INTO pub_versiones (pieza_id, red, formato, titulo, texto, extra, notas, fecha, hora, origen) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)'),
@@ -42,9 +32,11 @@ export function createPublicar({ db, jarvis, vault, alCambiar = () => {} }) {
     programar: db.prepare("UPDATE pub_versiones SET fecha = ?, hora = ?, actualizado = datetime('now','localtime') WHERE id = ?"),
     publicar: db.prepare("UPDATE pub_versiones SET estado = ?, publicado = CASE WHEN ? = 'publicado' THEN datetime('now','localtime') ELSE NULL END, actualizado = datetime('now','localtime') WHERE id = ?"),
     borrar: db.prepare('DELETE FROM pub_versiones WHERE id = ?'),
-    rango: db.prepare('SELECT v.*, p.titulo AS pieza_titulo FROM pub_versiones v JOIN piezas p ON p.id = v.pieza_id WHERE v.fecha >= ? AND v.fecha <= ? ORDER BY v.fecha, v.hora'),
-    sinFecha: db.prepare("SELECT v.*, p.titulo AS pieza_titulo FROM pub_versiones v JOIN piezas p ON p.id = v.pieza_id WHERE v.fecha IS NULL AND v.estado != 'publicado' ORDER BY v.id DESC LIMIT 50"),
-    cuenta: db.prepare('SELECT pieza_id, COUNT(*) AS n, SUM(estado = \'publicado\') AS pub FROM pub_versiones GROUP BY pieza_id'),
+    // dia = la fecha de la versión o, si no tiene, la de su pieza
+    rango: db.prepare('SELECT v.*, p.titulo AS pieza_titulo, COALESCE(v.fecha, p.fecha) AS dia, COALESCE(v.hora, p.hora) AS hora_dia FROM pub_versiones v JOIN piezas p ON p.id = v.pieza_id WHERE COALESCE(v.fecha, p.fecha) >= ? AND COALESCE(v.fecha, p.fecha) <= ? ORDER BY dia, hora_dia'),
+    sinFecha: db.prepare("SELECT v.*, p.titulo AS pieza_titulo FROM pub_versiones v JOIN piezas p ON p.id = v.pieza_id WHERE v.fecha IS NULL AND p.fecha IS NULL AND v.estado != 'publicado' ORDER BY v.id DESC LIMIT 50"),
+    piezasRango: db.prepare('SELECT id, titulo, formato, estado, fecha, hora, pilar, objetivo, publicar_ig, ig_estado FROM piezas WHERE fecha >= ? AND fecha <= ? ORDER BY fecha, hora'),
+    todas: db.prepare('SELECT id, pieza_id, red, fecha, hora, estado FROM pub_versiones ORDER BY id'),
   };
 
   const fecha = (f) => {
@@ -112,9 +104,11 @@ export function createPublicar({ db, jarvis, vault, alCambiar = () => {} }) {
     if (!v) throw new JarvisError('Esa versión no existe');
     q.publicar.run(publicado ? 'publicado' : 'listo', publicado ? 'publicado' : 'listo', v.id);
     const p = piezaOError(v.pieza_id);
-    // Si todas las versiones están publicadas, la pieza pasa a Publicado
+    // Si todas las versiones están publicadas, la pieza pasa a Publicado; si se desmarca una, vuelve a Listo
+    // (salvo que la publicara JARVIS en Instagram: eso sí ha salido)
     const vs = rows(q.deDePieza, p.id);
     if (publicado && vs.every((x) => x.estado === 'publicado')) jarvis.actualizarPieza(p.id, { estado: 'publicado' });
+    else if (!publicado && p.estado === 'publicado' && p.ig_estado !== 'publicado') jarvis.actualizarPieza(p.id, { estado: 'listo' });
     escribirNota(p);
     alCambiar();
     return row(q.version, v.id);
@@ -129,13 +123,15 @@ export function createPublicar({ db, jarvis, vault, alCambiar = () => {} }) {
     return { ok: true };
   }
 
+  // Todo lo que sale entre dos fechas: las piezas (lo que publica Instagram o tú) y sus versiones para otras redes
   function calendario({ desde, hasta }) {
-    return { desde, hasta, versiones: rows(q.rango, fecha(desde), fecha(hasta)), sinFecha: rows(q.sinFecha) };
+    const d = fecha(desde), h = fecha(hasta);
+    return { desde, hasta, piezas: rows(q.piezasRango, d, h), versiones: rows(q.rango, d, h), sinFecha: rows(q.sinFecha) };
   }
 
-  function piezas() {
-    const n = new Map(rows(q.cuenta).map((c) => [c.pieza_id, c]));
-    return rows(q.piezas).map((p) => ({ ...p, versiones: n.get(p.id)?.n || 0, publicadas: n.get(p.id)?.pub || 0 }));
+  // Resumen de las versiones de todas las piezas (para el calendario y las listas de Contenido)
+  function resumen() {
+    return rows(q.todas);
   }
 
   // Prepara la petición para JARVIS (crea la pieza si viene de un texto nuevo)
@@ -151,5 +147,5 @@ export function createPublicar({ db, jarvis, vault, alCambiar = () => {} }) {
     return { pieza: p, redes: lista, prompt: promptAdaptar(p, lista, contenido) };
   }
 
-  return { guardarVersiones, listarPieza, programar, marcar, borrar, calendario, piezas, prepararAdaptacion };
+  return { guardarVersiones, listarPieza, programar, marcar, borrar, calendario, resumen, prepararAdaptacion };
 }

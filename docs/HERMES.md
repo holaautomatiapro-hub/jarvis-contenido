@@ -10,7 +10,7 @@ Funciona en Windows nativo (sin WSL). Solo responde mientras el PC está encendi
 - "¿Qué contenido funcionó mejor esta semana?"
 - "Escríbeme un guion usando mis transcripciones" → lo escribe con tu voz (`_voz.md`) y lo guarda en `02-Guiones`.
 - "¿Qué reel debería impulsar?" / "Prepárame una campaña con 10 € al día para ese reel" → deja un **borrador**; la creas en pausa desde el dashboard.
-- "Convierte esta idea en un reel y adáptalo a todas mis redes" → las versiones quedan en la pestaña Publicar.
+- "Convierte esta idea en un reel y adáptalo a todas mis redes" → las versiones quedan en la ficha de la pieza, en Contenido.
 - Notas de voz: las transcribe y responde a lo que dices.
 
 Y cada semana te escribe solo (tareas programadas, hora de Madrid):

@@ -12,11 +12,11 @@ import { createJarvis, JarvisError, TareaError } from './jarvis.js';
 import { createArchivos, ArchivoError } from './archivos.js';
 import { createAlmacen } from './integrations/almacen.js';
 import { createPublicadorIg, PublicarError } from './integrations/publicar-ig.js';
+import { createResultados } from './resultados.js';
 import { systemStatus } from './status.js';
 import { createAsistente, OcupadoError } from './asistente.js';
 import { sintetizar, vozConfigurada } from './tts.js';
 import { createSkills } from './skills.js';
-import { demoInicio } from '../web/src/lib/demo.js';
 import { randomBytes } from 'node:crypto';
 import { ajustes } from './db.js';
 import { createInstagram } from './integrations/instagram.js';
@@ -39,7 +39,7 @@ dotenv.config({ path: path.join(ROOT, '.env'), quiet: true });
 
 const DIST = path.join(ROOT, 'web', 'dist');
 
-export function createApp({ jarvis, archivos, publicadorIg, asistente, instagram, competencia, ads, publicar, hermes, jobs, kit, disenos, recordatorios, laboratorio, port, onChange = () => {}, status, tts = sintetizar }) {
+export function createApp({ jarvis, archivos, publicadorIg, asistente, instagram, competencia, ads, publicar, hermes, jobs, kit, disenos, recordatorios, laboratorio, resultados, port, onChange = () => {}, status, tts = sintetizar }) {
   const estadoSistema = status || (() => systemStatus({ vaultPath: jarvis.vault.base, instagram: Boolean(instagram?.estado().conectado), ads: Boolean(ads?.estado().conectado && ads?.estado().cuenta), hermes: Boolean(hermes?.estado().gateway.online) }));
   const app = express();
 
@@ -76,12 +76,8 @@ export function createApp({ jarvis, archivos, publicadorIg, asistente, instagram
   app.get('/api/health', (_req, res) => res.json({ ok: true, name: 'JARVIS', version: '0.2.0' }));
 
   app.get('/api/inicio', h(async () => {
-    const real = jarvis.inicio();
     const sistema = await estadoSistema();
-    // La agenda y los recordatorios son siempre reales: se marcan desde aquí
-    const propio = { ...jarvis.agenda(), recordatorios: recordatorios ? recordatorios.deHoy() : [], conRecordatorios: Boolean(recordatorios), conAds: Boolean(ads) };
-    // Hasta que haya datos propios los KPIs son de ejemplo (el estado del sistema siempre es real)
-    return real.vacio ? { ...demoInicio, ...propio, sistema } : { demo: false, ...real, ...propio, sistema };
+    return { ...jarvis.inicio(), ...jarvis.agenda(), semana: jarvis.miSemana(), recordatorios: recordatorios ? recordatorios.deHoy() : [], conRecordatorios: Boolean(recordatorios), conAds: Boolean(ads), sistema };
   }));
 
   // Métricas de Meta Ads de los últimos 7 días para Inicio (aparte: tardan lo que tarde Meta)
@@ -220,13 +216,7 @@ export function createApp({ jarvis, archivos, publicadorIg, asistente, instagram
 
   // Publicar: versiones por red y calendario (JARVIS prepara, la persona publica)
   if (publicar) {
-    app.get('/api/publicar', h((req) => {
-      const hoyD = new Date();
-      const desde = req.query.desde || new Date(hoyD.getTime() - ((hoyD.getDay() + 6) % 7) * 86400000).toLocaleDateString('sv-SE');
-      const hasta = req.query.hasta || new Date(new Date(desde).getTime() + 6 * 86400000).toLocaleDateString('sv-SE');
-      return { redes: REDES, porDefecto: REDES_POR_DEFECTO, piezas: publicar.piezas(), calendario: publicar.calendario({ desde, hasta }), trabajando: Boolean(asistente?.estado({ conversacion: 'publicar' }).ocupadoAqui) };
-    }));
-    app.get('/api/publicar/piezas/:id', h((req) => publicar.listarPieza(req.params.id)));
+    app.get('/api/publicar/piezas/:id', h((req) => ({ ...publicar.listarPieza(req.params.id), redes: REDES, porDefecto: REDES_POR_DEFECTO, trabajando: Boolean(asistente?.estado({ conversacion: 'publicar' }).ocupadoAqui) })));
     app.post('/api/publicar/adaptar', h((req) => {
       const { pieza, redes, prompt } = publicar.prepararAdaptacion(req.body || {});
       const r = asistente.preguntar({ conversacion: 'publicar', modelo: req.body?.modelo || 'sonnet', texto: prompt });
@@ -308,6 +298,19 @@ export function createApp({ jarvis, archivos, publicadorIg, asistente, instagram
   }
 
   // Fases del pipeline de contenido (configurables)
+  // Resultados: cada pieza con su publicación de Instagram, qué te funciona y el informe semanal
+  if (resultados) {
+    app.get('/api/piezas/:id/resultados', h((req) => resultados.deLaPieza(req.params.id)));
+    app.get('/api/piezas/:id/instagram/candidatas', h((req) => resultados.candidatas(req.params.id)));
+    app.put('/api/piezas/:id/instagram', h((req) => resultados.vincular(req.params.id, req.body?.media || null), true));
+    app.get('/api/resultados', h((req) => {
+      resultados.vincularTodo();
+      return { ...resultados.queFunciona({ dias: Math.min(365, Math.max(30, Number(req.query.dias) || 90)) }), informe: resultados.ultimoInforme() };
+    }));
+    app.post('/api/resultados/informe', h((req) => { const r = resultados.informeSemanal(req.body?.fecha ? { fecha: String(req.body.fecha) } : {}); return { nota: r.nota, lunes: r.lunes }; }, true));
+  }
+  app.get('/api/ritmo', h(() => jarvis.ritmo()));
+  app.put('/api/ritmo', h((req) => jarvis.guardarRitmo(req.body || {}), true));
   app.get('/api/pipeline', h(() => jarvis.pipeline.fases()));
   app.put('/api/pipeline', h((req) => jarvis.pipeline.guardar(req.body?.fases, { mover: req.body?.mover || {} }), true));
   app.get('/api/tareas', h((req) => jarvis.tareas({ fecha: req.query.fecha || undefined })));
@@ -342,7 +345,7 @@ export function createApp({ jarvis, archivos, publicadorIg, asistente, instagram
     return publicadorIg.publicarAhora(req.params.id);
   }, true));
   app.delete('/api/piezas/:id', h((req) => { const r = jarvis.borrarPieza(req.params.id); borrarArchivosDe([r.pieza]); return { ok: true }; }, true));
-  app.get('/api/contenido', h(() => ({ piezas: jarvis.listarPiezas(), carpetas: jarvis.carpetas(), archivos: Boolean(archivos), instagram: publicadorIg?.estado() || { disponible: false, motivo: 'La publicación en Instagram no está disponible' } })));
+  app.get('/api/contenido', h(() => ({ piezas: jarvis.listarPiezas(), carpetas: jarvis.carpetas(), pilares: jarvis.pilares(), versiones: publicar?.resumen() || [], metricas: resultados?.porPieza() || {}, archivos: Boolean(archivos), instagram: publicadorIg?.estado() || { disponible: false, motivo: 'La publicación en Instagram no está disponible' } })));
   // Caption con IA (al crear o programar un post): devuelve el texto, no guarda nada
   const contextoCaption = archivos ? createContextoCaption({ archivos, vaultPath: jarvis.vault.base, python: () => laboratorio?.python?.() || null }) : null;
   app.post('/api/caption', h(async (req) => {
@@ -435,7 +438,6 @@ export function createApp({ jarvis, archivos, publicadorIg, asistente, instagram
     app.post('/api/jarvis/cancelar', h((req) => asistente.cancelar(req.body || {})));
     app.post('/api/jarvis/nueva-sesion', h((req) => asistente.nuevaSesion(req.body || {})));
     app.get('/api/jarvis/estado', h((req) => asistente.estado({ conversacion: req.query.conversacion || 'principal' })));
-    app.get('/api/jarvis/enrutamiento', h(() => asistente.enrutamiento()));
   }
 
   // Voz: ElevenLabs desde el servidor (la clave nunca llega al navegador)
@@ -485,7 +487,8 @@ function main() {
   const competencia = createCompetencia({ db, instagram, vault: jarvis.vault, alCambiar: onChange });
   const ads = createAds({ db, instagram, alCambiar: onChange });
   const publicar = createPublicar({ db, jarvis, vault: jarvis.vault, alCambiar: onChange });
-  const jobs = createJobs({ instagram, competencia, ads, asistente, skills: createSkills(cfg.vaultPath), vault: jarvis.vault, ajustesDb: ajustes(db) });
+  const resultados = createResultados({ db, jarvis, vault: jarvis.vault, alCambiar: onChange });
+  const jobs = createJobs({ instagram, competencia, ads, asistente, resultados, skills: createSkills(cfg.vaultPath), vault: jarvis.vault, ajustesDb: ajustes(db) });
   jobs.iniciar();
   const hermes = createHermes({ vaultPath: cfg.vaultPath, mcpScript: cfg.mcpScript });
   const publicadorIg = createPublicadorIg({ db, jarvis, instagram, almacen: createAlmacen({}), archivos, alCambiar: onChange });
@@ -495,7 +498,7 @@ function main() {
   if (process.platform !== 'win32') setTimeout(() => motor.preparar(), 5000).unref();
   disenos = createDisenos({ db, jarvis, kit, motor, archivos, previasDir: path.join(cfg.vaultPath, '.jarvis', 'disenos'), recortarFoto: createRecortador({ archivos, python: () => laboratorio.python() }), asistente, emitir, alCambiar: onChange });
   const recordatorios = createRecordatorios({ db });
-  const server = createServer(createApp({ jarvis, archivos, publicadorIg, asistente, instagram, competencia, ads, publicar, hermes, jobs, kit, disenos, recordatorios, laboratorio, port: cfg.port, onChange }));
+  const server = createServer(createApp({ jarvis, archivos, publicadorIg, asistente, instagram, competencia, ads, publicar, hermes, jobs, kit, disenos, recordatorios, laboratorio, resultados, port: cfg.port, onChange }));
   // Solo el propio dashboard puede escuchar los eventos (otra web abierta en el navegador, no)
   const local = hostsPermitidos(cfg.port);
   wss = new WebSocketServer({ server, path: '/ws', verifyClient: ({ origin, req }) => local.has(req.headers.host) && (!origin || local.has(origin.replace(/^https?:\/\//, ''))) });

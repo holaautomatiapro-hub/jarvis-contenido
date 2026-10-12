@@ -15,7 +15,7 @@ const yaml = (s) => JSON.stringify(s); // cadena YAML segura (JSON es YAML váli
 function preambulo(cat) {
   if (ANALISIS.has(cat.id)) {
     return `## Antes de empezar
-- Trabaja con datos reales: métricas del vault, notas de \`04-Competencia\`/\`05-Ads\`, el pipeline (\`listar_pipeline\`) o lo que la persona pegue. Si faltan datos, dilo y pide lo mínimo necesario. **Nunca inventes cifras.**
+- Trabaja con datos reales del MCP jarvis: \`metricas_instagram\` (tus publicaciones), \`competencia_datos\` / \`competencia_mejores\` (competencia), \`ads_rendimiento\` / \`ads_biblioteca\` (anuncios) y el pipeline (\`listar_pipeline\`), o lo que la persona pegue. Si los datos son de ejemplo (demo), dilo en la primera línea. Si faltan datos, dilo y pide lo mínimo necesario. **Nunca inventes cifras.**
 - Distingue siempre entre hechos (datos) e hipótesis (tu interpretación).`;
   }
   return `## Antes de empezar
@@ -24,11 +24,10 @@ function preambulo(cat) {
 - Si te falta un dato imprescindible (tema, objetivo o público), pregunta una sola cosa y espera.`;
 }
 
-function cierre(cat) {
+function cierre(cat, s) {
   const anti = ANALISIS.has(cat.id) ? '' : `- Repasa el texto contra la lista anti-IA: nada de "en el mundo de hoy", "descubre", "sumérgete", "no solo… sino también", tríos de adjetivos ni emojis de relleno. Frases concretas, como se dicen en voz alta.\n`;
   return `## Al terminar
-${anti}- Guarda el resultado con \`crear_nota\` en \`${cat.carpeta}/\` (título claro y la fecha si es un informe).
-- Si es una pieza de contenido nueva, créala o muévela en el pipeline (\`crear_pieza\` / \`mover_pieza\`).
+${anti}${s.sinNota ? '' : `- Guarda el resultado con \`crear_nota\` en \`${cat.carpeta}/\` (título claro y la fecha si es un informe).\n`}- Si es una pieza de contenido nueva, créala o muévela en el pipeline (\`crear_pieza\` / \`mover_pieza\`) con su pilar, objetivo, gancho y CTA si los sabes.
 - Termina proponiendo el siguiente paso en una frase.`;
 }
 
@@ -64,7 +63,7 @@ ${s.p.map((x, i) => `${i + 1}. ${x}`).join('\n')}
 ## Formato de la respuesta
 ${s.s}
 
-${cierre(cat)}
+${cierre(cat, s)}
 `;
     mkdirSync(path.join(destino, s.n), { recursive: true });
     writeFileSync(path.join(destino, s.n, 'SKILL.md'), md, 'utf8');

@@ -92,6 +92,25 @@ describe('versiones por red', () => {
     assert.match(ctx.vault.read(ctx.pub.guardarVersiones({ piezaId: pieza.id, versiones: [{ red: 'x', texto: 'hilo' }] }).nota).contenido, /✅ publicado/);
   });
 
+  test('desmarcar una versión devuelve la pieza a Listo', () => {
+    const [reel] = ctx.pub.listarPieza(pieza.id).versiones;
+    ctx.pub.marcar(reel.id, false);
+    assert.equal(ctx.jarvis.leerPieza(pieza.id).estado, 'listo');
+  });
+
+  test('un solo calendario: las versiones sin día salen con su pieza y el calendario trae las piezas', () => {
+    const p = ctx.jarvis.crearPieza({ titulo: 'Reel del miércoles', formato: 'Reel', fecha: '2026-10-14', hora: '19:00' });
+    ctx.pub.guardarVersiones({ piezaId: p.id, versiones: [{ red: 'tiktok', texto: 'guion' }, { red: 'linkedin', texto: 'post', fecha: '2026-10-16' }] });
+    const c = ctx.pub.calendario({ desde: '2026-10-12', hasta: '2026-10-18' });
+    assert.ok(c.piezas.some((x) => x.id === p.id));
+    const tiktok = c.versiones.find((v) => v.pieza_id === p.id && v.red === 'tiktok');
+    assert.equal(tiktok.dia, '2026-10-14', 'sin fecha propia, el día de la pieza');
+    assert.equal(tiktok.hora_dia, '19:00');
+    assert.equal(c.versiones.find((v) => v.pieza_id === p.id && v.red === 'linkedin').dia, '2026-10-16');
+    assert.ok(!c.sinFecha.some((v) => v.pieza_id === p.id), 'tiene día gracias a su pieza');
+    assert.deepEqual(ctx.pub.resumen().filter((v) => v.pieza_id === p.id).map((v) => v.red), ['tiktok', 'linkedin']);
+  });
+
   test('MCP: guardar_versiones y programar_version', async () => {
     const p2 = ctx.jarvis.crearPieza({ titulo: 'Carrusel herramientas' });
     const [a, b] = InMemoryTransport.createLinkedPair();

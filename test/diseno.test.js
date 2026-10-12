@@ -228,6 +228,8 @@ describe('diseños: API, exportar a la biblioteca y Claude', () => {
     const { data: d } = await api('/api/portadas', { tipo: 'testimonio', titulo: 'Contraté antes a un setter IA', descripcion: 'Fondo blanco con letras negras', foto: { url: '/api/contenido/archivos/2026-10/yo.jpg', mime: 'image/jpeg' }, pieza_id: pieza.id });
     assert.equal(d.uso, 'portada');
     assert.equal(d.formato, 'story');
+    // Mientras no llega a la pieza, se ve en la lista de Diseño (si se cierra la ventana, no se pierde)
+    assert.ok((await api('/api/disenos')).data.disenos.some((x) => x.id === d.id));
     const e = await esperar(d.id, 'error');
     assert.match(e.error, /sin guardar/);
     // Claude la guarda (una diapositiva) y se exporta a la biblioteca como imagen
@@ -236,7 +238,7 @@ describe('diseños: API, exportar a la biblioteca y Claude', () => {
     assert.equal(a.mime, 'image/jpeg');
     assert.match(a.nombre, /portada-contrate-antes-a-un-setter-ia/);
     assert.deepEqual((await api(`/api/portadas/${d.id}/exportar`, {})).data, a, 'no la exporta dos veces');
-    // No sale en la lista de Diseño
+    // Ya en la pieza, deja de salir en la lista de Diseño
     assert.ok(!(await api('/api/disenos')).data.disenos.some((x) => x.id === d.id));
   });
 

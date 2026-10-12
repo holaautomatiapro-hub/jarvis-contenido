@@ -6,25 +6,28 @@ import Tareas from './views/Tareas.jsx';
 import Contenido from './views/Contenido.jsx';
 import Laboratorio from './views/Laboratorio.jsx';
 import Notas from './views/Notas.jsx';
-import Voz from './views/Voz.jsx';
+import Chat from './views/Chat.jsx';
 import Skills from './views/Skills.jsx';
 import Instagram from './views/Instagram.jsx';
 import Competencia from './views/Competencia.jsx';
 import Ads from './views/Ads.jsx';
-import Publicar from './views/Publicar.jsx';
 import Apps from './views/Apps.jsx';
-import { demoInicio } from './lib/demo.js';
 import { obsidianUrl, useRecurso } from './lib/api.js';
 import { ponerFases } from './views/contenido/comun.jsx';
 
+// Lo que se ve en Inicio mientras llega /api/inicio
+const INICIO_VACIO = { kpis: [], publicaHoy: [], tareas: { hoy: [], semana: [], mes: [], atrasadas: [] }, recordatorios: [], sistema: [] };
+
 const initialTab = () => {
-  const h = window.location.hash.slice(1).split('?')[0];
+  let h = window.location.hash.slice(1).split('?')[0];
+  if (h === 'voz') h = 'chat'; // enlaces antiguos
+  if (h === 'publicar') h = 'contenido'; // Publicar está ahora en la ficha de cada pieza
   return TABS.some((t) => t.id === h) ? h : 'inicio';
 };
 
 export default function App() {
   const [tab, setTab] = useState(initialTab);
-  const [inicio, recargarInicio] = useRecurso('/api/inicio', demoInicio);
+  const [inicio, recargarInicio] = useRecurso('/api/inicio', INICIO_VACIO);
   const [cfg] = useRecurso('/api/config', { vault: 'JARVIS-Vault' });
   // Fases del pipeline (configurables): las comparten todas las vistas
   const [fases] = useRecurso('/api/pipeline', null);
@@ -45,28 +48,27 @@ export default function App() {
     nota: () => setCaptura('nota'),
     idea: () => setCaptura('idea'),
     guion: () => go('skills'),
-    dictar: () => go('voz'),
+    dictar: () => go('chat'),
     vault: () => { window.location.href = obsidianUrl(cfg.vault); },
     ir: go,
   };
 
   let vista;
-  if (tab === 'inicio') vista = <Inicio data={inicio} onAsk={(t) => { setPendiente(t); go('voz'); }} acciones={acciones} recargar={recargarInicio} />;
+  if (tab === 'inicio') vista = <Inicio data={inicio} onAsk={(t) => { setPendiente(t); go('chat'); }} acciones={acciones} recargar={recargarInicio} />;
   else if (tab === 'tareas') vista = <Tareas />;
   else if (tab === 'contenido') vista = <Contenido onCaptura={setCaptura} />;
   else if (tab === 'laboratorio') vista = <Laboratorio />;
   else if (tab === 'notas') vista = <Notas onCaptura={setCaptura} />;
-  else if (tab === 'voz') vista = <Voz sistema={inicio.sistema} pendiente={pendiente} onConsumido={() => setPendiente(null)} />;
+  else if (tab === 'chat') vista = <Chat pendiente={pendiente} onConsumido={() => setPendiente(null)} />;
   else if (tab === 'skills') vista = <Skills />;
   else if (tab === 'instagram') vista = <Instagram />;
   else if (tab === 'competencia') vista = <Competencia />;
   else if (tab === 'ads') vista = <Ads />;
-  else if (tab === 'publicar') vista = <Publicar />;
   else vista = <Apps />;
 
   return (
     <div className="app">
-      <Topbar tab={tab} onTab={go} demo={inicio.demo} onBuscar={() => go('notas')} />
+      <Topbar tab={tab} onTab={go} onBuscar={() => go('notas')} />
       {vista}
       {captura && <Captura tipo={captura} onClose={cerrar} />}
     </div>

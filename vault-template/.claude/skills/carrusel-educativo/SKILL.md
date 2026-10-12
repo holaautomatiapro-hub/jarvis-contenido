@@ -1,6 +1,6 @@
 ---
 name: carrusel-educativo
-description: "Carrusel de 7-10 slides que enseña algo concreto. Úsala cuando pidan un carrusel sin más detalle."
+description: "Texto de un carrusel de 7-10 slides que enseña algo concreto. Úsala cuando pidan un carrusel sin más detalle (el diseño se hace después en Laboratorio → Diseño)."
 metadata:
   titulo: "Carrusel educativo"
   categoria: carruseles
@@ -8,7 +8,7 @@ metadata:
 ---
 # Carrusel educativo
 
-Carrusel de 7-10 slides que enseña algo concreto. Úsala cuando pidan un carrusel sin más detalle.
+Texto de un carrusel de 7-10 slides que enseña algo concreto. Úsala cuando pidan un carrusel sin más detalle (el diseño se hace después en Laboratorio → Diseño).
 
 ## Antes de empezar
 - Lee `_voz.md` (en la raíz del vault) y escribe con esa voz. Si está vacío, usa un tono cercano y directo en español de España y avísalo en una sola línea al final.
@@ -27,5 +27,5 @@ Slide por slide: Título / Texto / Idea visual, y el caption al final.
 ## Al terminar
 - Repasa el texto contra la lista anti-IA: nada de "en el mundo de hoy", "descubre", "sumérgete", "no solo… sino también", tríos de adjetivos ni emojis de relleno. Frases concretas, como se dicen en voz alta.
 - Guarda el resultado con `crear_nota` en `06-Publicaciones/` (título claro y la fecha si es un informe).
-- Si es una pieza de contenido nueva, créala o muévela en el pipeline (`crear_pieza` / `mover_pieza`).
+- Si es una pieza de contenido nueva, créala o muévela en el pipeline (`crear_pieza` / `mover_pieza`) con su pilar, objetivo, gancho y CTA si los sabes.
 - Termina proponiendo el siguiente paso en una frase.

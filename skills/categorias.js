@@ -1,5 +1,6 @@
 // Categorías del vault de skills. El color e icono se usan en el dashboard.
 export const CATEGORIAS = [
+  { id: 'flujos', titulo: 'Flujos completos', icono: 'sparkle', color: 'var(--accent-2)', carpeta: '02-Guiones', descripcion: 'De principio a fin desde un solo chat: carrusel o stories, testimonio, reel, clips y lead magnet.', accion: 'Empezar' },
   { id: 'ganchos', titulo: 'Ganchos', icono: 'bolt', color: 'var(--purple)', carpeta: '02-Guiones', descripcion: 'Aperturas que paran el scroll en el primer segundo.', accion: 'Generar ganchos' },
   { id: 'guiones', titulo: 'Guiones', icono: 'pen', color: 'var(--blue)', carpeta: '02-Guiones', descripcion: 'Guiones para reels, shorts, vídeos y anuncios, con tu voz.', accion: 'Escribir un guion' },
   { id: 'carruseles', titulo: 'Carruseles', icono: 'layers', color: 'var(--pink)', carpeta: '06-Publicaciones', descripcion: 'Carruseles educativos y de venta, slide a slide.', accion: 'Crear un carrusel' },

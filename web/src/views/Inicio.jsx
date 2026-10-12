@@ -1,17 +1,20 @@
 import { useState } from 'react';
 import Icon from '../components/Icon.jsx';
 import Sparkline from '../components/Sparkline.jsx';
-import Sphere from '../components/Sphere.jsx';
-import Mascota from '../components/Mascota.jsx';
 import { api, useRecurso } from '../lib/api.js';
 import { diaLargo } from '../lib/fechas.js';
 import { Plazo, Prioridad } from './Tareas.jsx';
 import { BotonCopiar } from './contenido/comun.jsx';
+import { redDe } from '../lib/redes.js';
+import { ParaProducir, TuSemana } from './inicio/Semana.jsx';
 
-function Kpi({ k }) {
+function Kpi({ k, ir }) {
   const up = k.delta >= 0;
   return (
-    <div className="panel kpi">
+    <button type="button" className="panel kpi" onClick={() => {
+      if (k.vista) { try { localStorage.setItem('contenido_vista', k.vista); } catch { /* sin localStorage */ } }
+      if (k.ir) ir?.(k.ir);
+    }}>
       <div className="kpi-icon" style={{ background: `color-mix(in srgb, ${k.color} 16%, transparent)`, color: k.color }}>
         <Icon name={k.icon} />
       </div>
@@ -21,10 +24,11 @@ function Kpi({ k }) {
       </div>
       <div className="kpi-value">
         {k.value}
-        <span className={`delta ${up ? 'up' : 'down'}`}>{up ? '▲' : '▼'} {Math.abs(k.delta)}%</span>
+        {k.delta != null && <span className={`delta ${up ? 'up' : 'down'}`}>{up ? '▲' : '▼'} {Math.abs(k.delta)}%</span>}
       </div>
-      <div className="kpi-spark"><Sparkline data={k.series} color={k.color} /></div>
-    </div>
+      {k.ayuda && <div className="kpi-ayuda">{k.ayuda}</div>}
+      {k.series && <div className="kpi-spark"><Sparkline data={k.series} color={k.color} /></div>}
+    </button>
   );
 }
 
@@ -37,30 +41,59 @@ const ESTADO_IG = {
 };
 const COLOR_ESTADO = { idea: 'var(--blue)', guion: 'var(--purple)', grabar: 'var(--orange)', editar: 'var(--pink)', listo: 'var(--cyan)', publicado: 'var(--green)', pendiente: 'var(--orange)' };
 
-function PublicaHoy({ items = [], ir }) {
+// Descarga los archivos de una pieza (uno detrás de otro) para subirlos a mano
+const descargar = (archivos) => archivos.forEach((a, i) => setTimeout(() => {
+  const el = document.createElement('a');
+  el.href = a.url; el.download = a.nombre || ''; document.body.appendChild(el); el.click(); el.remove();
+}, i * 400));
+
+function PublicaHoy({ items = [], ir, alCambiar }) {
+  const [error, setError] = useState(null);
   const hechas = items.filter((p) => p.estado === 'publicado').length;
+  const marcar = async (e, p) => {
+    e.stopPropagation(); setError(null);
+    try {
+      if (p.tipo === 'version') await api(`/api/publicar/versiones/${p.id}`, { method: 'PATCH', body: { publicado: true } });
+      else await api(`/api/piezas/${p.id}`, { method: 'PATCH', body: { estado: 'publicado' } });
+      alCambiar?.();
+    } catch (err) { setError(err.message); }
+  };
+  const parar = (e) => e.stopPropagation();
   return (
     <div className="panel panel-pad">
       <div className="panel-head">
         <span className="label">Hoy se publica</span>
         {items.length ? <span className="ayuda">{hechas}/{items.length} publicado</span> : null}
       </div>
-      {!items.length && <div className="vacio mini-vacio">Nada programado para hoy. Ponle fecha a una pieza en Contenido.</div>}
+      {error && <div className="aviso-error">{error}</div>}
+      {!items.length && <div className="vacio mini-vacio">Nada programado para hoy. Tapa el hueco en «Tu semana».</div>}
       <div className="hoy-lista">
         {items.map((p) => {
           const ig = p.instagram && ESTADO_IG[p.instagram];
+          const publicada = p.estado === 'publicado';
+          // Si Instagram la publica sola, no hace falta marcarla
+          const sola = ['programado', 'publicando', 'publicado'].includes(p.instagram);
           return (
-            <div key={`${p.tipo}-${p.id}`} className="hoy-fila" role="button" tabIndex={0} onClick={() => ir?.(p.tipo === 'version' ? 'publicar' : 'contenido')} onKeyDown={(e) => e.key === 'Enter' && ir?.(p.tipo === 'version' ? 'publicar' : 'contenido')} title={p.error || 'Abrir'}>
+            <div key={`${p.tipo}-${p.id}`} className="hoy-fila" role="button" tabIndex={0} onClick={() => ir?.('contenido')} onKeyDown={(e) => e.key === 'Enter' && ir?.('contenido')} title={p.error || 'Abrir'}>
               <span className="time">{p.hora || '—'}</span>
               <span className="hoy-txt">
                 <b>{p.titulo}</b>
-                <small>{p.tipo === 'version' ? p.red.replace(/_/g, ' ') : p.formato || 'Pieza'}</small>
+                <small>{p.tipo === 'version' ? `Versión para ${redDe(p.red).nombre}` : p.formato || 'Pieza'}</small>
+                {p.redes?.length > 0 && <span className="hoy-redes">También en {p.redes.map((v) => `${redDe(v.red).corto}${v.estado === 'publicado' ? ' ✓' : ''}`).join(', ')}</span>}
               </span>
               <span className="hoy-estados">
                 <span className="tag-estado" style={{ '--c': COLOR_ESTADO[p.estado] || 'var(--muted)' }}>{p.etiqueta}</span>
                 {ig && <span className="tag-estado" style={{ '--c': ig.color }}>{ig.label}</span>}
                 {p.leadmagnet != null && (p.leadmagnet ? <BotonCopiar texto={p.leadmagnet} etiqueta="Copiar lead magnet" className="tag-estado lm-copiar" /> : <span className="tag-estado" style={{ '--c': 'var(--orange)' }}>Lead magnet sin enlace</span>)}
               </span>
+              {!publicada && (
+                <span className="hoy-acciones" onClick={parar} onKeyDown={parar}>
+                  {p.tipo === 'version' && p.texto && <BotonCopiar texto={p.texto} etiqueta="Copiar texto" className="link-btn" />}
+                  {p.tipo === 'pieza' && p.caption && <BotonCopiar texto={p.caption} etiqueta="Copiar caption" className="link-btn" />}
+                  {p.tipo === 'pieza' && p.archivos?.length > 0 && <button type="button" className="link-btn" onClick={() => descargar(p.archivos)}>Descargar{p.archivos.length > 1 ? ` (${p.archivos.length})` : ''}</button>}
+                  {!sola && <button type="button" className="btn btn-sec btn-mini" onClick={(e) => marcar(e, p)}>Marcar publicada</button>}
+                </span>
+              )}
             </div>
           );
         })}
@@ -301,48 +334,32 @@ export default function Inicio({ data, onAsk, acciones = {}, recargar = () => {}
     onAsk?.(t);
     setQ('');
   };
-  const allOn = data.sistema.every((s) => s.estado === 'on');
+  const allOn = data.sistema.length > 0 && data.sistema.every((s) => s.estado === 'on');
 
   return (
     <>
       <section className="home">
         <div className="col">
-          {data.kpis.map((k) => <Kpi key={k.id} k={k} />)}
+          {data.kpis.map((k) => <Kpi key={k.id} k={k} ir={acciones.ir} />)}
         </div>
 
-        <div className="panel hero">
-          <div className="sphere-wrap"><Sphere /></div>
-          <Mascota pose="saludando" size={150} className="hero-mascota" />
-          <div className="hero-title">JARVIS</div>
-          <div className="hero-sub">{data.fecha ? diaLargo(data.fecha) : 'Tu espacio de trabajo inteligente'}</div>
-          <form className="ask" onSubmit={(e) => { e.preventDefault(); submit(); }}>
+        <div className="col">
+          <form className="ask ask-inicio panel" onSubmit={(e) => { e.preventDefault(); submit(); }}>
             <Icon name="search" />
-            <input value={q} onChange={(e) => setQ(e.target.value)} placeholder="Pregúntale a JARVIS lo que quieras…" aria-label="Pregúntale a JARVIS" />
+            <input value={q} onChange={(e) => setQ(e.target.value)} placeholder={`${data.fecha ? diaLargo(data.fecha) : 'Hoy'} · Pregúntale a JARVIS lo que quieras…`} aria-label="Pregúntale a JARVIS" />
             <button className="ask-send" type="submit" aria-label="Enviar"><Icon name="send" size={15} /></button>
           </form>
-          <div className="chips">
-            <button className="chip" onClick={() => submit('Resume mi día')}><Icon name="sparkle" />Resume mi día</button>
+          <TuSemana semana={data.semana} recargar={recargar} ir={acciones.ir} />
+          <div className="chips chips-inicio">
+            <button className="chip" onClick={() => submit('¿Qué tengo que hacer hoy para no quedarme sin contenido?')}><Icon name="sparkle" />Qué hago hoy</button>
             <button className="chip" onClick={() => submit('Analiza mi último reel')}><Icon name="chart" />Analiza mi último reel</button>
-            <button className="chip" onClick={() => submit('Planifica mi semana de contenido')}><Icon name="calendar" />Planifica mi semana</button>
+            <button className="chip" onClick={() => submit('Planifica mi semana de contenido tapando los huecos')}><Icon name="calendar" />Planifica mi semana</button>
           </div>
         </div>
 
         <div className="col">
-          <PublicaHoy items={data.publicaHoy} ir={acciones.ir} />
-
-          <div className="panel panel-pad" style={{ flex: 1 }}>
-            <div className="panel-head">
-              <span className="label">Estado del sistema</span>
-              <span className="all-online"><span className={`dot ${allOn ? 'on' : 'warn'}`} />{allOn ? 'Todos online' : 'Revisar'}</span>
-            </div>
-            {data.sistema.map((s) => (
-              <div className="status-row" key={s.label}>
-                <Icon name={s.icon} />
-                <span>{s.label}</span>
-                <span className="status"><span className={`dot ${s.estado}`} />{s.estado === 'on' ? 'Online' : s.estado === 'warn' ? 'Sin conectar' : 'Offline'}</span>
-              </div>
-            ))}
-          </div>
+          <PublicaHoy items={data.publicaHoy} ir={acciones.ir} alCambiar={recargar} />
+          <ParaProducir lista={data.semana?.producir} ir={acciones.ir} />
         </div>
       </section>
 
@@ -354,13 +371,28 @@ export default function Inicio({ data, onAsk, acciones = {}, recargar = () => {}
       <section className="home-bottom">
         {data.conAds !== false ? <AdsPanel ir={acciones.ir} /> : <div />}
 
-        <div className="panel panel-pad">
-          <div className="panel-head"><span className="label">Acciones rápidas</span></div>
-          <div className="quick">
-            <button className="quick-btn" onClick={acciones.idea}><Icon name="bulb" /><b>Nueva idea</b><small>Al pipeline</small></button>
-            <button className="quick-btn" onClick={acciones.nota}><Icon name="doc" /><b>Nueva nota</b><small>En tu vault</small></button>
-            <button className="quick-btn" onClick={acciones.dictar}><Icon name="mic" /><b>Dictar</b><small>Habla con JARVIS</small></button>
-            <button className="quick-btn" onClick={acciones.vault}><Icon name="obsidian" /><b>Abrir vault</b><small>En Obsidian</small></button>
+        <div className="col">
+          <div className="panel panel-pad">
+            <div className="panel-head"><span className="label">Acciones rápidas</span></div>
+            <div className="quick">
+              <button className="quick-btn" onClick={acciones.idea}><Icon name="bulb" /><b>Nueva idea</b><small>Al banco de ideas</small></button>
+              <button className="quick-btn" onClick={acciones.nota}><Icon name="doc" /><b>Nueva nota</b><small>En tu vault</small></button>
+              <button className="quick-btn" onClick={acciones.dictar}><Icon name="mic" /><b>Chat</b><small>Habla con JARVIS</small></button>
+              <button className="quick-btn" onClick={acciones.vault}><Icon name="obsidian" /><b>Abrir vault</b><small>En Obsidian</small></button>
+            </div>
+          </div>
+          <div className="panel panel-pad">
+            <div className="panel-head">
+              <span className="label">Estado del sistema</span>
+              <span className="all-online"><span className={`dot ${allOn ? 'on' : 'warn'}`} />{allOn ? 'Todos online' : 'Revisar'}</span>
+            </div>
+            {data.sistema.map((s) => (
+              <div className="status-row" key={s.label}>
+                <Icon name={s.icon} />
+                <span>{s.label}</span>
+                <span className="status"><span className={`dot ${s.estado}`} />{s.estado === 'on' ? 'Online' : s.estado === 'warn' ? 'Sin conectar' : 'Offline'}</span>
+              </div>
+            ))}
           </div>
         </div>
       </section>

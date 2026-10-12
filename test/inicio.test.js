@@ -118,16 +118,20 @@ describe('Inicio', () => {
     const b = jarvis.crearPieza({ titulo: 'Carrusel de hoy', formato: 'carrusel', fecha: hoy, estado: 'editar' });
     db.prepare("UPDATE piezas SET hora = '09:00', ig_estado = 'error', ig_error = 'Token caducado' WHERE id = ?").run(b.id);
     jarvis.crearPieza({ titulo: 'De mañana', fecha: sumarDias(hoy, 1) });
-    db.prepare("INSERT INTO pub_versiones (pieza_id, red, texto, fecha, hora) VALUES (?, 'linkedin', 'Post', ?, '12:00')").run(a.id, hoy);
+    // Sin fecha propia, la versión de LinkedIn sale con su pieza; la de TikTok tiene otro día (hoy) y sale aparte
+    db.prepare("INSERT INTO pub_versiones (pieza_id, red, texto) VALUES (?, 'linkedin', 'Post')").run(a.id);
+    const manana = jarvis.crearPieza({ titulo: 'Reel de mañana', fecha: sumarDias(hoy, 1) });
+    db.prepare("INSERT INTO pub_versiones (pieza_id, red, texto, fecha, hora) VALUES (?, 'tiktok', 'Guion', ?, '12:00')").run(manana.id, hoy);
 
     const { json: r } = await api('/api/inicio');
     assert.deepEqual(r.publicaHoy.map((p) => [p.hora, p.titulo, p.etiqueta, p.instagram]), [
       ['09:00', 'Carrusel de hoy', 'Editar', 'error'],
-      ['12:00', 'Reel de hoy', 'Pendiente', null],
+      ['12:00', 'Reel de mañana', 'Pendiente', null],
       ['19:00', 'Reel de hoy', 'Listo', 'programado'],
     ]);
     assert.equal(r.publicaHoy[0].error, 'Token caducado');
-    assert.equal(r.publicaHoy[1].red, 'linkedin');
+    assert.equal(r.publicaHoy[1].red, 'tiktok');
+    assert.deepEqual(r.publicaHoy[2].redes, [{ red: 'linkedin', estado: 'listo' }]);
   });
 
   test('devuelve la fecha de hoy y qué paneles hay', async () => {

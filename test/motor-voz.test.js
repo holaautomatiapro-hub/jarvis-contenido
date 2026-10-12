@@ -8,35 +8,20 @@ import { openDb } from '../server/db.js';
 import { createVault, ensureVault } from '../server/vault.js';
 import { createJarvis } from '../server/jarvis.js';
 import { getConfig } from '../server/config.js';
-import { clasificar } from '../server/router-jev.js';
 import { argumentos, ejecutar, entornoLimpio } from '../server/claude-runner.js';
-import { createAsistente, OcupadoError } from '../server/asistente.js';
+import { createAsistente, OcupadoError, CONVERSACIONES, modeloPara } from '../server/asistente.js';
 import { textoParaVoz, sintetizar } from '../server/tts.js';
 
 const FALSO = `${process.execPath}|${path.join(path.dirname(fileURLToPath(import.meta.url)), 'fixtures', 'claude-falso.js')}`;
 const ejecutarFalso = (o) => ejecutar({ ...o, bin: FALSO });
 
-describe('JEV (clasificador)', () => {
-  const casos = [
-    ['Analiza qué reel debería impulsar esta semana', 'estrategia', 'opus'],
-    ['Escríbeme un guion para un reel sobre automatizar WhatsApp', 'escritura', 'sonnet'],
-    ['Busca en internet las tendencias de reels de este mes', 'web', 'sonnet'],
-    ['Apunta esta idea: reel sobre JARVIS en Windows', 'memoria', 'haiku'],
-    ['Resume mi día', 'memoria', 'haiku'],
-    ['¿Qué hora es en México?', 'rapido', 'haiku'],
-  ];
-  for (const [texto, ruta, modelo] of casos) {
-    test(`"${texto}" → ${ruta}`, () => {
-      const r = clasificar(texto);
-      assert.equal(r.ruta, ruta);
-      assert.equal(r.modelo, modelo);
-    });
-  }
-  test('se puede forzar el modelo', () => {
-    const r = clasificar('Resume mi día', { forzarModelo: 'opus' });
-    assert.equal(r.modelo, 'opus');
-    assert.equal(r.etiqueta, 'Claude Opus');
-    assert.equal(clasificar('hola', { forzarModelo: 'gpt' }).modelo, 'haiku');
+describe('modelo de cada conversación', () => {
+  test('Sonnet por defecto, el elegido a mano manda y Diseño va con Opus', () => {
+    assert.equal(modeloPara(CONVERSACIONES.principal), 'sonnet');
+    assert.equal(modeloPara(CONVERSACIONES.principal, 'opus'), 'opus');
+    assert.equal(modeloPara(CONVERSACIONES.principal, 'gpt'), 'sonnet');
+    assert.equal(modeloPara(CONVERSACIONES.diseno), 'opus');
+    assert.equal(modeloPara(CONVERSACIONES.sistema), 'haiku');
   });
 });
 
@@ -113,14 +98,13 @@ describe('asistente', () => {
     const t = setInterval(() => { if (!asistente.estado().ocupado) { clearInterval(t); ok(); } }, 20);
   });
 
-  test('pregunta → enruta, responde, registra actividad y retoma la sesión', async () => {
+  test('pregunta → responde y retoma la sesión', async () => {
     const r = asistente.preguntar({ texto: 'Escríbeme un guion sobre IA', canal: 'voz' });
     assert.equal(r.modelo, 'sonnet');
     assert.throws(() => asistente.preguntar({ texto: 'otra' }), OcupadoError);
     await esperarFin();
     assert.equal(asistente.estado().sesion, 'sesion-falsa-1');
     assert.ok(emitidos.some((e) => e.type === 'jarvis' && e.tipo === 'fin'));
-    assert.ok(jarvis.inicio().actividad.some((a) => a.texto.startsWith('JARVIS (Claude Sonnet)')));
 
     asistente.preguntar({ texto: 'Y ahora un gancho' });
     await esperarFin();
@@ -128,12 +112,10 @@ describe('asistente', () => {
     assert.match(fin, /sesión retomada/);
   });
 
-  test('estadísticas de enrutamiento', () => {
-    const e = asistente.enrutamiento();
-    assert.equal(e.total, 2);
-    assert.equal(e.barras.find((b) => b.label === 'Claude Sonnet').pct, 100);
-    assert.equal(e.barras.find((b) => b.label === 'Por voz').pct, 50);
-    assert.equal(e.coste, 0.02);
+  test('cada petición queda registrada con su modelo', () => {
+    const r = db.prepare('SELECT ruta, modelo, canal FROM enrutamiento ORDER BY id').all();
+    assert.equal(r.length, 2);
+    assert.deepEqual({ ...r[0] }, { ruta: 'principal', modelo: 'sonnet', canal: 'voz' });
   });
 
   test('nueva sesión borra el contexto', () => {

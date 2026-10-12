@@ -104,7 +104,8 @@ export function Preparar({ data, recargar }) {
 // Un archivo generado: vista previa, descargar, a la biblioteca
 export function Medio({ a, onVer, seleccionado, onSeleccionar }) {
   return (
-    <div className={`lab-medio${seleccionado ? ' sel' : ''}`}>
+    <div className={`lab-medio${seleccionado ? ' sel' : ''}${a.enBiblioteca ? ' enviado' : ''}`}>
+      {a.enBiblioteca && <span className="lab-enviado" title="Ya está en la biblioteca de Contenido">✓ En la biblioteca</span>}
       <button className="lab-medio-ver" onClick={() => onVer(a)} title="Ver">
         {esVideoRuta(a.ruta) ? <video src={`${urlArchivo(a.ruta)}#t=0.5`} preload="metadata" muted playsInline /> : <img src={urlArchivo(a.ruta)} alt="" loading="lazy" />}
       </button>
@@ -145,21 +146,38 @@ export function VerTexto({ ruta, titulo, onClose }) {
   );
 }
 
+// Pasa un grupo (o los elegidos) a la biblioteca. El carrusel en vídeo va junto (una pieza con todos sus vídeos);
+// stories y clips, cada uno en su pieza. Lo que ya está en la biblioteca no se vuelve a mandar.
+// Devuelve cuántas piezas nuevas se han creado.
+export async function enviarGrupo(g, titulo, formatoPorDefecto, elegidos = []) {
+  const juntos = g.id === 'carrusel-video';
+  const rutas = elegidos.length ? elegidos : g.archivos.filter((a) => !a.enBiblioteca || juntos).map((a) => a.ruta);
+  if (!rutas.length) return 0;
+  const nombreDe = (r) => r.split('/').pop().replace(/\.[^.]+$/, '').replace(/^\d+-/, '').replace(/-/g, ' ');
+  const envios = juntos ? [{ rutas, titulo: `${titulo} · ${g.nombre}` }] : rutas.map((r) => ({ rutas: [r], titulo: `${titulo} · ${nombreDe(r)}` }));
+  let nuevas = 0;
+  for (const e of envios) {
+    const p = await api('/api/laboratorio/biblioteca', { method: 'POST', body: { ...e, formato: formatoPorDefecto(g) } });
+    if (!p.yaEstaba) nuevas++;
+  }
+  return nuevas;
+}
+export const textoEnviadas = (n) => (n
+  ? `${n} ${n === 1 ? 'pieza nueva' : 'piezas nuevas'} en Contenido → Biblioteca (fase Listo, con su caption y en la carpeta del trabajo): ponles día en el calendario.`
+  : 'Ya estaba todo en la biblioteca: no se ha duplicado nada.');
+
 // Grupo de archivos (stories, clips…) con selección para pasarlos a la biblioteca
-export function Grupo({ g, titulo, formatoPorDefecto, recargar, setAviso }) {
+export function Grupo({ g, titulo, formatoPorDefecto, setAviso }) {
   const [sel, setSel] = useState([]);
   const [viendo, setViendo] = useState(null);
   const [enviando, setEnviando] = useState(false);
   const alternar = (a) => setSel((s) => (s.includes(a.ruta) ? s.filter((x) => x !== a.ruta) : [...s, a.ruta]));
-  // El carrusel en vídeo va junto (una pieza con todos sus vídeos); stories y clips, cada uno en su pieza
   const juntos = g.id === 'carrusel-video';
+  const pendientes = g.archivos.filter((a) => !a.enBiblioteca).length;
   const aBiblioteca = async () => {
-    const rutas = sel.length ? sel : g.archivos.map((a) => a.ruta);
     setEnviando(true);
     try {
-      if (juntos) await api('/api/laboratorio/biblioteca', { method: 'POST', body: { rutas, titulo: `${titulo} · ${g.nombre}`, formato: formatoPorDefecto(g) } });
-      else for (const r of rutas) await api('/api/laboratorio/biblioteca', { method: 'POST', body: { rutas: [r], titulo: `${titulo} · ${r.split('/').pop().replace(/\.[^.]+$/, '').replace(/^\d+-/, '').replace(/-/g, ' ')}`, formato: formatoPorDefecto(g) } });
-      setAviso({ tipo: 'ok', texto: `${juntos ? 'Pieza creada' : `${rutas.length} ${rutas.length === 1 ? 'pieza creada' : 'piezas creadas'}`} en Contenido (fase Listo): ponle día en el calendario o publícala.` });
+      setAviso({ tipo: 'ok', texto: textoEnviadas(await enviarGrupo(g, titulo, formatoPorDefecto, sel)) });
       setSel([]);
     } catch (e) { setAviso({ tipo: 'error', texto: e.message }); }
     setEnviando(false);
@@ -168,7 +186,7 @@ export function Grupo({ g, titulo, formatoPorDefecto, recargar, setAviso }) {
     <div className="lab-grupo">
       <div className="lab-grupo-head">
         <b>{g.nombre}</b><span className="t-dim">{g.archivos.length}</span>
-        <button className="chip" onClick={aBiblioteca} disabled={enviando}><Icon name="book" />{enviando ? 'Pasando…' : sel.length ? `${sel.length} a la biblioteca` : juntos ? 'Todo a la biblioteca' : 'Todos a la biblioteca'}</button>
+        <button className="chip" onClick={aBiblioteca} disabled={enviando || (!sel.length && !pendientes && !juntos)}><Icon name="book" />{enviando ? 'Pasando…' : sel.length ? `${sel.length} a la biblioteca` : !pendientes ? '✓ En la biblioteca' : juntos ? 'Todo a la biblioteca' : `${pendientes === g.archivos.length ? 'Todos' : `Los ${pendientes} que faltan`} a la biblioteca`}</button>
       </div>
       <div className="lab-medios">
         {g.archivos.map((a) => <Medio key={a.ruta} a={a} onVer={setViendo} seleccionado={sel.includes(a.ruta)} onSeleccionar={alternar} />)}

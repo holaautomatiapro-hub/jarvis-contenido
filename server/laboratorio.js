@@ -6,9 +6,32 @@ import { pipeline } from 'node:stream/promises';
 import { ROOT } from './config.js';
 import { leerZip } from './diseno/zip.js';
 import { nombreSeguro } from './archivos.js';
+import { normaliza } from './vault.js';
 import { rutaFfmpeg } from './diseno/motor.js';
 import { createLeadMagnets } from './leadmagnets.js';
 import { createImagenes } from './imagenes.js';
+
+// Lo que viene del Laboratorio lleva origen_ref = «laboratorio:<ruta>»: así no se duplica y la ficha dice de dónde sale
+export const REF_LAB = 'laboratorio:';
+export const refLab = (rutas) => (rutas.length === 1 ? `${REF_LAB}${rutas[0]}` : `${REF_LAB}${rutas[0]} (+${rutas.length - 1})`).slice(0, 500);
+
+// De un _caption.md con varias versiones («## Versión dolor», «## Clip 2 · el gancho»…) elige el de ese archivo
+// (si su nombre aparece en el título de una sección) o, si no, la primera versión.
+export function elegirCaption(md, archivo = '') {
+  const t = String(md || '').replace(/\r/g, '').trim();
+  if (!t) return null;
+  const secciones = [];
+  for (const linea of t.split('\n')) {
+    const h = linea.match(/^#{1,4}\s+(.*)$/);
+    if (h) secciones.push({ titulo: h[1], texto: [] });
+    else secciones.at(-1)?.texto.push(linea);
+  }
+  if (!secciones.length) return t;
+  const cuerpo = (x) => x.texto.join('\n').trim();
+  const clave = normaliza(path.basename(archivo).replace(/\.[^.]+$/, '').replace(/^\d+[-_ ]*/, '').replace(/[-_]+/g, ' ').trim());
+  const s = (clave && secciones.find((x) => cuerpo(x) && normaliza(x.titulo).includes(clave))) || secciones.find((x) => cuerpo(x));
+  return s ? cuerpo(s) : null;
+}
 
 // Laboratorio: clips de testimonios y edición de reels con el plugin «testimonios» de la persona.
 // Todo vive en una carpeta de trabajo propia (fuera del vault: los vídeos pesan mucho):
@@ -259,6 +282,16 @@ export function createLaboratorio({ dir, archivos, jarvis, vaultPath = null, env
       return { nombre: c, grupos, previas, caption: existsSync(path.join(base, 'reels', c, '_caption.md')) ? `reels/${c}/_caption.md` : null, mod: [...grupos.flatMap((g) => g.archivos), ...previas].map((a) => a.mod).sort().at(-1) || '' };
     }).sort((a, b) => b.mod.localeCompare(a.mod));
 
+    // Lo que ya está en la biblioteca se marca (para no mandarlo dos veces)
+    const enviados = new Set();
+    for (const p of jarvis?.listarPiezas?.() || []) {
+      const ref = String(p.origen_ref || '');
+      if (ref.startsWith(REF_LAB)) enviados.add(ref.slice(REF_LAB.length).replace(/ \(\+\d+\)$/, ''));
+    }
+    const marcar = (a) => { if (enviados.has(a.ruta)) a.enBiblioteca = true; };
+    for (const t of testimonios) { t.portadas.forEach(marcar); t.grupos.forEach((g) => g.archivos.forEach(marcar)); }
+    for (const r of reels) r.grupos.forEach((g) => g.archivos.forEach(marcar));
+
     return { testimonios, reels, entrevistas: lista('crudo', VIDEO) };
   }
 
@@ -281,23 +314,44 @@ export function createLaboratorio({ dir, archivos, jarvis, vaultPath = null, env
     return { ok: true };
   }
 
-  // Pasa vídeos o imágenes a la biblioteca de Contenido como una pieza (un carrusel lleva varios archivos)
-  async function aBiblioteca({ rutas = [], titulo, formato = 'Reel', caption = null }) {
+  // Carpeta de la biblioteca y caption de cada trabajo: un testimonio (y sus clips) va a «Testimonios/<cliente>», un reel a «Reels/<nombre>»
+  function contexto(rel) {
+    const [raiz, nombre] = String(rel).split('/');
+    if ((raiz === 'testimonios' || raiz === 'clips') && nombre) return { carpeta: `Testimonios/${nombre}`, captions: `testimonios/${nombre}/_caption.md` };
+    if (raiz === 'reels' && nombre) return { carpeta: `Reels/${nombre}`, captions: `reels/${nombre}/_caption.md` };
+    if (raiz === 'imagenes') return { carpeta: 'Imágenes', captions: null };
+    return { carpeta: null, captions: null };
+  }
+
+  // Pasa vídeos o imágenes a la biblioteca de Contenido como una pieza (un carrusel lleva varios archivos), en su carpeta,
+  // con su caption (de _caption.md si no se da otro) y enlazada a su origen. Si ya se pasó, devuelve la que hay.
+  // padre_id, pilar y objetivo: opcionales (p. ej. los clips de un vídeo largo salen de su pieza madre)
+  async function aBiblioteca({ rutas = [], titulo, formato = 'Reel', caption = null, padre_id = null, pilar = null, objetivo = null }) {
     if (!archivos) throw new LaboratorioError('La biblioteca no está disponible');
     if (!rutas.length) throw new LaboratorioError('Elige al menos un archivo');
+    const rels = rutas.slice(0, 20).map(String);
+    const ref = refLab(rels);
+    const ya = jarvis.listarPiezas().find((p) => p.origen_ref === ref);
+    if (ya) return { ...ya, yaEstaba: true };
     const guardados = [];
-    for (const rel of rutas.slice(0, 20)) {
+    for (const rel of rels) {
       const { abs, mime } = archivo(rel);
       if (!/^(video|image)\//.test(mime)) throw new LaboratorioError(`«${path.basename(rel)}» no es un vídeo ni una imagen`);
       guardados.push(await archivos.guardar(createReadStream(abs), { nombre: path.basename(rel), mime }));
     }
-    const nombre = String(titulo || '').trim() || path.basename(rutas[0]).replace(/\.[^.]+$/, '').replace(/[-_]+/g, ' ');
-    return jarvis.crearPieza({ titulo: nombre.slice(0, 200), formato, estado: 'listo', archivos: guardados, caption: caption ? String(caption).slice(0, 5000) : null, origen: 'laboratorio' });
+    const ctx = contexto(rels[0]);
+    let texto = caption ? String(caption) : null;
+    if (!texto && ctx.captions && existsSync(path.join(base, ctx.captions))) {
+      try { texto = elegirCaption(readFileSync(path.join(base, ctx.captions), 'utf8'), rels[0]); } catch { /* sin caption */ }
+    }
+    const nombre = String(titulo || '').trim() || path.basename(rels[0]).replace(/\.[^.]+$/, '').replace(/[-_]+/g, ' ');
+    return jarvis.crearPieza({ titulo: nombre.slice(0, 200), formato, estado: 'listo', archivos: guardados, caption: texto ? texto.slice(0, 5000) : null, carpeta: ctx.carpeta, origen_ref: ref, origen: 'laboratorio', padre_id, pilar, objetivo });
   }
 
   // ---------- Claude con el plugin ----------
-  // Permisos de Bash: solo los programas del montaje (y moverse por carpetas). Nada de borrar ni instalar.
-  const BASH = ['python', 'python3', 'py', 'ffmpeg', 'ffprobe', 'npx', 'npm', 'node', 'ls', 'cd', 'mkdir', 'cp', 'mv', 'cat', 'head', 'tail', 'wc', 'echo', 'pwd'].map((c) => `Bash(${c}:*)`);
+  // Permisos de Bash: solo los programas del montaje, leer y copiar dentro de las carpetas. Sin npm (instalar) ni mv
+  // (un mv puede pisar un archivo): lo que haya que renombrar se copia. npx se queda porque lo usan las skills del plugin.
+  const BASH = ['python', 'python3', 'py', 'ffmpeg', 'ffprobe', 'npx', 'node', 'ls', 'cd', 'mkdir', 'cp', 'cat', 'head', 'tail', 'wc', 'echo', 'pwd'].map((c) => `Bash(${c}:*)`);
   // El conector de Higgsfield (si está añadido y con sesión iniciada): imágenes y vídeo con tus créditos
   const MCP_EXTRA = ['mcp__higgsfield'];
   function entorno() {

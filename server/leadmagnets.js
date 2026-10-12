@@ -271,11 +271,24 @@ Cómo hacerlo:
     return { url, leadmagnets: lista() };
   }
 
+  // Quita de una pieza el enlace de este lead magnet (solo si es el suyo: un enlace puesto a mano no se toca).
+  // soltar: la pieza deja de llevar lead magnet; si no, lo sigue llevando pero «sin enlace».
+  function quitarDePieza(m, { soltar = false } = {}) {
+    if (!m?.pieza || !jarvis) return;
+    try {
+      const p = jarvis.leerPieza(m.pieza);
+      const suyo = Boolean(m.publicado?.url) && p.leadmagnet_url === m.publicado.url;
+      if (soltar && (suyo || !p.leadmagnet_url)) jarvis.actualizarPieza(p.id, { leadmagnet: false });
+      else if (suyo) jarvis.actualizarPieza(p.id, { leadmagnet_url: null });
+    } catch (e) { log(`No he podido quitar el enlace de la pieza ${m.pieza}: ${e.message}`); }
+  }
+
   async function despublicar(slug) {
     const m = leerMeta(slug);
     if (!m?.publicado) return { leadmagnets: lista() };
     const quedan = lista().filter((l) => l.url && l.listo && l.slug !== slug).map((l) => l.slug);
     await desplegar(quedan);
+    quitarDePieza(m);
     const { publicado, ...resto } = m;
     guardarMeta(slug, resto);
     return { leadmagnets: lista() };
@@ -285,6 +298,7 @@ Cómo hacerlo:
     const m = leerMeta(slug);
     if (!m) throw new LeadMagnetError('Ese lead magnet ya no está');
     const id = piezaId ? Number(piezaId) : null;
+    if (m.pieza && m.pieza !== id) quitarDePieza(m, { soltar: true });
     if (id && jarvis) jarvis.actualizarPieza(id, m.publicado?.url ? { leadmagnet: true, leadmagnet_url: m.publicado.url } : { leadmagnet: true });
     guardarMeta(slug, { ...m, pieza: id });
     return { leadmagnets: lista() };
@@ -292,6 +306,7 @@ Cómo hacerlo:
 
   async function borrar(slug) {
     const m = leerMeta(slug);
+    quitarDePieza(m, { soltar: true });
     if (m?.publicado) await despublicar(slug);
     rmSync(carpeta(slug), { recursive: true, force: true });
     return { leadmagnets: lista() };

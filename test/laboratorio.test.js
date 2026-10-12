@@ -9,7 +9,7 @@ import { createVault } from '../server/vault.js';
 import { createJarvis } from '../server/jarvis.js';
 import { createArchivos } from '../server/archivos.js';
 import { crearZip } from '../server/diseno/zip.js';
-import { createLaboratorio } from '../server/laboratorio.js';
+import { createLaboratorio, elegirCaption } from '../server/laboratorio.js';
 import { createAsistente } from '../server/asistente.js';
 import { argumentos } from '../server/claude-runner.js';
 
@@ -111,6 +111,28 @@ describe('Laboratorio', () => {
     assert.equal(p.formato, 'Carrusel');
     assert.equal(p.archivos.length, 2);
     assert.equal(p.caption, 'Hola');
+    assert.equal(p.carpeta, 'Testimonios/Maria Lopez');
+    assert.match(p.origen_ref, /^laboratorio:testimonios\/Maria Lopez\/carrusel-video\/slide-01\.mp4 \(\+1\)$/);
+  });
+
+  test('a la biblioteca: sin caption usa el de _caption.md, no duplica y marca lo ya enviado', async () => {
+    const rel = 'clips/Maria Lopez/reel-9x16/01-antes-y-ahora.mp4';
+    const p = await lab.aBiblioteca({ rutas: [rel], titulo: 'Clip María', formato: 'Reel' });
+    assert.equal(p.caption, 'Texto', 'la primera versión de testimonios/<cliente>/_caption.md');
+    assert.equal(p.carpeta, 'Testimonios/Maria Lopez');
+    const otra = await lab.aBiblioteca({ rutas: [rel], titulo: 'Clip María' });
+    assert.equal(otra.id, p.id);
+    assert.equal(otra.yaEstaba, true);
+    const clips = lab.resultados().testimonios[0].grupos.find((g) => g.nombre === 'Clips en reel');
+    assert.equal(clips.archivos[0].enBiblioteca, true);
+  });
+
+  test('elegir el caption de cada archivo entre varias versiones', () => {
+    const md = 'Intro\n## Clip 1 · antes y ahora\nCaption del uno\n\n## Clip 2 · el gancho\nCaption del dos\n';
+    assert.equal(elegirCaption(md, 'reels/x/pantalla/02-el-gancho.mp4'), 'Caption del dos');
+    assert.equal(elegirCaption(md, 'reels/x/pantalla/09-otro.mp4'), 'Caption del uno');
+    assert.equal(elegirCaption('Solo un texto', 'a.mp4'), 'Solo un texto');
+    assert.equal(elegirCaption('', 'a.mp4'), null);
   });
 
   test('prompts: testimonio completo o solo algunas piezas, y reel', () => {

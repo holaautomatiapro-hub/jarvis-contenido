@@ -169,9 +169,16 @@ describe('Lead magnets', () => {
     assert.ok(!files.includes('guia-del-setter/index.html'));
     assert.ok(files.includes('guia-del-setter-2/index.html'));
     assert.equal(lm.lista().find((x) => x.slug === 'guia-del-setter').url, null);
+    // La pieza que lo anunciaba sigue llevando lead magnet, pero ya sin un enlace que no funciona
+    const reel = jarvis.listarPiezas().find((x) => x.titulo === 'Reel setter');
+    assert.equal(reel.leadmagnet, 1);
+    assert.equal(reel.leadmagnet_url, null);
 
     await lm.borrar('guia-del-setter-2');
     assert.ok(!existsSync(path.join(lab.dir, 'leadmagnets', 'guia-del-setter-2')));
+    const carrusel = jarvis.leerPieza(otra.id);
+    assert.equal(carrusel.leadmagnet, 0, 'al borrarlo, la pieza deja de llevarlo');
+    assert.equal(carrusel.leadmagnet_url, null);
     assert.throws(() => lm.asignar('../x', 1), /no válido/);
   });
 

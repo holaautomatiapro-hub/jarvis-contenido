@@ -59,7 +59,7 @@ export default function Laboratorio() {
       {seccion === 'leadmagnets' && <LeadMagnets trabajando={Boolean(lab?.trabajando)} />}
       {seccion === 'imagenes' && <Imagenes trabajando={Boolean(lab?.trabajando)} />}
 
-      {editando && <EditorContenido key={editando.id || 'nuevo'} pieza={editando} carpetas={contenido?.carpetas || []} ig={contenido?.instagram} onClose={() => setEditando(null)} onGuardado={recargarContenido} onVisor={abrirVisor} onRepublicar={() => {}} />}
+      {editando && <EditorContenido key={editando.id || `nuevo-${editando.padre_id || ''}`} pieza={editando} carpetas={contenido?.carpetas || []} ig={contenido?.instagram} piezas={piezas} pilares={contenido?.pilares || []} onAbrir={setEditando} onDerivada={setEditando} onClose={() => setEditando(null)} onGuardado={recargarContenido} onVisor={abrirVisor} />}
       {programando && <ProgramarContenido pieza={programando.p} ig={contenido?.instagram} onClose={() => setProgramando(null)} onGuardado={recargarContenido} />}
       {visor && <Visor archivos={visor.archivos} inicio={visor.inicio} onClose={() => setVisor(null)} />}
     </section>
