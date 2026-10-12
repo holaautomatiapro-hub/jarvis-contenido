@@ -110,3 +110,50 @@ export function Modal({ titulo, onClose, ancho = 560, children, cerrarFuera = tr
     </div>
   );
 }
+
+// Copiar un enlace al portapapeles (con aviso de «Copiado» un momento)
+export function BotonCopiar({ texto, etiqueta = 'Copiar', className = 'btn btn-sec' }) {
+  const [ok, setOk] = useState(false);
+  const copiar = async (e) => {
+    e.preventDefault(); e.stopPropagation();
+    try { await navigator.clipboard.writeText(texto); } catch {
+      const t = document.createElement('textarea'); t.value = texto; document.body.appendChild(t); t.select(); document.execCommand('copy'); t.remove();
+    }
+    setOk(true); setTimeout(() => setOk(false), 1500);
+  };
+  return <button type="button" className={className} onClick={copiar} disabled={!texto} title={texto}>{ok ? '✓ Copiado' : etiqueta}</button>;
+}
+
+// ¿Lleva lead magnet? Casilla y, si sí, su enlace con botón para copiarlo
+export function CampoLeadMagnet({ activo, url, onCambio }) {
+  return (
+    <div className="campo-lm">
+      <label className="lm-check">
+        <input type="checkbox" checked={activo} onChange={(e) => onCambio({ leadmagnet: e.target.checked, leadmagnet_url: e.target.checked ? url : '' })} />
+        <Icon name="target" size={13} />Lleva lead magnet
+      </label>
+      {activo && (
+        <div className="fila" style={{ marginBottom: 0 }}>
+          <input className="campo" value={url} onChange={(e) => onCambio({ leadmagnet: true, leadmagnet_url: e.target.value })} placeholder="https://… (el enlace que mandas a quien comenta o escribe)" aria-label="Enlace del lead magnet" />
+          <BotonCopiar texto={/^https?:\/\//i.test(url) ? url : ''} />
+        </div>
+      )}
+    </div>
+  );
+}
+
+// Marca pequeña en listas y calendario: pulsarla copia el enlace
+export function MarcaLeadMagnet({ p }) {
+  const [ok, setOk] = useState(false);
+  if (!p.leadmagnet) return null;
+  const copiar = async (e) => {
+    e.stopPropagation();
+    if (!p.leadmagnet_url) return;
+    try { await navigator.clipboard.writeText(p.leadmagnet_url); setOk(true); setTimeout(() => setOk(false), 1500); } catch { /* sin portapapeles */ }
+  };
+  return (
+    <span className={`lm-marca${ok ? ' ok' : ''}`} role="button" tabIndex={0} onClick={copiar} title={p.leadmagnet_url ? `Lead magnet: ${p.leadmagnet_url} (pulsa para copiar)` : 'Lleva lead magnet (sin enlace todavía)'}>
+      {ok ? '✓' : <Icon name="target" size={10} />}
+    </span>
+  );
+}

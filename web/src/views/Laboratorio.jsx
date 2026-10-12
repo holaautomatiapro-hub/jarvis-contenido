@@ -19,7 +19,7 @@ const guardada = () => { try { const v = localStorage.getItem('lab_seccion'); re
 export default function Laboratorio() {
   const [seccion, setSeccionEstado] = useState(guardada);
   const setSeccion = (v) => { setSeccionEstado(v); try { localStorage.setItem('lab_seccion', v); } catch { /* sin localStorage */ } };
-  const [lab, recargarLab] = useRecurso(seccion === 'testimonios' || seccion === 'reels' ? '/api/laboratorio' : null, null);
+  const [lab, recargarLab, errorLab] = useRecurso(seccion === 'testimonios' || seccion === 'reels' ? '/api/laboratorio' : null, null);
   const [contenido, recargarContenido] = useRecurso(seccion === 'diseno' ? '/api/contenido' : null, null);
   const [editando, setEditando] = useState(null);
   const [programando, setProgramando] = useState(null);
@@ -42,7 +42,11 @@ export default function Laboratorio() {
       </div>
 
       {seccion === 'diseno' && <Diseno piezas={piezas} ig={contenido?.instagram} onAbrir={setEditando} onProgramar={(p) => setProgramando({ p })} />}
-      {(seccion === 'testimonios' || seccion === 'reels') && (!lab ? <div className="panel panel-pad vacio">Cargando…</div> : (
+      {(seccion === 'testimonios' || seccion === 'reels') && (!lab ? (
+        <div className="panel panel-pad vacio">
+          {errorLab ? <>No se ha podido cargar el Laboratorio: {errorLab}.<br />Si acabas de actualizar JARVIS en el VPS, espera a que termine el instalador y recarga la página.</> : 'Cargando…'}
+        </div>
+      ) : (
         <>
           {!(lab.plugin.instalado && lab.python && lab.marca.verificado) && <Preparar data={lab} recargar={recargarLab} />}
           {seccion === 'testimonios' ? <Testimonios data={lab} recargar={recargarLab} /> : <Reels data={lab} />}

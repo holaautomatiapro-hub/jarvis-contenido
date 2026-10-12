@@ -209,3 +209,23 @@ describe('Notas: editar, renombrar y borrar', () => {
     assert.equal(r.json.contenido, 'hola mundo');
   });
 });
+
+describe('Lead magnet en las piezas', () => {
+  test('se marca, guarda el enlace y sale en «Hoy se publica»', async () => {
+    const c = await api('/api/piezas', { method: 'POST', body: { titulo: 'Reel con guía', fecha: hoy, leadmagnet: true, leadmagnet_url: 'https://automatia.pro/guia' } });
+    assert.equal(c.status, 200);
+    assert.equal(c.json.leadmagnet, 1);
+    assert.equal(c.json.leadmagnet_url, 'https://automatia.pro/guia');
+    const { json: r } = await api('/api/inicio');
+    assert.equal(r.publicaHoy.find((p) => p.titulo === 'Reel con guía').leadmagnet, 'https://automatia.pro/guia');
+    // Sin la casilla no se guarda el enlace; con un enlace, la casilla se marca sola
+    const u = await api(`/api/piezas/${c.json.id}`, { method: 'PATCH', body: { leadmagnet: false } });
+    assert.equal(u.json.leadmagnet, 0);
+    assert.equal(u.json.leadmagnet_url, null);
+    const v = await api(`/api/piezas/${c.json.id}`, { method: 'PATCH', body: { leadmagnet_url: 'https://x.com/lm' } });
+    assert.equal(v.json.leadmagnet, 1);
+    const mal = await api(`/api/piezas/${c.json.id}`, { method: 'PATCH', body: { leadmagnet: true, leadmagnet_url: 'mi guía' } });
+    assert.equal(mal.status, 400);
+    assert.match(mal.json.error, /https/);
+  });
+});

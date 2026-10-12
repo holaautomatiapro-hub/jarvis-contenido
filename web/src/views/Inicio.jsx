@@ -6,6 +6,7 @@ import Mascota from '../components/Mascota.jsx';
 import { api, useRecurso } from '../lib/api.js';
 import { diaLargo } from '../lib/fechas.js';
 import { Plazo, Prioridad } from './Tareas.jsx';
+import { BotonCopiar } from './contenido/comun.jsx';
 
 function Kpi({ k }) {
   const up = k.delta >= 0;
@@ -49,7 +50,7 @@ function PublicaHoy({ items = [], ir }) {
         {items.map((p) => {
           const ig = p.instagram && ESTADO_IG[p.instagram];
           return (
-            <button key={`${p.tipo}-${p.id}`} className="hoy-fila" onClick={() => ir?.(p.tipo === 'version' ? 'publicar' : 'contenido')} title={p.error || 'Abrir'}>
+            <div key={`${p.tipo}-${p.id}`} className="hoy-fila" role="button" tabIndex={0} onClick={() => ir?.(p.tipo === 'version' ? 'publicar' : 'contenido')} onKeyDown={(e) => e.key === 'Enter' && ir?.(p.tipo === 'version' ? 'publicar' : 'contenido')} title={p.error || 'Abrir'}>
               <span className="time">{p.hora || '—'}</span>
               <span className="hoy-txt">
                 <b>{p.titulo}</b>
@@ -58,8 +59,9 @@ function PublicaHoy({ items = [], ir }) {
               <span className="hoy-estados">
                 <span className="tag-estado" style={{ '--c': COLOR_ESTADO[p.estado] || 'var(--muted)' }}>{p.etiqueta}</span>
                 {ig && <span className="tag-estado" style={{ '--c': ig.color }}>{ig.label}</span>}
+                {p.leadmagnet != null && (p.leadmagnet ? <BotonCopiar texto={p.leadmagnet} etiqueta="Copiar lead magnet" className="tag-estado lm-copiar" /> : <span className="tag-estado" style={{ '--c': 'var(--orange)' }}>Lead magnet sin enlace</span>)}
               </span>
-            </button>
+            </div>
           );
         })}
       </div>

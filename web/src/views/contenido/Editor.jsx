@@ -3,7 +3,7 @@ import Icon from '../../components/Icon.jsx';
 import { api } from '../../lib/api.js';
 import { diaLargo, hoyIso, sumarDias } from '../../lib/fechas.js';
 import { NOMBRE_TIPO_IG, planDePublicacion } from '../../lib/planIg.js';
-import { useFases, MAX_CAPTION, Miniatura, Modal, TIPOS, borrarArchivo, esMedio, esStory, esVideo, subirArchivo, tamanoLegible, tipoDe } from './comun.jsx';
+import { CampoLeadMagnet, useFases, MAX_CAPTION, Miniatura, Modal, TIPOS, borrarArchivo, esMedio, esStory, esVideo, subirArchivo, tamanoLegible, tipoDe } from './comun.jsx';
 
 // ---------- Visor a pantalla completa ----------
 export function Visor({ archivos, inicio = 0, onClose }) {
@@ -87,7 +87,7 @@ export function EditorContenido({ pieza, carpetas, ig, onClose, onGuardado, onVi
   const [d, setD] = useState(() => ({
     titulo: pieza.titulo || '', carpeta: pieza.carpeta || '', formato: tipoDe(pieza.formato)?.id || pieza.formato || 'Reel',
     estado: pieza.estado || 'idea', fecha: pieza.fecha || '', hora: pieza.hora || '', caption: pieza.caption || '', video_url: pieza.video_url || '',
-    publicar_ig: Boolean(pieza.publicar_ig),
+    publicar_ig: Boolean(pieza.publicar_ig), leadmagnet: Boolean(pieza.leadmagnet), leadmagnet_url: pieza.leadmagnet_url || '',
   }));
   const [archivos, setArchivos] = useState(pieza.archivos || []);
   const subidos = useRef(new Set()); // subidos en esta edición: si se cancela, se borran
@@ -169,7 +169,8 @@ export function EditorContenido({ pieza, carpetas, ig, onClose, onGuardado, onVi
       if (!window.confirm(`¿Publicar «${d.titulo}» en Instagram ahora, en @${ig.cuenta}? Se publica como ${NOMBRE_TIPO_IG[p.tipo]} y no se puede deshacer desde JARVIS.`)) return;
     }
     setGuardando(true); setError('');
-    const body = { ...d, carpeta: d.carpeta || null, fecha: d.fecha || null, hora: d.hora || null, archivos, publicar_ig: ahora ? false : conIg ? d.publicar_ig : false };
+    if (d.leadmagnet && d.leadmagnet_url && !/^https?:\/\//i.test(d.leadmagnet_url)) return setError('El enlace del lead magnet debe empezar por https://');
+    const body = { ...d, carpeta: d.carpeta || null, fecha: d.fecha || null, hora: d.hora || null, archivos, publicar_ig: ahora ? false : conIg ? d.publicar_ig : false, leadmagnet_url: d.leadmagnet ? d.leadmagnet_url.trim() || null : null };
     if (!conIg) delete body.publicar_ig;
     try {
       const r = nueva ? await api('/api/piezas', { method: 'POST', body }) : await api(`/api/piezas/${pieza.id}`, { method: 'PATCH', body });
@@ -226,6 +227,7 @@ export function EditorContenido({ pieza, carpetas, ig, onClose, onGuardado, onVi
             <input className="campo" value={d.video_url} onChange={cambia('video_url')} placeholder="https://drive.google.com/… o el enlace de la publicación" />
             {/^https?:\/\//i.test(d.video_url) && <a className="btn btn-sec" href={d.video_url} target="_blank" rel="noreferrer">↗ Abrir</a>}
           </div>
+          <CampoLeadMagnet activo={d.leadmagnet} url={d.leadmagnet_url} onCambio={(c) => setD((x) => ({ ...x, ...c }))} />
           <CajaInstagram ig={ig} pieza={pieza} plan={plan} marcado={d.publicar_ig} onMarcar={marcarIg} ocupado={ocupado} onAhora={conIg ? () => guardar(null, { ahora: true }) : null} onConvertir={convertirAJpg} onRepublicar={!nueva && onRepublicar ? () => { cerrar(); onRepublicar(pieza); } : null} />
           <div className="aviso-publicar">
             <Icon name="publish" size={14} color="var(--accent-2)" />
@@ -284,6 +286,8 @@ export function ProgramarContenido({ pieza, fecha, ig, onClose, onGuardado }) {
     hora: pieza.hora || '18:00',
     caption: pieza.caption || '',
     publicar_ig: Boolean(pieza.publicar_ig),
+    leadmagnet: Boolean(pieza.leadmagnet),
+    leadmagnet_url: pieza.leadmagnet_url || '',
   });
   const [error, setError] = useState('');
   const [guardando, setGuardando] = useState(false);
@@ -295,9 +299,10 @@ export function ProgramarContenido({ pieza, fecha, ig, onClose, onGuardado }) {
   const guardar = async () => {
     if (!d.fecha) return setError('Elige el día.');
     if (d.publicar_ig && plan.problemas.length) return setError('Corrige lo que falta para Instagram o desmarca la publicación automática.');
+    if (d.leadmagnet && d.leadmagnet_url && !/^https?:\/\//i.test(d.leadmagnet_url)) return setError('El enlace del lead magnet debe empezar por https://');
     setGuardando(true);
     try {
-      await api(`/api/piezas/${pieza.id}`, { method: 'PATCH', body: { formato: d.formato, fecha: d.fecha, hora: d.hora || null, ...(story ? {} : { caption: d.caption }), ...(conIg ? { publicar_ig: d.publicar_ig } : {}) } });
+      await api(`/api/piezas/${pieza.id}`, { method: 'PATCH', body: { formato: d.formato, fecha: d.fecha, hora: d.hora || null, ...(story ? {} : { caption: d.caption }), ...(conIg ? { publicar_ig: d.publicar_ig } : {}), leadmagnet: d.leadmagnet, leadmagnet_url: d.leadmagnet ? d.leadmagnet_url.trim() || null : null } });
       onGuardado(); onClose();
     } catch (e) { setError(e.message); setGuardando(false); }
   };
@@ -326,6 +331,7 @@ export function ProgramarContenido({ pieza, fecha, ig, onClose, onGuardado }) {
           <textarea className="campo" rows={5} value={d.caption} onChange={(e) => setD({ ...d, caption: e.target.value })} placeholder="El texto que acompaña a la publicación…" />
         </>
       )}
+      <CampoLeadMagnet activo={d.leadmagnet} url={d.leadmagnet_url} onCambio={(c) => setD((x) => ({ ...x, ...c }))} />
       <CajaInstagram ig={ig} pieza={pieza} plan={plan} marcado={d.publicar_ig} onMarcar={(v) => setD({ ...d, publicar_ig: v })} texto="Publicar automáticamente en Instagram" />
       {d.fecha && <div className="aviso ok" style={{ marginTop: 10 }}>{d.publicar_ig && conIg && !plan.problemas.length ? `Se publicará como ${NOMBRE_TIPO_IG[plan.tipo]} el ${diaLargo(d.fecha).toLowerCase()} a las ${d.hora}.` : `Quedará en el calendario el ${diaLargo(d.fecha).toLowerCase()}${d.hora ? ` a las ${d.hora}` : ''}. La publicas tú.`}</div>}
       {error && <div className="caja-error">{error}</div>}
