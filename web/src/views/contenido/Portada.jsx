@@ -13,7 +13,8 @@ export const esFormatoVideo = (f) => FORMATOS_VIDEO.includes(f);
 export default function GenerarPortada({ pieza, onHecha, onClose }) {
   const [tipos, setTipos] = useState(null);
   const [error, setError] = useState('');
-  const [f, setF] = useState({ tipo: '', titulo: pieza.titulo || '', descripcion: '', foto: null });
+  const [f, setF] = useState({ tipo: '', titulo: pieza.titulo || '', descripcion: '', foto: null, sinFondo: true });
+  const [aviso, setAviso] = useState('');
   const [estado, setEstado] = useState(null); // null | { id, texto }
   const [subiendo, setSubiendo] = useState(false);
   const input = useRef(null);
@@ -73,8 +74,10 @@ export default function GenerarPortada({ pieza, onHecha, onClose }) {
 
   const generar = async () => {
     setError('');
+    if (f.foto) setEstado({ id: null, texto: f.sinFondo ? 'Quitando el fondo de la foto…' : 'Preparando…' });
     try {
-      const r = await api('/api/portadas', { method: 'POST', body: { tipo: f.tipo, titulo: f.titulo, descripcion: f.descripcion, foto: f.foto, ...(pieza.id ? { pieza_id: pieza.id } : { pieza: { titulo: pieza.titulo, formato: pieza.formato, archivos: pieza.archivos } }) } });
+      const r = await api('/api/portadas', { method: 'POST', body: { tipo: f.tipo, titulo: f.titulo, descripcion: f.descripcion, foto: f.foto, sinFondo: f.sinFondo, ...(pieza.id ? { pieza_id: pieza.id } : { pieza: { titulo: pieza.titulo, formato: pieza.formato, archivos: pieza.archivos } }) } });
+      setAviso(r.aviso || '');
       setEstado({ id: r.id, texto: 'JARVIS está diseñando la portada con tu sistema de diseño…' });
       const d = await esperar(r.id);
       if (!vivo.current) return;
@@ -93,7 +96,8 @@ export default function GenerarPortada({ pieza, onHecha, onClose }) {
         <div className="portada-haciendo">
           {estado.previa ? <img src={estado.previa} alt="" /> : <div className="portada-spinner"><Icon name="sparkle" size={22} /></div>}
           <b>{estado.texto}</b>
-          <span className="ayuda">Tarda uno o dos minutos. Cuando esté, se añade sola a la pieza{esFormatoVideo(pieza.formato) ? ' como portada del reel' : ' como primera imagen'}.</span>
+          {aviso && <span className="aviso error">{aviso}</span>}
+          <span className="ayuda">Tarda unos minutos. Cuando esté, se añade sola a la pieza{esFormatoVideo(pieza.formato) ? ' como portada del reel' : ' como primera imagen'}.</span>
         </div>
       ) : (
         <>
@@ -147,7 +151,7 @@ export default function GenerarPortada({ pieza, onHecha, onClose }) {
             <button type="button" className="portada-foto portada-subir" onClick={() => input.current?.click()} disabled={subiendo}><Icon name="plus" size={15} /><small>{subiendo ? 'Subiendo…' : 'Subir'}</small></button>
             <input ref={input} type="file" accept="image/*" hidden onChange={(e) => { subir(e.target.files?.[0]); e.target.value = ''; }} />
           </div>
-          <div className="ayuda">Si eliges una foto, la portada se hace sobre ella.</div>
+          <label className="portada-sinfondo"><input type="checkbox" checked={f.sinFondo} onChange={(e) => setF({ ...f, sinFondo: e.target.checked })} />Quitar el fondo de la foto (la persona va recortada, como en tus portadas)</label>
         </>
       )}
       {error && <div className="caja-error">{error}</div>}

@@ -33,6 +33,7 @@ import { createRecordatorios } from './recordatorios.js';
 import { promptReplicarCompetencia, promptReplicarPropia } from './replicar.js';
 import { createLaboratorio, carpetaPorDefecto } from './laboratorio.js';
 import { promptCaption, limpiarCaption, createContextoCaption } from './caption.js';
+import { createRecortador } from './recortar.js';
 
 dotenv.config({ path: path.join(ROOT, '.env'), quiet: true });
 
@@ -492,7 +493,7 @@ function main() {
   const kit = createKit({ vaultPath: cfg.vaultPath, copiasDir: path.join(path.dirname(cfg.dbPath), 'kits-anteriores') });
   const motor = createMotor({ kit, archivos, log: (m) => console.log(`  [Diseño] ${m}`) });
   if (process.platform !== 'win32') setTimeout(() => motor.preparar(), 5000).unref();
-  disenos = createDisenos({ db, jarvis, kit, motor, archivos, previasDir: path.join(cfg.vaultPath, '.jarvis', 'disenos'), asistente, emitir, alCambiar: onChange });
+  disenos = createDisenos({ db, jarvis, kit, motor, archivos, previasDir: path.join(cfg.vaultPath, '.jarvis', 'disenos'), recortarFoto: createRecortador({ archivos, python: () => laboratorio.python() }), asistente, emitir, alCambiar: onChange });
   const recordatorios = createRecordatorios({ db });
   const server = createServer(createApp({ jarvis, archivos, publicadorIg, asistente, instagram, competencia, ads, publicar, hermes, jobs, kit, disenos, recordatorios, laboratorio, port: cfg.port, onChange }));
   // Solo el propio dashboard puede escuchar los eventos (otra web abierta en el navegador, no)
