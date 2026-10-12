@@ -76,10 +76,20 @@ describe('Imágenes con Higgsfield', () => {
     assert.match(prompt, /higgsfield\.mjs" subir/);
   });
 
+  test('buscar lo que ya tienes en Higgsfield: sin gastar, eligiendo en el chat', () => {
+    const { prompt } = img.buscarCara();
+    assert.match(prompt, /No generes nada ni gastes créditos/);
+    assert.match(prompt, /select_workspace/);
+    assert.match(prompt, /show_characters/);
+    assert.match(prompt, /show_reference_elements/);
+    assert.match(prompt, /show_medias/);
+    assert.match(prompt, /personaje\.json/);
+  });
+
   test('encargos: valida, crea su carpeta y pide mirar el coste', () => {
     assert.throws(() => img.nuevo({ descripcion: ' ' }), /Describe/);
     assert.throws(() => img.nuevo({ tipo: 'animar', descripcion: 'x' }), /Sube la imagen/);
-    assert.throws(() => img.nuevo({ tipo: 'conmigo', descripcion: 'yo en la playa' }), /personaje/);
+    assert.throws(() => img.nuevo({ tipo: 'conmigo', descripcion: 'yo en la playa' }), /elige tu cara/);
     const p = jarvis.crearPieza({ titulo: 'Carrusel productividad', formato: 'Carrusel' });
     const { nombre, prompt } = img.nuevo({ descripcion: 'Escritorio con portátil y café. Luz de mañana', formato: '4:5', cantidad: 9, presupuesto: 30, referencias: ['imagenes/_referencias/producto.jpg', '../fuera.jpg'], pieza: p.id });
     assert.equal(nombre, 'escritorio-con-portatil-y-cafe');
@@ -97,6 +107,18 @@ describe('Imágenes con Higgsfield', () => {
     mkdirSync(path.join(lab.dir, 'imagenes', '_mi-cara'), { recursive: true });
     writeFileSync(path.join(lab.dir, 'imagenes', '_mi-cara', 'personaje.json'), JSON.stringify({ soul_id: 'soul-123', nombre: 'Jose', estado: 'listo' }));
     assert.match(img.nuevo({ tipo: 'conmigo', descripcion: 'Yo en un gimnasio' }).prompt, /soul_2' con soul_id soul-123/);
+    // Un Elemento de Higgsfield: va como <<<id>>> dentro del prompt
+    writeFileSync(path.join(lab.dir, 'imagenes', '_mi-cara', 'personaje.json'), JSON.stringify({ element_id: 'el-9', nombre: 'Jose', estado: 'listo' }));
+    assert.equal(img.personaje().tipo, 'elemento');
+    assert.match(img.nuevo({ tipo: 'conmigo', descripcion: 'Yo en la playa' }).prompt, /<<<el-9>>> dentro del prompt/);
+    // Fotos ya subidas a Higgsfield: como referencias
+    writeFileSync(path.join(lab.dir, 'imagenes', '_mi-cara', 'personaje.json'), JSON.stringify({ media_ids: ['m1', 'm2'], nombre: 'Mis fotos' }));
+    assert.deepEqual([img.personaje().tipo, img.personaje().estado], ['fotos', 'listo']);
+    assert.match(img.nuevo({ tipo: 'conmigo', descripcion: 'Yo en la oficina' }).prompt, /media_id: m1, m2/);
+    writeFileSync(path.join(lab.dir, 'imagenes', '_mi-cara', 'personaje.json'), JSON.stringify({ nombre: 'vacío' }));
+    assert.equal(img.personaje(), null);
+    writeFileSync(path.join(lab.dir, 'imagenes', '_mi-cara', 'personaje.json'), JSON.stringify({ soul_id: 'soul-123', soul_tipo: 'soul_cinematic', estado: 'listo' }));
+    assert.match(img.nuevo({ tipo: 'conmigo', descripcion: 'Yo en un plató' }).prompt, /model 'soul_cinematic' con soul_id soul-123/);
     assert.match(img.nuevo({ tipo: 'broll', descripcion: 'Manos en un teclado', duracion: 8 }).prompt, /1 clip de B-roll de unos 8 s/);
   });
 

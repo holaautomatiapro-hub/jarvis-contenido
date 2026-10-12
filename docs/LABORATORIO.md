@@ -89,7 +89,7 @@ Usa **el conector de Higgsfield de tu cuenta** (el mismo que en Claude), así qu
 
 Si Higgsfield pide volver a entrar algún día, repite los pasos 1 a 4.
 
-**Tu cara (una vez).** Sube de 5 a 20 fotos tuyas (mejor 10-20: solo tú, cara bien visible, luz y ángulos distintos) y pulsa **Crear mi personaje**. JARVIS las sube a Higgsfield y entrena tu personaje (Soul), que tarda unos 10 minutos. Su número queda en `imagenes/_mi-cara/personaje.json`.
+**Tu cara (una vez).** Si ya la tienes en Higgsfield (un personaje entrenado, un Elemento o tus fotos subidas), pulsa **Buscar en mi Higgsfield**: JARVIS lo mira sin gastar créditos, te enseña lo que hay en el chat y guarda el que elijas. Si no tienes nada, abre «O crea un personaje nuevo con tus fotos», sube de 5 a 20 fotos tuyas (mejor 10-20: solo tú, cara bien visible, luz y ángulos distintos) y pulsa **Crear mi personaje**: se entrena en unos 10 minutos. Lo elegido queda en `imagenes/_mi-cara/personaje.json`.
 
 **Crear.** Elige qué quieres:
 - **Imagen**: fondos, escenas, objetos o portadas para tus carruseles y stories.

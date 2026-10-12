@@ -15,7 +15,7 @@ const AYUDA_TIPO = {
   broll: 'Planos cortos para meter entre lo que dices en tus reels.',
   animar: 'Le da movimiento a una foto o a un diseño que subas.',
 };
-const resumenPregunta = (t) => (/^(Genera con Higgsfield|Quiero entrenar en Higgsfield)/.test(t) ? t.split('\n').slice(0, 2).join('\n') : t);
+const resumenPregunta = (t) => (/^(Genera con Higgsfield|Quiero entrenar en Higgsfield|Quiero usar en JARVIS lo que YA tengo)/.test(t) ? t.split('\n').slice(0, 2).join('\n') : t);
 
 function Subidas({ etiqueta, ayuda, tipo, aceptar, archivos, seleccion, onSeleccion, recargar }) {
   const input = useRef(null);
@@ -104,6 +104,7 @@ export default function Imagenes({ trabajando }) {
   const [aviso, setAviso] = useState(null);
   const [enviando, setEnviando] = useState(false);
   const [nombreCara, setNombreCara] = useState('');
+  const [avisoCara, setAvisoCara] = useState(null);
   const piezas = (Array.isArray(piezasData) ? piezasData : []).filter((p) => p.estado !== 'publicado').slice(0, 200);
 
   if (!data) return <div className="panel panel-pad vacio">{error ? `No se ha podido cargar: ${error}` : 'Cargando…'}</div>;
@@ -122,11 +123,18 @@ export default function Imagenes({ trabajando }) {
     setEnviando(false);
   };
   const entrenar = async () => {
-    setAviso(null);
+    setAvisoCara(null);
     try {
       await api('/api/laboratorio/empezar', { method: 'POST', body: { tipo: 'cara', datos: { nombre: nombreCara } } });
-      setAviso({ tipo: 'ok', texto: 'JARVIS está subiendo tus fotos y entrenando tu personaje (unos 10 minutos).' });
-    } catch (err) { setAviso({ tipo: 'error', texto: err.message }); }
+      setAvisoCara({ tipo: 'ok', texto: 'JARVIS está subiendo tus fotos y entrenando tu personaje (unos 10 minutos).' });
+    } catch (err) { setAvisoCara({ tipo: 'error', texto: err.message }); }
+  };
+  const buscarCara = async () => {
+    setAvisoCara(null);
+    try {
+      await api('/api/laboratorio/empezar', { method: 'POST', body: { tipo: 'buscar-cara' } });
+      setAvisoCara({ tipo: 'ok', texto: 'JARVIS está mirando tu Higgsfield. Te enseñará en el chat lo que tienes para que elijas.' });
+    } catch (err) { setAvisoCara({ tipo: 'error', texto: err.message }); }
   };
   const borrar = async (t) => {
     if (!window.confirm(`¿Borrar «${t.titulo}» y lo que tiene?`)) return;
@@ -141,14 +149,25 @@ export default function Imagenes({ trabajando }) {
         <div className="panel panel-pad">
           <div className="panel-head">
             <span className="label">Tu cara</span>
-            {data.personaje && <span className={`chip-est`} style={{ '--c': data.personaje.estado === 'listo' ? 'var(--green)' : 'var(--orange)' }}><i />{data.personaje.estado === 'listo' ? `Personaje «${data.personaje.nombre || 'Yo'}» listo` : 'Entrenando…'}</span>}
+            {data.personaje && <span className="chip-est" style={{ '--c': data.personaje.estado === 'listo' ? 'var(--green)' : 'var(--orange)' }}><i />{data.personaje.estado !== 'listo' ? 'Entrenando…' : { soul: `Personaje «${data.personaje.nombre || 'Yo'}»`, elemento: `Elemento «${data.personaje.nombre || 'Yo'}»`, fotos: `${data.personaje.media_ids.length} ${data.personaje.media_ids.length === 1 ? 'foto' : 'fotos'} de Higgsfield` }[data.personaje.tipo]}</span>}
           </div>
-          <p className="ayuda">{data.personaje ? 'Ya puedes pedir fotos contigo. Si quieres mejorarlo, sube más fotos y vuelve a entrenarlo.' : 'Sube de 5 a 20 fotos tuyas (mejor 10-20: solo tú, cara bien visible, luz y ángulos distintos). Higgsfield entrena tu personaje una vez y luego te saca en las fotos que pidas.'}</p>
-          <Subidas etiqueta={`Tus fotos (${data.fotosCara.length})`} ayuda="Se guardan solo en tu servidor hasta que JARVIS las sube a Higgsfield para entrenar." tipo="cara" aceptar="image/*" archivos={data.fotosCara} recargar={recargar} />
-          <div className="modal-pie">
-            <input className="campo" style={{ maxWidth: 220 }} value={nombreCara} onChange={(e) => setNombreCara(e.target.value)} placeholder="Nombre del personaje (Yo)" maxLength={40} />
-            <button className="btn btn-sec" onClick={entrenar} disabled={!conectado || trabajando || data.fotosCara.length < 5}><Icon name="users" size={14} />{data.personaje ? 'Volver a entrenar' : 'Crear mi personaje'}</button>
+          <div className="img-cara-buscar">
+            <div>
+              <b>{data.personaje ? 'Ya puedes pedir fotos y vídeos contigo.' : '¿Ya tienes tu cara en Higgsfield?'}</b>
+              <small className="ayuda">{data.personaje ? 'Si quieres usar otro personaje o Elemento de tu cuenta, búscalo otra vez.' : 'JARVIS mira tus personajes, tus Elementos y tus fotos subidas y te pregunta cuál usar. No gasta créditos.'}</small>
+            </div>
+            <button className={`btn${data.personaje ? ' btn-sec' : ''}`} onClick={buscarCara} disabled={!conectado || trabajando}><Icon name="search" size={14} />{data.personaje ? 'Cambiar' : 'Buscar en mi Higgsfield'}</button>
           </div>
+          <details className="img-cara-nueva" open={!data.personaje && data.fotosCara.length > 0}>
+            <summary>O crea un personaje nuevo con tus fotos</summary>
+            <p className="ayuda">Sube de 5 a 20 fotos tuyas (mejor 10-20: solo tú, cara bien visible, luz y ángulos distintos). Higgsfield entrena tu personaje una vez (unos 10 minutos).</p>
+            <Subidas etiqueta={`Tus fotos (${data.fotosCara.length})`} ayuda="Se guardan solo en tu servidor hasta que JARVIS las sube a Higgsfield para entrenar." tipo="cara" aceptar="image/*" archivos={data.fotosCara} recargar={recargar} />
+            <div className="modal-pie">
+              <input className="campo" style={{ maxWidth: 220 }} value={nombreCara} onChange={(e) => setNombreCara(e.target.value)} placeholder="Nombre del personaje (Yo)" maxLength={40} />
+              <button className="btn btn-sec" onClick={entrenar} disabled={!conectado || trabajando || data.fotosCara.length < 5}><Icon name="users" size={14} />Crear mi personaje</button>
+            </div>
+          </details>
+          {avisoCara && <div className={`aviso ${avisoCara.tipo}`}>{avisoCara.texto}</div>}
         </div>
 
         <form className="panel panel-pad" onSubmit={empezar}>
@@ -157,7 +176,7 @@ export default function Imagenes({ trabajando }) {
             {Object.entries(data.tipos).map(([id, nombre]) => (
               <button type="button" key={id} className={`lab-plantilla${f.tipo === id ? ' on' : ''}`} onClick={() => setF({ ...f, tipo: id, cantidad: id === 'broll' || id === 'animar' ? 1 : f.cantidad })} disabled={id === 'conmigo' && !data.personaje}>
                 <span className="img-icono"><Icon name={{ imagen: 'eye', conmigo: 'users', broll: 'play', animar: 'sparkle' }[id]} size={16} /></span>
-                <b>{nombre.split(' (')[0]}</b><small>{id === 'conmigo' && !data.personaje ? 'Primero crea tu personaje (arriba).' : AYUDA_TIPO[id]}</small>
+                <b>{nombre.split(' (')[0]}</b><small>{id === 'conmigo' && !data.personaje ? 'Primero elige tu cara (arriba).' : AYUDA_TIPO[id]}</small>
               </button>
             ))}
           </div>
