@@ -278,6 +278,11 @@ export function createApp({ jarvis, archivos, publicadorIg, asistente, instagram
     app.post('/api/laboratorio/biblioteca', h((req) => laboratorio.aBiblioteca(req.body || {}), true));
     app.post('/api/laboratorio/empezar', h((req) => {
       if (!asistente) throw Object.assign(new Error('JARVIS (Claude Code) no está disponible'), { publico: true });
+      if (req.body?.tipo === 'imagen' || req.body?.tipo === 'cara') {
+        if (asistente.estado({ conversacion: 'laboratorio' }).ocupadoAqui) throw new OcupadoError('El Laboratorio está terminando otro trabajo. Espera a que acabe o cancélalo.');
+        const { nombre, prompt } = req.body.tipo === 'cara' ? { nombre: null, ...laboratorio.imagenes.entrenarCara(req.body?.datos || {}) } : laboratorio.imagenes.nuevo(req.body?.datos || {});
+        return Promise.resolve(asistente.preguntar({ conversacion: 'laboratorio', texto: prompt })).then((r) => ({ ...(r && typeof r === 'object' ? r : {}), nombre }));
+      }
       if (req.body?.tipo === 'leadmagnet') {
         if (asistente.estado({ conversacion: 'laboratorio' }).ocupadoAqui) throw new OcupadoError('El Laboratorio está terminando otro trabajo. Espera a que acabe o cancélalo.');
         const { slug, prompt } = laboratorio.leadmagnets.nuevo(req.body?.datos || {});
@@ -285,6 +290,10 @@ export function createApp({ jarvis, archivos, publicadorIg, asistente, instagram
       }
       return asistente.preguntar({ conversacion: 'laboratorio', texto: laboratorio.prompt(req.body?.tipo, req.body?.datos || {}) });
     }));
+    // Imágenes y vídeo con Higgsfield (conector de la cuenta)
+    app.get('/api/laboratorio/imagenes', h((req) => laboratorio.imagenes.estado({ fresco: req.query.fresco === '1' })));
+    app.post('/api/laboratorio/imagenes/conector', h(() => laboratorio.imagenes.anadirConector(), true));
+    app.delete('/api/laboratorio/imagenes/:nombre', h((req) => laboratorio.imagenes.borrar(req.params.nombre), true));
     // Lead magnets (páginas web) y su publicación en Vercel
     const lm = laboratorio.leadmagnets;
     app.get('/api/laboratorio/leadmagnets', h(() => lm.estado()));
