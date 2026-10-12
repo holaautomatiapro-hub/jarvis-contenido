@@ -23,13 +23,15 @@ export default function CampoCaption({ value, onChange, rows = 6, placeholder, o
   const [abierto, setAbierto] = useState(false);
   const [cat, setCat] = useState('frecuentes');
   const [recientes, setRecientes] = useState(leerRecientes);
-  const [ia, setIa] = useState({ estado: '', anterior: null, error: '' });
+  const [ia, setIa] = useState({ estado: '', anterior: null, error: '', nota: '' });
 
   const conIA = async () => {
     setIa({ estado: 'escribiendo', anterior: null, error: '' });
     try {
-      const texto = await onIA();
-      setIa({ estado: '', anterior: value, error: '' });
+      // onIA devuelve el texto, o { texto, nota } (p. ej. «ha usado escuchado el vídeo y 2 imágenes»)
+      const r = await onIA();
+      const texto = typeof r === 'string' ? r : r.texto;
+      setIa({ estado: '', anterior: value, error: '', nota: typeof r === 'string' ? '' : r.nota || '' });
       onChange(texto);
     } catch (e) { setIa({ estado: '', anterior: null, error: e.message || 'No se ha podido crear el caption' }); }
   };
@@ -90,9 +92,9 @@ export default function CampoCaption({ value, onChange, rows = 6, placeholder, o
       <div className="caption-barra">
         <button type="button" className="caption-btn caption-b" onMouseDown={(e) => e.preventDefault()} onClick={negrita} title="Negrita (Ctrl+B): selecciona el texto y pulsa. Se ve en negrita en Instagram">B</button>
         <button type="button" className={`caption-btn${abierto ? ' on' : ''}`} onMouseDown={(e) => e.preventDefault()} onClick={() => setAbierto((x) => !x)} title="Emojis" aria-expanded={abierto}>😀</button>
-        {onIA && <button type="button" className="caption-btn caption-ia" onClick={conIA} disabled={ia.estado === 'escribiendo'} title="JARVIS escribe el caption con tu voz (si ya hay texto, lo usa de base)"><span>✨</span>{ia.estado === 'escribiendo' ? 'Escribiendo…' : value.trim() ? 'Mejorar con IA' : 'Crear con IA'}</button>}
+        {onIA && <button type="button" className="caption-btn caption-ia" onClick={conIA} disabled={ia.estado === 'escribiendo'} title="JARVIS escribe el caption con tu voz (si ya hay texto, lo usa de base)"><span>✨</span>{ia.estado === 'escribiendo' ? 'Leyendo el contenido y escribiendo…' : value.trim() ? 'Mejorar con IA' : 'Crear con IA'}</button>}
         {ia.anterior !== null
-          ? <span className="caption-ayuda">Caption de JARVIS · <button type="button" className="link-btn" onClick={() => { onChange(ia.anterior); setIa({ estado: '', anterior: null, error: '' }); }}>Deshacer</button></span>
+          ? <span className="caption-ayuda" title={ia.nota}>Caption de JARVIS{ia.nota ? ` (${ia.nota})` : ''} · <button type="button" className="link-btn" onClick={() => { onChange(ia.anterior); setIa({ estado: '', anterior: null, error: '' }); }}>Deshacer</button></span>
           : <span className="caption-ayuda">{ia.error ? <span className="caption-error">{ia.error}</span> : <>Selecciona y pulsa <b>B</b> para negrita · también vale **así**</>}</span>}
       </div>
       {abierto && (
