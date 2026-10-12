@@ -3,7 +3,7 @@ import { normaliza } from '../../lib/api.js';
 import Icon from '../../components/Icon.jsx';
 import { celdasMes, diaCorto, diaLargo, hoyIso, mesDe, nombreMes, sumarMeses } from '../../lib/fechas.js';
 import { EditorFases } from './Fases.jsx';
-import { ChipEstado, Miniatura, useFases, Modal, esStory, estadoDe, textoTipo, tipoDe } from './comun.jsx';
+import { ChipEstado, MarcaLeadMagnet, Miniatura, useFases, Modal, esStory, estadoDe, textoTipo, tipoDe } from './comun.jsx';
 
 const MAX_POR_DIA = 4;
 const DIAS = ['Lun', 'Mar', 'Mié', 'Jue', 'Vie', 'Sáb', 'Dom'];
@@ -155,6 +155,7 @@ export function Calendario({ piezas, dia, setDia, onAbrir, onNuevo, onMover, onP
                       title={`${textoTipo(p.formato)} · ${p.titulo} — ${estadoDe(p.estado).label}`}
                     >
                       {(p.publicar_ig || p.ig_estado) ? <span className={`cal-chip-ig ${p.ig_estado || 'pendiente'}`}><Icon name="instagram" size={9} /></span> : null}
+                      {p.leadmagnet ? <span className="cal-chip-lm" title="Lleva lead magnet"><Icon name="target" size={9} /></span> : null}
                       <span className="cal-chip-tipo">{tipoDe(p.formato)?.corto || ''}</span>{p.titulo || 'Sin título'}
                     </button>
                   ))}
@@ -195,6 +196,7 @@ function FilaDia({ p, onAbrir }) {
     <div className="fila-c" tabIndex={0} onClick={() => onAbrir(p)} onKeyDown={(e) => e.key === 'Enter' && onAbrir(p)}>
       <Miniatura p={p} className="peque" />
       <div className="fila-c-txt"><b>{p.titulo}</b><small>{extra}</small></div>
+      <MarcaLeadMagnet p={p} />
       <ChipEstado id={p.estado} />
     </div>
   );
@@ -227,6 +229,7 @@ export function Lista({ piezas, cargando, onAbrir, onMover }) {
                 ? <a href={p.ig_permalink} target="_blank" rel="noreferrer" onClick={(e) => e.stopPropagation()} className="ig-ind publicado" title="Publicado en Instagram"><Icon name="instagram" size={13} /></a>
                 : <span className={`ig-ind ${p.ig_estado || 'pendiente'}`} title={p.ig_estado === 'error' ? `Error al publicar: ${p.ig_error}` : p.ig_estado === 'procesando' ? 'Publicándose en Instagram…' : 'Se publicará sola en Instagram'}><Icon name="instagram" size={13} /></span>
             ) : null}
+            <MarcaLeadMagnet p={p} />
             {p.video_url && <a href={p.video_url} target="_blank" rel="noreferrer" onClick={(e) => e.stopPropagation()} title="Abrir URL del vídeo"><Icon name="link" size={13} /></a>}
             {p.origen === 'hermes' && <Icon name="telegram" size={12} color="var(--cyan)" />}
           </span>
@@ -293,6 +296,7 @@ export function Pipeline({ piezas, onAbrir, onMover, onNuevaIdea }) {
                   <div className="tarjeta-meta">
                     {p.formato && <span className="tag" style={{ background: 'color-mix(in srgb, var(--accent) 14%, transparent)', color: 'var(--accent-texto)' }}>{textoTipo(p.formato)}</span>}
                     {p.plataformas && <span className="mini">{p.plataformas}</span>}
+                    <MarcaLeadMagnet p={p} />
                     {p.fecha && <span className="mini"><Icon name="calendar" size={10} /> {p.fecha.slice(5).split('-').reverse().join('/')}</span>}
                     {p.origen === 'hermes' && <Icon name="telegram" size={11} color="var(--cyan)" />}
                   </div>

@@ -223,6 +223,9 @@ export function openDb(file) {
     'ALTER TABLE piezas ADD COLUMN ig_permalink TEXT',
     'ALTER TABLE piezas ADD COLUMN ig_publicado_en TEXT',
   ]) migrar(sql);
+  // Lead magnet de cada pieza: si lleva uno y su enlace (para copiarlo al responder comentarios o DMs)
+  migrar('ALTER TABLE piezas ADD COLUMN leadmagnet INTEGER NOT NULL DEFAULT 0');
+  migrar('ALTER TABLE piezas ADD COLUMN leadmagnet_url TEXT');
   // Windsor: todas las métricas de cada publicación (JSON) e historias
   migrar('ALTER TABLE ig_media ADD COLUMN extra TEXT');
   db.exec(`CREATE TABLE IF NOT EXISTS ig_historias (

@@ -75,6 +75,8 @@ export function buildServer(jarvis, { origen = 'claude', avisar = () => {}, inst
       hora: z.string().optional().describe('HH:MM'),
       caption: z.string().optional().describe('Texto que acompaña a la publicación'),
       nota: z.string().optional().describe('Ruta de la nota asociada en el vault'),
+      leadmagnet: z.boolean().optional().describe('Si la pieza lleva lead magnet (p. ej. «comenta GUÍA y te la mando»)'),
+      leadmagnet_url: z.string().optional().describe('Enlace del lead magnet (https://…)'),
     },
     (a) => jarvis.crearPieza({ ...a, origen }), true);
 
@@ -89,6 +91,8 @@ export function buildServer(jarvis, { origen = 'claude', avisar = () => {}, inst
       hora: z.string().optional(),
       caption: z.string().optional(),
       nota: z.string().optional(),
+      leadmagnet: z.boolean().optional(),
+      leadmagnet_url: z.string().optional().describe('Enlace del lead magnet (https://…)'),
     },
     ({ id, ...cambios }) => jarvis.actualizarPieza(id, cambios, origen), true);
 

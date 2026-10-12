@@ -90,7 +90,7 @@ export function createJarvis({ db, vault }) {
   // Normaliza los campos que se pueden escribir en una pieza
   const camposPieza = (c) => {
     const set = {};
-    for (const k of ['titulo', 'estado', 'formato', 'plataformas', 'fecha', 'hora', 'nota', 'caption', 'video_url', 'carpeta', 'archivos']) {
+    for (const k of ['titulo', 'estado', 'formato', 'plataformas', 'fecha', 'hora', 'nota', 'caption', 'video_url', 'carpeta', 'archivos', 'leadmagnet_url']) {
       if (!(k in c)) continue;
       const v = c[k];
       if (k === 'archivos') set.archivos = archivosValidos(v);
@@ -103,6 +103,14 @@ export function createJarvis({ db, vault }) {
     if (set.hora && !/^\d{2}:\d{2}$/.test(set.hora)) throw new JarvisError('La hora debe ser HH:MM');
     if (set.caption) set.caption = set.caption.slice(0, 5000);
     if (set.carpeta) set.carpeta = set.carpeta.slice(0, 80);
+    // Lead magnet: la casilla y su enlace. Sin casilla no se guarda enlace; con enlace, la casilla se marca sola.
+    if ('leadmagnet' in c) set.leadmagnet = c.leadmagnet ? 1 : 0;
+    if (set.leadmagnet_url) {
+      if (!/^https?:\/\/\S+$/i.test(set.leadmagnet_url)) throw new JarvisError('El enlace del lead magnet debe empezar por https://');
+      set.leadmagnet_url = set.leadmagnet_url.slice(0, 500);
+      if (!('leadmagnet' in set)) set.leadmagnet = 1;
+    }
+    if (set.leadmagnet === 0) set.leadmagnet_url = null;
     return set;
   };
 
@@ -150,6 +158,7 @@ export function createJarvis({ db, vault }) {
     const copia = crearPieza({
       titulo: p.titulo, estado: 'listo', formato: p.formato, plataformas: p.plataformas, caption: p.caption,
       video_url: p.video_url, carpeta: p.carpeta, nota: p.nota, archivos: p.archivos, fecha: null, hora: p.hora, origen, registrarActividad: false,
+      leadmagnet: p.leadmagnet, leadmagnet_url: p.leadmagnet_url,
     });
     registrar('Contenido', `Copia para volver a publicar: ${p.titulo}`, origen);
     return copia;
@@ -323,7 +332,7 @@ export function createJarvis({ db, vault }) {
       ({ id, titulo, estado, prioridad, categoria, plazo_tipo, plazo_desde, plazo_hasta, hecha: Boolean(hecha), atrasada });
 
     const piezas = rows(q.piezasDelDia, fecha).map((p) => ({
-      tipo: 'pieza', id: p.id, titulo: p.titulo, formato: p.formato, hora: p.hora || null,
+      tipo: 'pieza', id: p.id, titulo: p.titulo, formato: p.formato, hora: p.hora || null, leadmagnet: p.leadmagnet ? p.leadmagnet_url || '' : null,
       estado: p.estado, etiqueta: etiquetaFase(p.estado),
       instagram: p.ig_estado === 'publicado' ? 'publicado' : p.ig_estado === 'error' ? 'error' : p.ig_estado === 'procesando' ? 'publicando' : p.publicar_ig ? 'programado' : null,
       error: p.ig_estado === 'error' ? p.ig_error : null,
