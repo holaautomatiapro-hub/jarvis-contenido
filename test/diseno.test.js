@@ -255,6 +255,31 @@ describe('diseños: API, exportar a la biblioteca y Claude', () => {
     assert.deepEqual(v.cambiadas, [], 'y la próxima exportación en vídeo solo saca lo que cambie');
   });
 
+  test('una exportación se puede parar a medias: se queda como estaba y sin error', async () => {
+    let seguir;
+    const lento = { ...motorFalso, exportar: async (d, tipo, { alProgreso }) => {
+      alProgreso({ avance: 0.1 });
+      await new Promise((r) => { seguir = r; });
+      alProgreso({ avance: 0.5 }); // aquí se da cuenta de que la han parado
+      return { archivos: [], limpiar() {} };
+    } };
+    const ds = createDisenos({ db, jarvis, kit: createKit({ vaultPath: vault }), motor: lento, archivos, previasDir: path.join(vault, '.jarvis', 'disenos') });
+    const d = ds.crear({ formato: 'carrusel', plantilla: 'rejilla', guion: 'Para parar', generar: false });
+    await ds.guardarDatos(d.id, { slides: [1, 2].map(slide) });
+    const piezas = jarvis.listarPiezas().length;
+    ds.exportar(d.id, { tipo: 'mp4' });
+    for (let i = 0; i < 50 && !seguir; i++) await new Promise((r) => setTimeout(r, 10));
+    assert.equal(ds.obtener(d.id).estado, 'exportando');
+    assert.deepEqual(ds.pararExportacion(d.id), { ok: true });
+    seguir();
+    const e = await esperar(d.id);
+    assert.equal(e.estado, 'listo');
+    assert.equal(e.error, null);
+    assert.equal(e.exportado, null, 'no se ha exportado nada');
+    assert.equal(jarvis.listarPiezas().length, piezas);
+    assert.throws(() => ds.pararExportacion(d.id), /Ya ha terminado/);
+  });
+
   test('stories: una pieza por story, en una carpeta; la pieza del guion pasa a listo', async () => {
     const origen = jarvis.crearPieza({ titulo: 'Caso de Andrea', estado: 'guion', caption: 'Antes 15, ahora 30' });
     const { data: d } = await api('/api/disenos', { formato: 'story', plantilla: 'rejilla', pieza_id: origen.id, generar: false });

@@ -450,8 +450,9 @@ export function createApp({ jarvis, archivos, publicadorIg, asistente, instagram
   if (asistente) {
     const NOMBRE = { principal: 'Chat', replicar: 'Replicando una publicación', diseno: 'Diseño', laboratorio: 'Laboratorio', guiones: 'Guiones', ads: 'Meta Ads', publicar: 'Adaptando a otras redes', sistema: 'Tarea de fondo' };
     const IR = { principal: { tab: 'chat' }, replicar: { tab: 'contenido' }, diseno: { tab: 'laboratorio', seccion: 'diseno' }, laboratorio: { tab: 'laboratorio' }, guiones: { tab: 'skills' }, ads: { tab: 'ads' }, publicar: { tab: 'contenido' } };
-    const resumir = (t) => String(t || '').replace(/^\[[^\]]*\]\s*/, '').split('\n').find((l) => l.trim())?.trim().slice(0, 90) || '';
-    app.get('/api/trabajos', h(() => {
+    const resumir = (t) => String(t || '').replace(/^\[[^\]]*\]\s*/, '').split('\n').find((l) => l.trim())?.trim().slice(0, 240) || '';
+    // Cada trabajo puede llevar «parar»: lo que hay que hacer para cortarlo (no sale en la respuesta)
+    const trabajosAhora = () => {
       const lista = [];
       const disenosEnCurso = disenos?.trabajos() || [];
       for (const d of disenosEnCurso) {
@@ -461,20 +462,29 @@ export function createApp({ jarvis, archivos, publicadorIg, asistente, instagram
           detalle: d.estado === 'exportando' ? 'Exportando a la biblioteca' : d.trabajo?.texto || (d.estado === 'renderizando' ? 'Dibujando la vista previa' : 'Diseñando'),
           trabajo: d.estado === 'exportando' ? null : d.trabajo, progreso: d.estado === 'exportando' ? d.progreso ?? 0 : null, desde: d.trabajo?.inicio || null,
           ir: portada ? (d.pieza_origen ? { tab: 'contenido', pieza: d.pieza_origen } : { tab: 'laboratorio', seccion: 'diseno' }) : { tab: 'laboratorio', seccion: 'diseno', diseno: d.id },
+          parar: d.estado === 'exportando' ? () => disenos.pararExportacion(d.id) : d.trabajo?.conversacion ? () => asistente.cancelar({ conversacion: d.trabajo.conversacion }) : null,
         });
       }
       const conDiseno = new Set(disenosEnCurso.map((d) => d.trabajo?.conversacion).filter(Boolean));
       for (const c of asistente.enMarcha()) {
         if (c.conversacion === 'diseno' && conDiseno.has('diseno')) continue; // ya sale como su diseño
-        lista.push({ id: `claude-${c.conversacion}-${c.id}`, tipo: 'claude', titulo: NOMBRE[c.conversacion] || 'JARVIS', detalle: resumir(c.texto), desde: c.desde, ir: IR[c.conversacion] || null });
+        lista.push({ id: `claude-${c.conversacion}-${c.id}`, tipo: 'claude', titulo: NOMBRE[c.conversacion] || 'JARVIS', detalle: resumir(c.texto), desde: c.desde, ir: IR[c.conversacion] || null, parar: () => asistente.cancelar({ conversacion: c.conversacion }) });
       }
       for (const c of conversiones?.trabajos() || []) {
-        lista.push({ id: `convertir-${c.pieza}`, tipo: 'convertir', titulo: `${c.a === 'video' ? 'Vídeo' : 'Imagen'} de «${c.titulo}»`, detalle: c.deDiseno ? 'Exportando desde su diseño' : c.a === 'video' ? 'Pasando las fotos a vídeo' : 'Sacando un fotograma', progreso: c.progreso, desde: c.inicio, ir: { tab: 'contenido', pieza: c.pieza } });
+        lista.push({ id: `convertir-${c.pieza}`, tipo: 'convertir', titulo: `${c.a === 'video' ? 'Vídeo' : 'Imagen'} de «${c.titulo}»`, detalle: c.deDiseno ? 'Exportando desde su diseño' : c.a === 'video' ? 'Pasando las fotos a vídeo' : 'Sacando un fotograma', progreso: c.progreso, desde: c.inicio, ir: { tab: 'contenido', pieza: c.pieza }, parar: () => conversiones.parar(c.pieza) });
       }
       const u = actualizar?.enCurso();
       if (u) lista.push({ id: 'actualizar', tipo: 'actualizar', titulo: 'Actualizando JARVIS', detalle: 'Se reiniciará en medio: es normal que la página se corte un momento', desde: Date.parse(u.inicio) || null, ir: { tab: 'apps' } });
-      return { trabajos: lista };
-    }));
+      return lista;
+    };
+    app.get('/api/trabajos', h(() => ({ trabajos: trabajosAhora().map(({ parar, ...t }) => ({ ...t, parable: Boolean(parar) })) })));
+    app.post('/api/trabajos/parar', h(async (req) => {
+      const t = trabajosAhora().find((x) => x.id === String(req.body?.id || ''));
+      if (!t) throw Object.assign(new Error('Ya ha terminado'), { publico: true });
+      if (!t.parar) throw Object.assign(new Error('Esto no se puede parar a medias'), { publico: true });
+      await t.parar();
+      return { ok: true };
+    }, true));
   }
 
   // Actualizar JARVIS desde el dashboard (Apps)

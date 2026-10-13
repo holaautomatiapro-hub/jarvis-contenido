@@ -18,14 +18,16 @@ test('«Trabajando en…» junta diseños, portadas, Claude y la actualización,
       { id: 7, conversacion: 'diseno', desde: ahora - 60_000, texto: 'Diseña el diseño #3', modelo: 'A fondo' },
       { id: 8, conversacion: 'laboratorio', desde: ahora - 5000, texto: '[Laboratorio]\nMonta el testimonio de Andrea', modelo: 'A fondo' },
     ],
-    estado: () => ({ ocupado: true, eventos: [] }), preguntar() {}, cancelar() {}, nuevaSesion() {},
+    estado: () => ({ ocupado: true, eventos: [] }), preguntar() {}, cancelar: (o) => { parados.push(o); return { ok: true }; }, nuevaSesion() {},
   };
+  const parados = [];
   const disenos = {
     trabajos: () => [
       { id: 3, titulo: 'Tu Claude es un pelota', uso: null, estado: 'generando', trabajo: { conversacion: 'diseno', inicio: ahora - 60_000, texto: 'Escribiendo las diapositivas', paso: 'escribiendo', desde: 30, hasta: 72, senal: ahora, estimado: 300_000 } },
       { id: 4, titulo: 'Contraté un setter IA', uso: 'portada', pieza_origen: 12, estado: 'exportando', progreso: 40, trabajo: null },
     ],
     listar: () => [],
+    pararExportacion: (id) => { parados.push({ exportacion: id }); return { ok: true }; },
   };
   const actualizar = { enCurso: () => ({ estado: 'actualizando', inicio: new Date(ahora - 30_000).toISOString() }) };
   const server = http.createServer();
@@ -39,6 +41,15 @@ test('«Trabajando en…» junta diseños, portadas, Claude y la actualización,
     assert.equal(trabajos[1].progreso, 40);
     assert.deepEqual(trabajos[1].ir, { tab: 'contenido', pieza: 12 }, 'la portada lleva a su pieza');
     assert.equal(trabajos[2].detalle, 'Monta el testimonio de Andrea');
+    assert.deepEqual(trabajos.map((t) => t.parable), [true, true, true, false], 'la actualización no se puede cortar a medias');
+    assert.equal(trabajos[0].parar, undefined);
+    const parar = (id) => fetch(`http://127.0.0.1:${server.address().port}/api/trabajos/parar`, { method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify({ id }) });
+    for (const t of trabajos.slice(0, 3)) assert.equal((await parar(t.id)).status, 200);
+    assert.deepEqual(parados, [{ conversacion: 'diseno' }, { exportacion: 4 }, { conversacion: 'laboratorio' }]);
+    const r = await parar('actualizar');
+    assert.equal(r.status, 400);
+    assert.match((await r.json()).error, /no se puede parar/);
+    assert.match((await (await parar('claude-x-1')).json()).error, /Ya ha terminado/);
   } finally {
     server.close();
     rmSync(dir, { recursive: true, force: true });

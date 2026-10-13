@@ -119,6 +119,7 @@ export function createDisenos({ db, jarvis, kit, motor, archivos = null, previas
   // Diseños en los que Claude está trabajando ahora (desde Diseño, Replicar o el Chat), para enseñar cómo va:
   // id → { version, conversacion, inicio, paso, senal (última vez que Claude hizo algo), herramienta, uso }
   const enCurso = new Map();
+  const parados = new Set(); // exportaciones que se han mandado parar
   const aj = ajustes(db);
   // Los pasos de un diseño y la parte de la barra que ocupa cada uno (en %)
   const PASOS = {
@@ -426,17 +427,21 @@ Pasos: 1) Read de la referencia; 2) ver_kit_diseno (formato técnico de las diap
     }
     actualizar(r.id, { estado: 'exportando', error: null, progreso: 0 });
     avisar(r.id);
+    parados.delete(r.id);
     let ultimo = 0;
+    const siParado = () => { if (parados.has(r.id)) throw new DisenoError('Parada'); };
     (async () => {
       let res;
       try {
         res = await motor.exportar(datos, tipo, { solo: rehacer.length === total ? null : rehacer, alProgreso: ({ avance }) => {
+          siParado();
           const p = Math.round(avance * 100);
           if (p - ultimo < 3 && p < 100) return;
           ultimo = p;
           actualizar(r.id, { progreso: p });
           emitir({ type: 'diseno', id: r.id, progreso: p });
         } });
+        siParado();
         const guardados = reutilizable ? [...previo.archivos] : [];
         for (const [i, a] of res.archivos.entries()) {
           const fuente = a.ruta ? createReadStream(a.ruta) : Readable.from([a.buffer]);
@@ -445,13 +450,23 @@ Pasos: 1) Read de la referencia; 2) ver_kit_diseno (formato técnico de las diap
         const exportado = { tipo, en: new Date().toISOString(), piezas: aLaBiblioteca(r, datos, guardados), huellas, archivos: guardados, rehechas: rehacer.length === total ? 'todas' : rehacer };
         actualizar(r.id, { estado: 'listo', exportado: JSON.stringify(exportado), progreso: null });
       } catch (e) {
-        actualizar(r.id, { estado: 'listo', error: `No se ha podido exportar: ${e.message}`, progreso: null });
+        // Parada desde «Trabajando»: se queda como estaba (lo exportado antes sigue valiendo)
+        actualizar(r.id, { estado: 'listo', error: parados.has(r.id) ? null : `No se ha podido exportar: ${e.message}`, progreso: null });
       } finally {
+        parados.delete(r.id);
         res?.limpiar?.();
         avisar(r.id);
       }
     })();
     return obtener(r.id);
+  }
+
+  // Corta una exportación en marcha en cuanto termina el fotograma que está sacando
+  function pararExportacion(id) {
+    const r = leer(id);
+    if (r.estado !== 'exportando') throw new DisenoError('Ya ha terminado de exportar');
+    parados.add(r.id);
+    return { ok: true };
   }
 
   // Carrusel → una pieza (la del guion si sale de una, o la que ya se exportó antes si no está publicada).
@@ -548,7 +563,7 @@ Pasos: 1) Read de la referencia; 2) ver_kit_diseno (formato técnico de las diap
     return [...ids].map((id) => { try { return vista(leer(id)); } catch { return null; } }).filter(Boolean);
   }
 
-  return { listar, obtener, crear, generar: generarConClaude, trabajos, deLaPieza, otraVersion, aceptarOtraVersion, alEventoClaude, guardarDatos, exportar, borrar, rutaPrevia, tiposPortada, muestraPortada, guardarPlantillaPortada, borrarPlantillaPortada, crearPortada, exportarPortada, ESTADOS };
+  return { listar, obtener, crear, generar: generarConClaude, trabajos, pararExportacion, deLaPieza, otraVersion, aceptarOtraVersion, alEventoClaude, guardarDatos, exportar, borrar, rutaPrevia, tiposPortada, muestraPortada, guardarPlantillaPortada, borrarPlantillaPortada, crearPortada, exportarPortada, ESTADOS };
 }
 
 const slug = (s) => String(s).normalize('NFD').replace(/[̀-ͯ]/g, '').replace(/[^A-Za-z0-9]+/g, '-').replace(/^-+|-+$/g, '').slice(0, 40).toLowerCase() || 'diseno';
