@@ -2,13 +2,13 @@ import { useEffect, useRef, useState } from 'react';
 import Icon from '../../components/Icon.jsx';
 import CampoCaption from '../../components/CampoCaption.jsx';
 import GenerarPortada, { esFormatoVideo } from './Portada.jsx';
-import { VersionesRed } from './Versiones.jsx';
 import { ResultadosPieza } from './Resultados.jsx';
 import { api, useMensajes } from '../../lib/api.js';
 import { markdownANegrita } from '../../lib/negrita.js';
 import { diaLargo, hoyIso, sumarDias } from '../../lib/fechas.js';
 import { NOMBRE_TIPO_IG, planDePublicacion } from '../../lib/planIg.js';
-import { CampoEstrategia, CampoLeadMagnet, OpcionesCarpetas, useFases, MAX_CAPTION, Miniatura, Modal, TIPOS, borrarArchivo, esMedio, esStory, esVideo, subirArchivo, tamanoLegible, tipoDe } from './comun.jsx';
+import { CampoLeadMagnet, OBJETIVOS, OpcionesCarpetas, useFases, MAX_CAPTION, Miniatura, Modal, TIPOS, borrarArchivo, esMedio, esStory, esVideo, subirArchivo, tamanoLegible, tipoDe } from './comun.jsx';
+import { GenerarLeadMagnet, OtraVersion } from './Generar.jsx';
 
 // Caption con IA: JARVIS lo escribe con tu voz a partir de lo que tenga la pieza (título, guion, lead magnet…)
 const crearCaption = async (datos) => {
@@ -118,6 +118,13 @@ export function EditorContenido({ pieza, carpetas, ig, onClose, onGuardado, onVi
     setAvisoPortada('✓ Portada añadida.');
   };
   useMensajes('portada', (e) => { if (pieza.id && e.pieza === pieza.id) ponerPortadaHecha(e.archivo, e.comoPortada); });
+  // Generar lead magnet / la otra versión (vídeo o imagen)
+  const [generando, setGenerando] = useState(null); // null | 'leadmagnet' | 'version'
+  const [avisoGenerar, setAvisoGenerar] = useState('');
+  const [version, setVersion] = useState(null); // la otra versión en marcha o lista (del servidor)
+  const cargarVersion = () => { if (pieza.id) api(`/api/piezas/${pieza.id}/convertir`).then(setVersion).catch(() => {}); };
+  useEffect(cargarVersion, [pieza.id]); // eslint-disable-line react-hooks/exhaustive-deps
+  useMensajes('conversion', (e) => { if (e.pieza === pieza.id) cargarVersion(); });
   const subidos = useRef(new Set()); // subidos en esta edición: si se cancela, se borran
   const [quitados, setQuitados] = useState([]); // ya guardados y quitados ahora: se borran al guardar
   const [subiendo, setSubiendo] = useState(0);
@@ -165,6 +172,8 @@ export function EditorContenido({ pieza, carpetas, ig, onClose, onGuardado, onVi
   });
 
   const plan = planDePublicacion({ ...d, archivos });
+  // «Generar vídeo» si son fotos; «Generar imagen» si son vídeos (null: nada que convertir)
+  const haciaVideo = archivos.length && archivos.every((a) => /^image\//.test(a.mime)) ? true : archivos.length && archivos.every((a) => /^video\//.test(a.mime)) ? false : null;
   const conIg = ig?.disponible && !ig.motivo && pieza.ig_estado !== 'publicado';
   // Vuelve a subir como JPG las fotos que no lo son (Instagram solo publica JPG)
   const convertirAJpg = async () => {
@@ -258,22 +267,28 @@ export function EditorContenido({ pieza, carpetas, ig, onClose, onGuardado, onVi
             </div>
           </div>
           {!d.fecha && <div className="ayuda">Sin fecha se queda en la biblioteca hasta que la programes.</div>}
-          <CampoEstrategia d={d} pilares={pilares} onCambio={(c) => setD((x) => ({ ...x, ...c }))} />
+          <label className="campo-et">Objetivo</label>
+          <div className="pildoras">
+            {OBJETIVOS.map((o) => (
+              <button type="button" key={o.id} title={o.ayuda} className={d.objetivo === o.id ? 'on' : ''} style={d.objetivo === o.id ? { '--c': o.color } : undefined} onClick={() => setD((x) => ({ ...x, objetivo: x.objetivo === o.id ? '' : o.id }))}>
+                <span className="punto" style={{ background: o.color }} />{o.label}
+              </button>
+            ))}
+          </div>
           <label className="campo-et">Caption <span className={`contador${largo ? ' pasado' : ''}`}>{d.caption.length} / {MAX_CAPTION}</span></label>
           <CampoCaption rows={7} value={d.caption} onChange={cambia('caption')} placeholder="El texto que acompaña a la publicación…" onIA={() => crearCaption({ ...d, nota: pieza.nota, archivos })} />
-          <label className="campo-et">URL del vídeo</label>
-          <div className="fila" style={{ marginBottom: 0 }}>
-            <input className="campo" value={d.video_url} onChange={cambia('video_url')} placeholder="https://drive.google.com/… o el enlace de la publicación" />
-            {/^https?:\/\//i.test(d.video_url) && <a className="btn btn-sec" href={d.video_url} target="_blank" rel="noreferrer">↗ Abrir</a>}
-          </div>
           <CampoLeadMagnet activo={d.leadmagnet} url={d.leadmagnet_url} onCambio={(c) => setD((x) => ({ ...x, ...c }))} />
-          <CajaInstagram ig={ig} pieza={pieza} plan={plan} marcado={d.publicar_ig} onMarcar={marcarIg} ocupado={ocupado} onAhora={conIg ? () => guardar(null, { ahora: true }) : null} onConvertir={convertirAJpg} onRepublicar={!nueva && onRepublicar ? () => { cerrar(); onRepublicar(pieza); } : null} />
-          {d.formato !== 'Story' && (
-            <div className="portada-boton">
-              <button type="button" className="btn btn-sec" onClick={() => setGenerandoPortada(true)} disabled={ocupado}><Icon name="sparkle" size={14} />Generar portada</button>
-              <span className="ayuda">{avisoPortada || (esFormatoVideo(d.formato) ? 'Con tu sistema de diseño; queda como portada del reel.' : 'Con tu sistema de diseño; entra como primera imagen.')}</span>
-            </div>
-          )}
+          {/* Programar y publicar en Instagram se hace desde «Programar» (biblioteca o calendario); aquí solo se ve cómo está */}
+          {pieza.ig_estado === 'publicado'
+            ? <CajaInstagram ig={ig} pieza={pieza} plan={plan} marcado={d.publicar_ig} onMarcar={marcarIg} ocupado={ocupado} onRepublicar={!nueva && onRepublicar ? () => { cerrar(); onRepublicar(pieza); } : null} />
+            : d.publicar_ig && conIg && <div className="caja-ig on"><Icon name="instagram" size={14} /><span>Se publicará sola en Instagram {d.fecha ? `el ${d.fecha}${d.hora ? ` a las ${d.hora}` : ''}` : 'cuando tenga día'}. Lo cambias con «Programar» en la biblioteca o el calendario.</span></div>}
+          <div className="generar-botones">
+            {d.formato !== 'Story' && <button type="button" className="btn btn-sec" onClick={() => setGenerandoPortada(true)} disabled={ocupado} title={esFormatoVideo(d.formato) ? 'Con tu sistema de diseño; queda como portada del reel' : 'Con tu sistema de diseño; entra como primera imagen'}><Icon name="sparkle" size={14} />Generar portada</button>}
+            <button type="button" className="btn btn-sec" onClick={() => setGenerando('leadmagnet')} disabled={ocupado || nueva} title={nueva ? 'Guarda la pieza primero' : 'JARVIS hace el lead magnet de esta pieza'}><Icon name="target" size={14} />Generar lead magnet</button>
+            {haciaVideo != null && <button type="button" className="btn btn-sec" onClick={() => setGenerando('version')} disabled={ocupado || nueva} title={nueva ? 'Guarda la pieza primero' : haciaVideo ? 'Ver esta pieza en vídeo y, si te gusta, cambiarla' : 'Ver esta pieza en imagen y, si te gusta, cambiarla'}><Icon name={haciaVideo ? 'play' : 'eye'} size={14} />{haciaVideo ? 'Generar vídeo' : 'Generar imagen'}</button>}
+          </div>
+          {avisoPortada && <div className="ayuda">{avisoPortada}</div>}
+          {avisoGenerar && <div className="aviso ok">{avisoGenerar}</div>}
         </div>
 
         <div className="editor-archivos">
@@ -317,7 +332,20 @@ export function EditorContenido({ pieza, carpetas, ig, onClose, onGuardado, onVi
         </div>
       </form>
       {!nueva && <ResultadosPieza pieza={{ ...pieza, estado: d.estado, fecha: d.fecha }} onVinculada={(p) => p && setD((x) => ({ ...x, estado: p.estado, fecha: p.fecha || '' }))} />}
-      {!nueva && <VersionesRed pieza={pieza} fecha={d.fecha} />}
+      {!nueva && (generando === 'version' || version) && (
+        <OtraVersion
+          pieza={pieza} haciaVideo={haciaVideo} estado={version}
+          onCerrar={() => setGenerando(null)}
+          onUsada={(p) => { setArchivos(p.archivos || []); setD((x) => ({ ...x, formato: tipoDe(p.formato)?.id || p.formato || x.formato })); setGenerando(null); onGuardado?.(); }}
+        />
+      )}
+      {generando === 'leadmagnet' && (
+        <GenerarLeadMagnet
+          pieza={{ ...pieza, titulo: d.titulo, cta: d.cta }}
+          onClose={() => setGenerando(null)}
+          onEncargado={(texto) => { setAvisoGenerar(texto); setD((x) => ({ ...x, leadmagnet: true })); setGenerando(null); }}
+        />
+      )}
       {error && <div className="caja-error">{error}</div>}
       {generandoPortada && (
         <GenerarPortada

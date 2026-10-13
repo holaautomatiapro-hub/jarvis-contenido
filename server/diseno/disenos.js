@@ -505,13 +505,50 @@ Pasos: 1) Read de la referencia; 2) ver_kit_diseno (formato técnico de las diap
   // Al arrancar: lo que se quedó a medias (JARVIS se cerró) vuelve a estar disponible
   db.prepare("UPDATE disenos SET estado = CASE WHEN version > 0 THEN 'listo' ELSE 'error' END, error = CASE WHEN version > 0 THEN error ELSE 'Se interrumpió al cerrar JARVIS' END, progreso = NULL WHERE estado IN ('generando', 'renderizando', 'exportando')").run();
 
+  // ---------- Otra versión de lo exportado (Contenido → «Generar vídeo» / «Generar imagen») ----------
+  // El diseño del que sale una pieza (si sale de uno): para sacar su versión en vídeo o en imagen
+  function deLaPieza(piezaId) {
+    const pid = Number(piezaId);
+    for (const r of rows(db.prepare("SELECT * FROM disenos WHERE exportado IS NOT NULL AND (uso IS NULL OR uso != 'portada') ORDER BY id DESC"))) {
+      const exp = json(r.exportado, null);
+      const i = (exp?.piezas || []).indexOf(pid);
+      if (i >= 0 && json(r.datos, null)?.slides?.length) return { id: r.id, formato: r.formato, tipo: exp.tipo, indice: i };
+    }
+    return null;
+  }
+  // Saca los archivos en el otro formato sin tocar la pieza; aceptarOtraVersion los deja como exportación del diseño
+  async function otraVersion(id, tipo, { solo = null, alProgreso = () => {} } = {}) {
+    const r = leer(id);
+    const datos = json(r.datos, null);
+    const huellas = huellasDe(datos, huellaKit(kit.leer()));
+    const res = await motor.exportar(datos, tipo, { solo, alProgreso });
+    try {
+      const guardados = [];
+      for (const a of res.archivos) {
+        const fuente = a.ruta ? createReadStream(a.ruta) : Readable.from([a.buffer]);
+        guardados.push(await archivos.guardar(fuente, { nombre: `${slug(r.titulo)}-${a.nombre}`, mime: a.mime }));
+      }
+      return { archivos: guardados, huellas };
+    } finally { res?.limpiar?.(); }
+  }
+  function aceptarOtraVersion(id, { tipo, archivos: nuevos, huellas, solo = null }) {
+    const r = leer(id);
+    const exp = json(r.exportado, {});
+    // Las stories: cada pieza es una diapositiva; se cambia solo la suya
+    let lista = nuevos;
+    if (solo && Array.isArray(exp.archivos) && exp.tipo === tipo) { lista = [...exp.archivos]; solo.forEach((n, k) => { lista[n - 1] = nuevos[k]; }); }
+    const completo = lista.length === huellas.length && lista.every(Boolean);
+    actualizar(r.id, { exportado: JSON.stringify({ ...exp, tipo, en: new Date().toISOString(), ...(completo ? { archivos: lista, huellas } : { archivos: null, huellas: null }) }) });
+    avisar(r.id);
+  }
+
   // Lo que se está haciendo ahora con los diseños (para «Trabajando en…» de la barra de arriba)
   function trabajos() {
     const ids = new Set([...enCurso.keys(), ...rows(db.prepare("SELECT id FROM disenos WHERE estado IN ('exportando', 'renderizando')")).map((x) => x.id)]);
     return [...ids].map((id) => { try { return vista(leer(id)); } catch { return null; } }).filter(Boolean);
   }
 
-  return { listar, obtener, crear, generar: generarConClaude, trabajos, alEventoClaude, guardarDatos, exportar, borrar, rutaPrevia, tiposPortada, muestraPortada, guardarPlantillaPortada, borrarPlantillaPortada, crearPortada, exportarPortada, ESTADOS };
+  return { listar, obtener, crear, generar: generarConClaude, trabajos, deLaPieza, otraVersion, aceptarOtraVersion, alEventoClaude, guardarDatos, exportar, borrar, rutaPrevia, tiposPortada, muestraPortada, guardarPlantillaPortada, borrarPlantillaPortada, crearPortada, exportarPortada, ESTADOS };
 }
 
 const slug = (s) => String(s).normalize('NFD').replace(/[̀-ͯ]/g, '').replace(/[^A-Za-z0-9]+/g, '-').replace(/^-+|-+$/g, '').slice(0, 40).toLowerCase() || 'diseno';
