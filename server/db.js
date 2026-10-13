@@ -291,6 +291,8 @@ export function openDb(file) {
   CREATE INDEX IF NOT EXISTS piezas_fecha ON piezas(fecha);`);
   // Diseños que son la portada de una pieza (no salen en la lista de Diseño)
   migrar('ALTER TABLE disenos ADD COLUMN uso TEXT');
+  // Huella de cada diapositiva dibujada: solo se vuelve a dibujar (o a exportar) la que cambia
+  migrar('ALTER TABLE disenos ADD COLUMN huellas TEXT');
   return db;
 }
 

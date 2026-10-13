@@ -456,9 +456,9 @@ Testimonios y reels se paran a enseñar el guion y los clips: léelo con laborat
     tool('asignar_leadmagnet', 'Une un lead magnet a la pieza que lo anuncia (si ya está publicado, pone su enlace en la pieza). Publicarlo en Vercel lo hace la persona en Laboratorio → Lead magnets.',
       { slug: z.string(), pieza: z.number().int().nullable() },
       ({ slug, pieza }) => servidor('PUT', `/api/laboratorio/leadmagnets/${encodeURIComponent(slug)}/pieza`, { pieza }), true);
-    tool('exportar_diseno', 'Exporta un diseño terminado a la biblioteca de Contenido (JPG, o vídeo MP4 con su animación): un carrusel queda en su pieza (la del guion si sale de una) y las stories, una pieza por story enlazadas a ella.',
-      { id: z.number().int(), tipo: z.enum(['jpg', 'mp4']).optional() },
-      ({ id, tipo = 'jpg' }) => servidor('POST', `/api/disenos/${id}/exportar`, { tipo }), true);
+    tool('exportar_diseno', 'Exporta un diseño terminado a la biblioteca de Contenido (JPG, o vídeo MP4 con su animación): un carrusel queda en su pieza (la del guion si sale de una) y las stories, una pieza por story enlazadas a ella. Si ya se exportó en ese formato, solo se vuelven a sacar las diapositivas que han cambiado (o las de «solo») y se sustituyen en la biblioteca.',
+      { id: z.number().int(), tipo: z.enum(['jpg', 'mp4']).optional(), solo: z.array(z.number().int().min(1)).optional().describe('Volver a exportar solo estas diapositivas (desde 1)') },
+      ({ id, tipo = 'jpg', solo }) => servidor('POST', `/api/disenos/${id}/exportar`, solo ? { tipo, solo } : { tipo }), true);
   }
 
   return server;

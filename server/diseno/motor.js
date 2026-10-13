@@ -366,7 +366,8 @@ export function createMotor({ kit: kitApi, archivos = null, lanzar = lanzarNaveg
   }
 
   // Fotograma final de cada diapositiva en JPG + revisión de calidad
-  function previsualizar(diseno, { calidad = 82 } = {}) {
+  // solo: las diapositivas (desde 1) que hay que dibujar; las demás quedan a null en imagenes (quien llama ya las tiene)
+  function previsualizar(diseno, { calidad = 82, solo = null } = {}) {
     return enCola(async () => {
       const kit = kitApi.leer();
       const d = normalizarDiseno(diseno, kit);
@@ -375,6 +376,7 @@ export function createMotor({ kit: kitApi, archivos = null, lanzar = lanzarNaveg
       const avisos = [];
       try {
         for (let n = 1; n <= d.slides.length; n++) {
+          if (solo && !solo.includes(n)) { imagenes.push(null); continue; }
           await conDiapositiva(kit, d, n, async (page, carga) => {
             await page.evaluate((t) => window.__seek(t), kit.duracion);
             const revision = await page.evaluate((z) => window.__revisar(z), zonaDe(kit, d));
@@ -391,34 +393,36 @@ export function createMotor({ kit: kitApi, archivos = null, lanzar = lanzarNaveg
 
   // Archivos finales: un JPG o un MP4 por diapositiva. Devuelve [{ nombre, mime, buffer | ruta }];
   // las rutas de los MP4 son temporales: quien llama las guarda y las borra con limpiar().
-  function exportar(diseno, tipo, { alProgreso = () => {} } = {}) {
+  // solo: las diapositivas (desde 1) que hay que volver a sacar; cada archivo lleva su número (n)
+  function exportar(diseno, tipo, { alProgreso = () => {}, solo = null } = {}) {
     return enCola(async () => {
       const kit = kitApi.leer();
       const d = normalizarDiseno(diseno, kit);
       await prepararVideos(d);
-      const total = d.slides.length;
+      const lista = d.slides.map((_, i) => i + 1).filter((n) => !solo || solo.includes(n));
+      const total = lista.length;
       const salida = [];
       const tmp = tipo === 'mp4' ? mkdtempSync(path.join(os.tmpdir(), 'jarvis-diseno-')) : null;
       const ffmpeg = tipo === 'mp4' ? await rutaFfmpeg() : null;
       try {
-        for (let n = 1; n <= total; n++) {
+        for (const [k, n] of lista.entries()) {
           const nombre = `${String(n).padStart(2, '0')}`;
           await conDiapositiva(kit, d, n, async (page) => {
             if (tipo !== 'mp4') {
               await page.evaluate((t) => window.__seek(t), kit.duracion);
-              salida.push({ nombre: `slide-${nombre}.jpg`, mime: 'image/jpeg', buffer: await page.screenshot({ type: 'jpeg', quality: 92 }) });
-              alProgreso({ diapositiva: n, total, avance: n / total });
+              salida.push({ n, nombre: `slide-${nombre}.jpg`, mime: 'image/jpeg', buffer: await page.screenshot({ type: 'jpeg', quality: 92 }) });
+              alProgreso({ diapositiva: n, total, avance: (k + 1) / total });
               return;
             }
             const ruta = path.join(tmp, `slide-${nombre}.mp4`);
             const fotogramas = Math.round(kit.duracion * kit.fps);
             await grabarVideo(page, { ffmpeg, ruta, fps: kit.fps, fotogramas, alFotograma: (f) => {
-              if (f % 15 === 0) alProgreso({ diapositiva: n, total, avance: (n - 1 + f / fotogramas) / total });
+              if (f % 15 === 0) alProgreso({ diapositiva: n, total, avance: (k + f / fotogramas) / total });
             } });
-            salida.push({ nombre: `slide-${nombre}.mp4`, mime: 'video/mp4', ruta });
+            salida.push({ n, nombre: `slide-${nombre}.mp4`, mime: 'video/mp4', ruta });
           });
         }
-        alProgreso({ diapositiva: total, total, avance: 1 });
+        alProgreso({ diapositiva: lista.at(-1), total, avance: 1 });
         return { archivos: salida, diseno: d, limpiar: () => tmp && rmSync(tmp, { recursive: true, force: true }) };
       } catch (e) {
         if (tmp) rmSync(tmp, { recursive: true, force: true });

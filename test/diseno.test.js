@@ -114,11 +114,19 @@ describe('motor: diseño y página', () => {
 describe('diseños: API, exportar a la biblioteca y Claude', () => {
   let server, base, jarvis, archivos, db, vault;
   // Motor sin navegador: devuelve imágenes y vídeos falsos
+  const dibujadas = [];
+  const exportadas = [];
   const motorFalso = {
-    previsualizar: async (d) => ({ imagenes: d.slides.map(() => Buffer.from('jpg')), avisos: d.slides.length > 2 ? [{ diapositiva: 3, texto: '«x» se sale de la imagen' }] : [] }),
-    exportar: async (d, tipo, { alProgreso }) => {
+    previsualizar: async (d, { solo } = {}) => {
+      const ns = d.slides.map((_, i) => i + 1).filter((n) => !solo || solo.includes(n));
+      dibujadas.push(ns);
+      return { imagenes: d.slides.map((_, i) => (ns.includes(i + 1) ? Buffer.from('jpg') : null)), avisos: ns.includes(3) && d.slides.length > 2 ? [{ diapositiva: 3, texto: '«x» se sale de la imagen' }] : [] };
+    },
+    exportar: async (d, tipo, { alProgreso, solo }) => {
       alProgreso({ avance: 1 });
-      return { archivos: d.slides.map((_, i) => ({ nombre: `slide-0${i + 1}.${tipo}`, mime: tipo === 'mp4' ? 'video/mp4' : 'image/jpeg', buffer: Buffer.from(`${tipo}${i}`) })), limpiar() {} };
+      const ns = d.slides.map((_, i) => i + 1).filter((n) => !solo || solo.includes(n));
+      exportadas.push(ns);
+      return { archivos: ns.map((n) => ({ n, nombre: `slide-0${n}.${tipo}`, mime: tipo === 'mp4' ? 'video/mp4' : 'image/jpeg', buffer: Buffer.from(`${tipo}${n}`) })), limpiar() {} };
     },
   };
   before(async () => {
@@ -182,6 +190,51 @@ describe('diseños: API, exportar a la biblioteca y Claude', () => {
     assert.ok(pieza.archivos.every((a) => a.mime === 'video/mp4'));
     assert.ok(viejos.every((p) => !archivos.existe(p)), 'los JPG anteriores se borran');
     assert.equal((await api(`/api/disenos/${d.id}/exportar`, { tipo: 'gif' })).status, 400);
+  });
+
+  test('editar una diapositiva: solo se dibuja esa y al exportar solo se saca y se sustituye esa', async () => {
+    const { data: d } = await api('/api/disenos', { formato: 'carrusel', plantilla: 'rejilla', guion: 'Cinco slides', generar: false });
+    await api(`/api/disenos/${d.id}/datos`, { slides: [1, 2, 3, 4, 5].map(slide) }, 'PUT');
+    assert.deepEqual(dibujadas.at(-1), [1, 2, 3, 4, 5]);
+    await api(`/api/disenos/${d.id}/exportar`, { tipo: 'mp4' });
+    const e1 = await esperar(d.id);
+    assert.deepEqual(exportadas.at(-1), [1, 2, 3, 4, 5]);
+    assert.deepEqual(e1.cambiadas, []);
+    const pieza1 = jarvis.listarPiezas().find((p) => p.id === e1.exportado.piezas[0]);
+
+    // Claude cambia solo la 5
+    const slides = [1, 2, 3, 4, 5].map(slide);
+    slides[4] = { bg: 'black', html: '<div class="titular">La 5, ahora con el botón visible</div>' };
+    const { data: g } = await api(`/api/disenos/${d.id}/datos`, { slides }, 'PUT');
+    assert.deepEqual(dibujadas.at(-1), [5], 'solo se vuelve a dibujar la 5');
+    assert.deepEqual(g.redibujadas, [5]);
+    assert.deepEqual(g.avisos, ['Diapositiva 3: «x» se sale de la imagen'], 'los avisos de las que no cambian se conservan');
+    const { data: v } = await api(`/api/disenos/${d.id}`);
+    assert.equal(v.previas.length, 5);
+    assert.deepEqual(v.cambiadas, [5], 'la 5 ha cambiado desde la exportación');
+
+    await api(`/api/disenos/${d.id}/exportar`, { tipo: 'mp4' });
+    const e2 = await esperar(d.id);
+    assert.deepEqual(exportadas.at(-1), [5], 'solo se exporta la 5');
+    assert.deepEqual(e2.exportado.piezas, e1.exportado.piezas, 'en la misma pieza');
+    const pieza2 = jarvis.listarPiezas().find((p) => p.id === e2.exportado.piezas[0]);
+    assert.deepEqual(pieza2.archivos.slice(0, 4).map((a) => a.path), pieza1.archivos.slice(0, 4).map((a) => a.path), 'las otras cuatro siguen siendo las mismas');
+    assert.notEqual(pieza2.archivos[4].path, pieza1.archivos[4].path, 'la 5 se sustituye');
+    assert.ok(!archivos.existe(pieza1.archivos[4].path), 'y la antigua se borra');
+    assert.ok(archivos.existe(pieza1.archivos[0].path));
+
+    // Sin cambios: hay que elegir cuáles; elegidas a mano, solo esas
+    assert.match((await api(`/api/disenos/${d.id}/exportar`, { tipo: 'mp4' })).data.error, /No ha cambiado nada/);
+    await api(`/api/disenos/${d.id}/exportar`, { tipo: 'mp4', solo: [2, 4] });
+    await esperar(d.id);
+    assert.deepEqual(exportadas.at(-1), [2, 4]);
+    // En otro formato, o con «todo», salen todas
+    await api(`/api/disenos/${d.id}/exportar`, { tipo: 'jpg', solo: [2] });
+    await esperar(d.id);
+    assert.deepEqual(exportadas.at(-1), [1, 2, 3, 4, 5]);
+    await api(`/api/disenos/${d.id}/exportar`, { tipo: 'jpg', todo: true });
+    await esperar(d.id);
+    assert.deepEqual(exportadas.at(-1), [1, 2, 3, 4, 5]);
   });
 
   test('stories: una pieza por story, en una carpeta; la pieza del guion pasa a listo', async () => {

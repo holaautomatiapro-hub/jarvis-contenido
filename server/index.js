@@ -388,7 +388,7 @@ export function createApp({ jarvis, archivos, publicadorIg, asistente, instagram
     // Lo usa guardar_diseno (MCP): guarda las diapositivas y devuelve la revisión de calidad
     app.put('/api/disenos/:id/datos', h((req) => disenos.guardarDatos(req.params.id, req.body || {}), true));
     app.post('/api/disenos/:id/generar', h((req) => disenos.generar(req.params.id, { indicaciones: req.body?.indicaciones }), true));
-    app.post('/api/disenos/:id/exportar', h((req) => disenos.exportar(req.params.id, { tipo: req.body?.tipo }), true));
+    app.post('/api/disenos/:id/exportar', h((req) => disenos.exportar(req.params.id, { tipo: req.body?.tipo, solo: req.body?.solo, todo: req.body?.todo === true }), true));
     app.delete('/api/disenos/:id', h((req) => disenos.borrar(req.params.id), true));
     app.get('/api/disenos/:id/previas/:fichero', (req, res) => {
       const ruta = disenos.rutaPrevia(req.params.id, req.params.fichero);

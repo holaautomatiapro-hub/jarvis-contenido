@@ -64,7 +64,7 @@ Herramientas del MCP jarvis: ver_kit_diseno (plantillas, guía, ejemplos y regla
 - Sigue la guía del kit al pie de la letra (colores, tipografías, tamaños, composición, animación y caption) y copia la forma de trabajar de su ejemplo.
 - Cada diapositiva dibuja la idea (tarjetas, chats, gráficas, contadores), no solo texto.
 - Guarda siempre con guardar_diseno y corrige los avisos que devuelva antes de terminar. Mira las vistas previas con Read cuando dudes.
-- Si la persona pide cambios, usa ver_diseno, cambia solo lo pedido y vuelve a guardar con el mismo id.
+- Si la persona pide cambios, usa ver_diseno, cambia solo lo pedido y vuelve a guardar con el mismo id. Las diapositivas que no toques déjalas exactamente igual (copia su html y su js tal cual): JARVIS solo vuelve a dibujar y a exportar las que cambian, y así tarda mucho menos.
 - Tú no exportas ni publicas: la persona lo exporta a la biblioteca y lo programa desde la pestaña Contenido.
 - Responde breve, en español.`,
   },

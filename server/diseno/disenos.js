@@ -2,6 +2,7 @@
 // Claude escribe el diseño (guardar_diseno en el MCP) → el motor dibuja la vista previa y revisa la calidad →
 // la persona lo ajusta en el chat y lo exporta (JPG o MP4) a la biblioteca, desde donde se programa o publica.
 import path from 'node:path';
+import { createHash } from 'node:crypto';
 import { createReadStream, existsSync, mkdirSync, readFileSync, readdirSync, rmSync, statSync, writeFileSync } from 'node:fs';
 import { Readable } from 'node:stream';
 import { ajustes, row, rows } from '../db.js';
@@ -14,6 +15,17 @@ export class DisenoError extends Error {
 
 const ESTADOS = ['nuevo', 'generando', 'renderizando', 'listo', 'exportando', 'error'];
 const json = (v, d) => { try { return v ? JSON.parse(v) : d; } catch { return d; } };
+const sha = (t) => createHash('sha1').update(t).digest('hex').slice(0, 16);
+// Lo que hace que el kit dibuje distinto: su configuración y cuándo cambiaron sus archivos
+function huellaKit(k) {
+  const fechas = ['kit.json', ...(k.css || [])].map((f) => { try { return statSync(path.join(k.dir, f)).mtimeMs; } catch { return 0; } });
+  return sha(JSON.stringify({ ...k, dir: null, fechas }));
+}
+// Una huella por diapositiva: si no cambia ni ella, ni su posición, ni el total, ni el kit, se dibuja igual
+export function huellasDe(d, hk) {
+  const total = d.slides.length;
+  return d.slides.map((slide, i) => sha(JSON.stringify({ slide, n: i + 1, total, formato: d.formato, plantilla: d.plantilla, hk })));
+}
 
 export function createDisenos({ db, jarvis, kit, motor, archivos = null, previasDir, portadasDir = path.join(path.dirname(previasDir), 'portadas'), recortarFoto = null, asistente = null, emitir = () => {}, alCambiar = () => {} }) {
   const q = {
@@ -34,10 +46,20 @@ export function createDisenos({ db, jarvis, kit, motor, archivos = null, previas
     return r;
   };
 
-  function vista(r, { conDatos = false } = {}) {
+  // Las diapositivas que han cambiado desde la última exportación (solo esas se vuelven a exportar)
+  function cambiadasDesdeExportar(r, hk) {
+    const exp = json(r.exportado, null);
+    const datos = json(r.datos, null);
+    if (!exp?.huellas || !datos?.slides?.length || exp.huellas.length !== datos.slides.length) return null;
+    const ahora = huellasDe(datos, hk ?? huellaKit(kit.leer()));
+    return ahora.map((h, i) => (h !== exp.huellas[i] ? i + 1 : null)).filter(Boolean);
+  }
+
+  function vista(r, { conDatos = false, hk } = {}) {
     const datos = json(r.datos, null);
     const previas = json(r.previas, []);
     return {
+      cambiadas: r.exportado ? cambiadasDesdeExportar(r, hk) : null,
       id: r.id, titulo: r.titulo, formato: r.formato, plantilla: r.plantilla, estado: r.estado, error: r.error, uso: r.uso || null,
       version: r.version, caption: r.caption || '', guion: r.guion || '', nota: r.nota, pieza_origen: r.pieza_origen,
       diapositivas: datos?.slides?.length || 0,
@@ -49,7 +71,7 @@ export function createDisenos({ db, jarvis, kit, motor, archivos = null, previas
   }
   const avisar = (id) => { emitir({ type: 'diseno', id }); alCambiar(); };
 
-  const listar = () => rows(q.lista).map((r) => vista(r));
+  const listar = () => { const hk = huellaKit(kit.leer()); return rows(q.lista).map((r) => vista(r, { hk })); };
   const obtener = (id, opciones) => vista(leer(id), opciones);
 
   // El guion puede venir pegado, de una nota del vault o de una pieza del pipeline (con su nota)
@@ -328,32 +350,44 @@ Pasos: 1) Read de la referencia; 2) ver_kit_diseno (formato técnico de las diap
     actualizar(r.id, { estado: 'renderizando', titulo: d.titulo, formato: d.formato, plantilla: d.plantilla, caption: d.caption, datos: JSON.stringify(d), version });
     avisar(r.id);
     try {
-      const res = await motor.previsualizar(d);
       const dir = path.join(previasDir, String(r.id));
       mkdirSync(dir, { recursive: true });
-      const nombres = res.imagenes.map((buf, i) => {
+      // Solo se dibujan las diapositivas que han cambiado; las demás conservan su vista previa y sus avisos
+      const huellas = huellasDe(d, huellaKit(k));
+      const antes = { huellas: json(r.huellas, []), previas: json(r.previas, []), avisos: json(r.avisos, []) };
+      const iguales = huellas.map((h, i) => h === antes.huellas[i] && antes.previas[i] && existsSync(path.join(dir, antes.previas[i])));
+      const solo = huellas.map((_, i) => i + 1).filter((n) => !iguales[n - 1]);
+      const res = solo.length ? await motor.previsualizar(d, solo.length === huellas.length ? {} : { solo }) : { imagenes: huellas.map(() => null), avisos: [] };
+      const nombres = huellas.map((_, i) => {
+        if (iguales[i]) return antes.previas[i];
         const f = `v${version}-${String(i + 1).padStart(2, '0')}.jpg`;
-        writeFileSync(path.join(dir, f), buf);
+        writeFileSync(path.join(dir, f), res.imagenes[i]);
         return f;
       });
       for (const f of readdirSync(dir)) if (!nombres.includes(f)) rmSync(path.join(dir, f), { force: true });
+      const avisos = [...antes.avisos.filter((a) => iguales[a.diapositiva - 1]), ...res.avisos].sort((a, b) => a.diapositiva - b.diapositiva);
+      res.avisos = avisos;
+      res.redibujadas = solo;
       const sigueGenerando = enCurso.has(r.id);
-      actualizar(r.id, { estado: sigueGenerando ? 'generando' : 'listo', previas: JSON.stringify(nombres), avisos: JSON.stringify(res.avisos), error: null });
+      actualizar(r.id, { estado: sigueGenerando ? 'generando' : 'listo', previas: JSON.stringify(nombres), avisos: JSON.stringify(avisos), huellas: JSON.stringify(huellas), error: null });
       avisar(r.id);
       return {
         id: r.id, version, diapositivas: nombres.length,
+        redibujadas: res.redibujadas.length === nombres.length ? 'todas' : res.redibujadas,
         avisos: res.avisos.length ? res.avisos.map((a) => `Diapositiva ${a.diapositiva}: ${a.texto}`) : ['Sin avisos: todo cabe y nada se pisa.'],
         vistas_previas: nombres.map((f) => path.join(dir, f)),
       };
     } catch (e) {
-      actualizar(r.id, { estado: anterior === 'generando' ? 'generando' : 'error', previas: '[]', avisos: '[]', error: `No se ha podido dibujar: ${e.message}` });
+      actualizar(r.id, { estado: anterior === 'generando' ? 'generando' : 'error', previas: '[]', avisos: '[]', huellas: '[]', error: `No se ha podido dibujar: ${e.message}` });
       avisar(r.id);
       throw new DisenoError(`No se ha podido dibujar el diseño: ${e.message}`);
     }
   }
 
   // ---------- Exportar a la biblioteca ----------
-  function exportar(id, { tipo = 'jpg' } = {}) {
+  // Si ya se exportó en el mismo formato, solo se vuelven a sacar las diapositivas que han cambiado (o las que
+  // elija la persona en «solo»); las demás se quedan como estaban en la biblioteca. «todo» las saca todas.
+  function exportar(id, { tipo = 'jpg', solo = null, todo = false } = {}) {
     if (!archivos) throw new DisenoError('La biblioteca no está disponible');
     if (!['jpg', 'mp4'].includes(tipo)) throw new DisenoError('Exporta en jpg o mp4');
     const r = leer(id);
@@ -361,25 +395,35 @@ Pasos: 1) Read de la referencia; 2) ver_kit_diseno (formato técnico de las diap
     if (!datos?.slides?.length) throw new DisenoError('Este diseño aún no tiene diapositivas');
     // Mientras Claude diseña solo puede exportarlo él mismo (al replicar, lo exporta al terminar)
     if (['exportando', 'renderizando'].includes(r.estado) || (r.estado === 'generando' && !enCurso.has(r.id))) throw new DisenoError('Espera a que termine lo que está haciendo');
+    const total = datos.slides.length;
+    const huellas = huellasDe(datos, huellaKit(kit.leer()));
+    const previo = json(r.exportado, null);
+    const reutilizable = !todo && previo?.tipo === tipo && previo.archivos?.length === total && previo.huellas?.length === total && previo.archivos.every((a) => a?.path && archivos.existe(a.path));
+    let rehacer = huellas.map((_, i) => i + 1);
+    if (reutilizable) {
+      const elegidas = Array.isArray(solo) ? [...new Set(solo.map(Number))].filter((n) => n >= 1 && n <= total).sort((a, b) => a - b) : null;
+      rehacer = elegidas?.length ? elegidas : rehacer.filter((n) => huellas[n - 1] !== previo.huellas[n - 1]);
+      if (!rehacer.length) throw new DisenoError('No ha cambiado nada desde la última exportación: marca las diapositivas que quieras volver a exportar');
+    }
     actualizar(r.id, { estado: 'exportando', error: null, progreso: 0 });
     avisar(r.id);
     let ultimo = 0;
     (async () => {
       let res;
       try {
-        res = await motor.exportar(datos, tipo, { alProgreso: ({ avance }) => {
+        res = await motor.exportar(datos, tipo, { solo: rehacer.length === total ? null : rehacer, alProgreso: ({ avance }) => {
           const p = Math.round(avance * 100);
           if (p - ultimo < 3 && p < 100) return;
           ultimo = p;
           actualizar(r.id, { progreso: p });
           emitir({ type: 'diseno', id: r.id, progreso: p });
         } });
-        const guardados = [];
-        for (const a of res.archivos) {
+        const guardados = reutilizable ? [...previo.archivos] : [];
+        for (const [i, a] of res.archivos.entries()) {
           const fuente = a.ruta ? createReadStream(a.ruta) : Readable.from([a.buffer]);
-          guardados.push(await archivos.guardar(fuente, { nombre: `${slug(r.titulo)}-${a.nombre}`, mime: a.mime }));
+          guardados[(a.n ?? rehacer[i]) - 1] = await archivos.guardar(fuente, { nombre: `${slug(r.titulo)}-${a.nombre}`, mime: a.mime });
         }
-        const exportado = { tipo, en: new Date().toISOString(), piezas: aLaBiblioteca(r, datos, guardados) };
+        const exportado = { tipo, en: new Date().toISOString(), piezas: aLaBiblioteca(r, datos, guardados), huellas, archivos: guardados, rehechas: rehacer.length === total ? 'todas' : rehacer };
         actualizar(r.id, { estado: 'listo', exportado: JSON.stringify(exportado), progreso: null });
       } catch (e) {
         actualizar(r.id, { estado: 'listo', error: `No se ha podido exportar: ${e.message}`, progreso: null });

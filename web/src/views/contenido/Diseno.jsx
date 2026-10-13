@@ -236,7 +236,29 @@ function DetalleDiseno({ d, kit, piezas, ig, progreso, onVisor, onAbrir, onProgr
     try { await fn(); recargar(); } catch (e) { onAviso(e.message); }
     setOcupado('');
   };
-  const exportar = (tipo) => accion(tipo, () => api(`/api/disenos/${d.id}/exportar`, { method: 'POST', body: { tipo } }));
+  // Diapositivas marcadas para volver a exportar solo esas (si no hay ninguna, solo las que han cambiado)
+  const [marcadas, setMarcadas] = useState([]);
+  useEffect(() => setMarcadas([]), [d.id]);
+  const marcar = (n) => setMarcadas((l) => (l.includes(n) ? l.filter((x) => x !== n) : [...l, n].sort((a, b) => a - b)));
+  // Qué se exportará en ese formato: null = todas; [] = nada ha cambiado
+  const queExporta = (tipo) => {
+    if (d.exportado?.tipo !== tipo || !Array.isArray(d.cambiadas)) return null;
+    return marcadas.length ? marcadas : d.cambiadas;
+  };
+  const exportar = (tipo) => {
+    const que = queExporta(tipo);
+    if (que && !que.length) {
+      if (!window.confirm('No ha cambiado nada desde la última exportación. ¿Volver a exportarlo todo?')) return;
+      return accion(tipo, () => api(`/api/disenos/${d.id}/exportar`, { method: 'POST', body: { tipo, todo: true } }));
+    }
+    return accion(tipo, async () => { await api(`/api/disenos/${d.id}/exportar`, { method: 'POST', body: { tipo, solo: que || undefined } }); setMarcadas([]); });
+  };
+  const textoQue = (tipo) => {
+    const que = queExporta(tipo);
+    if (!que) return '';
+    if (!que.length) return ' · todo de nuevo';
+    return que.length === 1 ? ` · solo la ${que[0]}` : ` · ${que.length} diapositivas`;
+  };
   const pedirCorreccion = () => accion('corregir', () => api('/api/jarvis/preguntar', { method: 'POST', body: { conversacion: 'diseno', texto: `[Diseño #${d.id}] Corrige estos avisos de la revisión y vuelve a guardar:\n${d.avisos.map((a) => `- Diapositiva ${a.diapositiva}: ${a.texto}`).join('\n')}` } }));
   const regenerar = () => {
     if (d.version && !window.confirm('Claude volverá a diseñarlo desde cero (el diseño actual se sustituye). ¿Seguir?')) return;
@@ -274,11 +296,19 @@ function DetalleDiseno({ d, kit, piezas, ig, progreso, onVisor, onAbrir, onProgr
       {d.previas.length > 0 ? (
         <div className={`diseno-previas ${d.formato}`}>
           {d.previas.map((url, i) => (
-            <button key={url} className="diseno-previa" onClick={() => onVisor({ archivos: archivosVisor, inicio: i })} title="Ver en grande">
-              <img src={url} alt={`Diapositiva ${i + 1}`} loading="lazy" />
-              <span className="diseno-n">{i + 1}</span>
-              {d.avisos.some((a) => a.diapositiva === i + 1) && <span className="diseno-alerta" title="Tiene avisos">!</span>}
-            </button>
+            <div key={url} className={`diseno-previa-c${marcadas.includes(i + 1) ? ' marcada' : ''}`}>
+              <button className="diseno-previa" onClick={() => onVisor({ archivos: archivosVisor, inicio: i })} title="Ver en grande">
+                <img src={url} alt={`Diapositiva ${i + 1}`} loading="lazy" />
+                <span className="diseno-n">{i + 1}</span>
+                {d.avisos.some((a) => a.diapositiva === i + 1) && <span className="diseno-alerta" title="Tiene avisos">!</span>}
+                {d.cambiadas?.includes(i + 1) && <span className="diseno-cambiada" title="Ha cambiado desde la última exportación">cambiada</span>}
+              </button>
+              {d.exportado && (
+                <button type="button" className="diseno-check" onClick={() => marcar(i + 1)} aria-pressed={marcadas.includes(i + 1)} title={marcadas.includes(i + 1) ? 'No volver a exportar esta' : 'Volver a exportar solo esta (y las que marques)'}>
+                  {marcadas.includes(i + 1) ? '✓' : ''}
+                </button>
+              )}
+            </div>
           ))}
         </div>
       ) : !trabajando && <p className="ayuda">Este diseño aún no tiene diapositivas. Pulsa <b>Rediseñar</b> o pídeselo a Claude en el chat.</p>}
@@ -303,11 +333,16 @@ function DetalleDiseno({ d, kit, piezas, ig, progreso, onVisor, onAbrir, onProgr
         <div className="diseno-exportar">
           <div>
             <div className="label">Exportar a la biblioteca</div>
-            <p className="ayuda">{d.formato === 'story' ? 'Cada story será una pieza, todas en una carpeta con el nombre del diseño.' : 'Será una pieza de tipo Carrusel con su caption, lista para programar.'} El vídeo tarda unos 15 s por diapositiva.</p>
+            <p className="ayuda">
+              {d.exportado
+                ? <>Solo se vuelven a exportar las diapositivas que han cambiado{d.cambiadas?.length ? ` (${d.cambiadas.length === 1 ? `la ${d.cambiadas[0]}` : d.cambiadas.join(', ')})` : ''} y se sustituyen en la biblioteca. Para elegir tú cuáles, márcalas con el ✓ de cada una.{marcadas.length > 0 && <> <button type="button" className="link-btn" onClick={() => setMarcadas([])}>Desmarcar</button>.</>}</>
+                : <>{d.formato === 'story' ? 'Cada story será una pieza, todas en una carpeta con el nombre del diseño.' : 'Será una pieza de tipo Carrusel con su caption, lista para programar.'}</>}
+              {' '}El vídeo tarda unos 15 s por diapositiva.
+            </p>
           </div>
           <div className="diseno-botones">
-            <button className="btn btn-sec" onClick={() => exportar('jpg')} disabled={trabajando || Boolean(ocupado)}><Icon name="doc" size={14} />Imágenes (JPG)</button>
-            <button className="btn" onClick={() => exportar('mp4')} disabled={trabajando || Boolean(ocupado)}><Icon name="play" size={14} />Vídeo (MP4)</button>
+            <button className="btn btn-sec" onClick={() => exportar('jpg')} disabled={trabajando || Boolean(ocupado)}><Icon name="doc" size={14} />Imágenes (JPG){textoQue('jpg')}</button>
+            <button className="btn" onClick={() => exportar('mp4')} disabled={trabajando || Boolean(ocupado)}><Icon name="play" size={14} />Vídeo (MP4){textoQue('mp4')}</button>
           </div>
         </div>
       )}
