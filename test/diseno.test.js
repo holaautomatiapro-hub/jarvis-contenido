@@ -206,6 +206,36 @@ describe('diseños: API, exportar a la biblioteca y Claude', () => {
     assert.match(e.error, /sin guardar el diseño/);
   });
 
+  test('progreso: Claude lo diseña desde Replicar; los pasos avanzan con lo que hace, lo exporta él y se apunta lo que tardó', async () => {
+    const asistenteFalso = { conversacionActiva: () => 'replicar', estado: () => ({ ocupado: true }) };
+    const ds = createDisenos({ db, jarvis, kit: createKit({ vaultPath: vault }), motor: motorFalso, archivos, previasDir: path.join(vault, '.jarvis', 'disenos'), asistente: asistenteFalso });
+    const ev = (e) => ds.alEventoClaude({ conversacion: 'replicar', ...e });
+    const d = ds.crear({ formato: 'carrusel', plantilla: 'rejilla', guion: 'Replicado', generar: false });
+    assert.equal(d.estado, 'generando');
+    assert.equal(d.trabajo.paso, 'empezando');
+    assert.equal(d.trabajo.estimado, 300_000, 'sin historial: 5 min');
+    ev({ tipo: 'herramienta', nombre: 'ver_kit_diseno' });
+    assert.equal(ds.obtener(d.id).trabajo.texto, 'Estudiando tu sistema de diseño');
+    ev({ tipo: 'resultado_herramienta', ok: true });
+    assert.equal(ds.obtener(d.id).trabajo.paso, 'escribiendo');
+    ev({ tipo: 'herramienta', nombre: 'guardar_diseno' });
+    await ds.guardarDatos(d.id, { slides: [slide(1)] });
+    assert.equal(ds.obtener(d.id).estado, 'generando', 'sigue diseñando hasta que Claude termina');
+    ev({ tipo: 'resultado_herramienta', ok: true });
+    assert.equal(ds.obtener(d.id).trabajo.paso, 'revisando');
+    ev({ tipo: 'herramienta', nombre: 'Read' });
+    assert.equal(ds.obtener(d.id).trabajo.paso, 'revisando', 'mirar la vista previa no vuelve atrás');
+    ds.exportar(d.id, { tipo: 'jpg' }); // lo exporta Claude mientras trabaja
+    await esperar(d.id);
+    await new Promise((r) => setTimeout(r, Math.max(0, 1100 - (Date.now() - d.trabajo.inicio))));
+    ev({ tipo: 'fin', texto: 'hecho' });
+    const fin = ds.obtener(d.id);
+    assert.equal(fin.trabajo, null);
+    assert.equal(fin.estado, 'listo');
+    assert.ok(fin.exportado);
+    assert.equal(ds.crear({ formato: 'carrusel', plantilla: 'rejilla', guion: 'Otro', generar: false }).trabajo.estimado < 300_000, true, 'el siguiente estima con lo que tardó este');
+  });
+
   test('portadas: plantillas del kit, generar una diapositiva y exportarla a una imagen para la pieza', async () => {
     // De serie: Carrusel (4:5) y Testimonio (9:16), sin imagen hasta que se sube la de referencia
     const { data: t } = await api('/api/portadas');

@@ -17,6 +17,55 @@ const ESTADO = {
   exportando: ['Exportando…', 'var(--orange)'],
   error: ['Con error', 'var(--red)'],
 };
+// Cómo va un diseño que está haciendo Claude: el paso marca el tramo de la barra y el tiempo avanza dentro de él
+export function avanceDiseno(t, ahora = Date.now()) {
+  const pasado = Math.max(0, ahora - t.inicio);
+  const pct = Math.round(Math.min(t.hasta, Math.max(t.desde, (pasado / t.estimado) * 100)));
+  return { pct, pasado, queda: t.estimado - pasado, quieto: Math.max(0, ahora - t.senal) };
+}
+const mmss = (ms) => { const s = Math.round(ms / 1000); return `${Math.floor(s / 60)}:${String(s % 60).padStart(2, '0')}`; };
+function useAhora() {
+  const [ahora, setAhora] = useState(Date.now);
+  useEffect(() => { const i = setInterval(() => setAhora(Date.now()), 1000); return () => clearInterval(i); }, []);
+  return ahora;
+}
+
+function ProgresoDiseno({ t }) {
+  const ahora = useAhora();
+  const [parando, setParando] = useState(false);
+  const detener = async () => {
+    if (!window.confirm('¿Parar a Claude? Lo que ya haya guardado se queda y puedes pulsar Rediseñar después.')) return;
+    setParando(true);
+    try { await api('/api/jarvis/cancelar', { method: 'POST', body: { conversacion: t.conversacion } }); } catch { setParando(false); }
+  };
+  const { pct, pasado, queda, quieto } = avanceDiseno(t, ahora);
+  // Al escribir las diapositivas, Claude las manda todas de una vez: puede pasar un rato sin dar señales
+  const paciencia = t.paso === 'escribiendo' ? 6 * 60_000 : 3 * 60_000;
+  return (
+    <div className="diseno-progreso trabajando">
+      <div className="diseno-progreso-cab"><b>{t.texto}…</b><span>{pct}% <button type="button" className="link-btn peligro" onClick={detener} disabled={parando}>{parando ? 'Parando…' : 'Parar'}</button></span></div>
+      <div className="bar"><span style={{ width: `${pct}%`, background: 'var(--accent-2)' }} /></div>
+      <div className="diseno-progreso-pie">
+        <span>Lleva {mmss(pasado)}</span>
+        <span>{queda > 60_000 ? `Quedan unos ${Math.round(queda / 60_000)} min` : queda > 0 ? 'Le queda menos de un minuto' : 'Tarda más de lo normal, pero sigue'}</span>
+        <span className={quieto > paciencia ? 't-mal' : ''}>
+          <span className={`punto-vivo${quieto > paciencia ? ' parado' : ''}`} />
+          {quieto < 15_000 ? `Trabajando${t.herramienta ? ` (${t.herramienta})` : ''}` : `Última señal hace ${mmss(quieto)}`}
+        </span>
+      </div>
+      {quieto > paciencia
+        ? <div className="ayuda">Lleva un rato sin dar señales. Si en unos minutos sigue igual, pulsa <b>Parar</b> y luego <b>Rediseñar</b>.</div>
+        : t.paso === 'escribiendo' && quieto > 30_000 && <div className="ayuda">Está escribiendo todas las diapositivas de una vez: es normal que pase un par de minutos sin señales.</div>}
+    </div>
+  );
+}
+
+function EstadoItem({ d, progreso }) {
+  const ahora = useAhora();
+  if (d.trabajo && ['generando', 'renderizando'].includes(d.estado)) return <>Diseñando… {avanceDiseno(d.trabajo, ahora).pct}%</>;
+  return <>{d.estado === 'exportando' && progreso != null ? `Exportando… ${progreso}%` : ESTADO[d.estado]?.[0]}{d.exportado && d.estado === 'listo' ? ' · en la biblioteca' : ''}</>;
+}
+
 const seleccionGuardada = () => { try { return Number(localStorage.getItem('diseno_sel')) || null; } catch { return null; } };
 
 export function Diseno({ piezas, ig, onAbrir, onProgramar }) {
@@ -79,7 +128,7 @@ export function Diseno({ piezas, ig, onAbrir, onProgramar }) {
               <span className="diseno-item-txt">
                 <b>{d.titulo}</b>
                 <small>{NOMBRE_FORMATO[d.formato]} · {d.diapositivas || '—'} {d.formato === 'story' ? 'stories' : 'diapositivas'}</small>
-                <small style={{ color: ESTADO[d.estado]?.[1] }}>{d.estado === 'exportando' && progreso[d.id] != null ? `Exportando… ${progreso[d.id]}%` : ESTADO[d.estado]?.[0]}{d.exportado && d.estado === 'listo' ? ' · en la biblioteca' : ''}</small>
+                <small style={{ color: ESTADO[d.estado]?.[1] }}><EstadoItem d={d} progreso={progreso[d.id]} /></small>
               </span>
             </button>
           ))}
@@ -144,8 +193,12 @@ function DetalleDiseno({ d, kit, piezas, ig, progreso, onVisor, onAbrir, onProgr
         </div>
       </div>
 
-      {d.estado === 'generando' && <div className="aviso ig-aviso"><span className="cursor" />Claude está diseñando con tu sistema. Verás aquí cada versión en cuanto la guarde.</div>}
-      {d.estado === 'renderizando' && <div className="aviso ig-aviso">Dibujando la vista previa…</div>}
+      {d.trabajo && ['generando', 'renderizando'].includes(d.estado) ? <ProgresoDiseno t={d.trabajo} /> : (
+        <>
+          {d.estado === 'generando' && <div className="aviso ig-aviso"><span className="cursor" />Claude está diseñando con tu sistema. Verás aquí cada versión en cuanto la guarde.</div>}
+          {d.estado === 'renderizando' && <div className="aviso ig-aviso">Dibujando la vista previa…</div>}
+        </>
+      )}
       {d.estado === 'exportando' && (
         <div className="diseno-progreso"><span>Exportando a la biblioteca… {progreso ?? 0}%</span><div className="bar"><span style={{ width: `${progreso ?? 0}%`, background: 'var(--accent-2)' }} /></div></div>
       )}

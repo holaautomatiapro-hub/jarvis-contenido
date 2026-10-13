@@ -4,7 +4,7 @@
 import path from 'node:path';
 import { createReadStream, existsSync, mkdirSync, readFileSync, readdirSync, rmSync, statSync, writeFileSync } from 'node:fs';
 import { Readable } from 'node:stream';
-import { row, rows } from '../db.js';
+import { ajustes, row, rows } from '../db.js';
 import { FORMATOS } from './kit.js';
 import { normalizarDiseno } from './motor.js';
 
@@ -42,7 +42,7 @@ export function createDisenos({ db, jarvis, kit, motor, archivos = null, previas
       version: r.version, caption: r.caption || '', guion: r.guion || '', nota: r.nota, pieza_origen: r.pieza_origen,
       diapositivas: datos?.slides?.length || 0,
       previas: previas.map((f) => `/api/disenos/${r.id}/previas/${f}`),
-      avisos: json(r.avisos, []), exportado: json(r.exportado, null), progreso: r.progreso ?? null,
+      avisos: json(r.avisos, []), exportado: json(r.exportado, null), progreso: r.progreso ?? null, trabajo: trabajoDe(r),
       creado: r.creado, actualizado: r.actualizado,
       ...(conDatos ? { datos } : {}),
     };
@@ -84,12 +84,51 @@ export function createDisenos({ db, jarvis, kit, motor, archivos = null, previas
       .run(nombre, formato, pl.id, g.texto, g.nota, g.pieza?.id ?? null);
     const id = Number(lastInsertRowid);
     if (generar) generarConClaude(id, { indicaciones });
+    else {
+      // Lo crea Claude desde otra conversación (Replicar o el Chat) y lo va a diseñar ahora: se sigue igual
+      const conversacion = asistente?.conversacionActiva?.();
+      if (conversacion) seguir(id, { conversacion, version: 0 });
+    }
     avisar(id);
     return obtener(id);
   }
 
   // ---------- Claude ----------
-  let generando = null; // { id, version } del diseño que está escribiendo Claude ahora
+  // Diseños en los que Claude está trabajando ahora (desde Diseño, Replicar o el Chat), para enseñar cómo va:
+  // id → { version, conversacion, inicio, paso, senal (última vez que Claude hizo algo), herramienta, uso }
+  const enCurso = new Map();
+  const aj = ajustes(db);
+  // Los pasos de un diseño y la parte de la barra que ocupa cada uno (en %)
+  const PASOS = {
+    empezando: { texto: 'Empezando', desde: 0, hasta: 8 },
+    kit: { texto: 'Estudiando tu sistema de diseño', desde: 8, hasta: 30 },
+    escribiendo: { texto: 'Escribiendo las diapositivas', desde: 30, hasta: 72 },
+    dibujando: { texto: 'Dibujando la vista previa', desde: 72, hasta: 82 },
+    revisando: { texto: 'Revisando que todo quepa y corrigiendo', desde: 82, hasta: 97 },
+  };
+  const LEE_KIT = new Set(['ver_kit_diseno', 'leer_archivo_kit', 'listar_medios', 'Read', 'Glob', 'Grep']);
+  // Cuánto suele tardar (la mediana de los últimos), para estimar lo que queda
+  const claveDuracion = (uso) => (uso === 'portada' ? 'duraciones_portada' : 'duraciones_diseno');
+  function estimado(uso) {
+    const l = [...(aj.leer(claveDuracion(uso), []) || [])].sort((a, b) => a - b);
+    if (!l.length) return uso === 'portada' ? 120_000 : 300_000;
+    return l[Math.floor(l.length / 2)];
+  }
+  function apuntarDuracion(uso, ms) {
+    if (!(ms > 1000)) return;
+    aj.guardar(claveDuracion(uso), [...(aj.leer(claveDuracion(uso), []) || []), Math.round(ms)].slice(-8));
+  }
+  function seguir(id, { conversacion, version }) {
+    const r = leer(id);
+    enCurso.set(r.id, { version, conversacion, inicio: Date.now(), paso: 'empezando', senal: Date.now(), herramienta: null, uso: r.uso || null });
+    actualizar(r.id, { estado: 'generando', error: null });
+  }
+  function trabajoDe(r) {
+    const t = enCurso.get(r.id);
+    if (!t) return null;
+    const p = PASOS[t.paso];
+    return { conversacion: t.conversacion, inicio: t.inicio, paso: t.paso, texto: p.texto, desde: p.desde, hasta: p.hasta, senal: t.senal, herramienta: t.herramienta, estimado: estimado(t.uso) };
+  }
 
   function promptGenerar(r, { indicaciones } = {}) {
     const k = kit.leer();
@@ -116,21 +155,42 @@ Pasos: 1) ver_kit_diseno; 2) lee con Read la guía del kit y el ejemplo de esta 
     const r = leer(id);
     asistente.nuevaSesion({ conversacion: 'diseno' });
     asistente.preguntar({ texto: prompt || promptGenerar(r, { indicaciones }), conversacion: 'diseno' });
-    generando = { id: r.id, version: r.version };
-    actualizar(r.id, { estado: 'generando', error: null });
+    seguir(r.id, { conversacion: 'diseno', version: r.version });
     avisar(r.id);
     return obtener(r.id);
   }
 
-  // Cuando Claude termina: si no llegó a guardar nada, se avisa
+  // Lo que va haciendo Claude: cada herramienta mueve el paso del diseño en el que trabaja (el último que empezó)
+  // y, cuando termina, si no llegó a guardar nada, se avisa
   function alEventoClaude(e) {
-    if (e.conversacion !== 'diseno' || (e.tipo !== 'fin' && e.tipo !== 'error') || !generando) return;
-    const { id, version } = generando;
-    generando = null;
+    const mios = [...enCurso.entries()].filter(([, t]) => t.conversacion === e.conversacion);
+    if (!mios.length) return;
+    if (e.tipo === 'fin' || e.tipo === 'error') {
+      for (const [id, t] of mios) terminar(id, t, e);
+      return;
+    }
+    const [id, t] = mios.reduce((a, b) => (b[1].inicio >= a[1].inicio ? b : a));
+    t.senal = Date.now();
+    const antes = t.paso;
+    if (e.tipo === 'herramienta') {
+      t.herramienta = e.nombre || null;
+      if (e.nombre === 'guardar_diseno') t.paso = 'dibujando';
+      else if (LEE_KIT.has(e.nombre) && ['empezando', 'kit', 'escribiendo'].includes(t.paso)) t.paso = 'kit';
+    } else if (e.tipo === 'resultado_herramienta') {
+      if (t.paso === 'kit') t.paso = 'escribiendo';
+      else if (t.paso === 'dibujando') t.paso = 'revisando';
+    }
+    // Para no recargar la página con cada trozo de texto: al cambiar de paso o de herramienta, o cada 10 s
+    if (t.paso !== antes || e.tipo === 'herramienta' || Date.now() - (t.avisado || 0) > 10_000) { t.avisado = Date.now(); avisar(id); }
+  }
+
+  function terminar(id, t, e) {
+    enCurso.delete(id);
     let r;
     try { r = leer(id); } catch { return; }
-    if (r.estado !== 'generando') return;
-    const sinGuardar = r.version === version;
+    const sinGuardar = r.version === t.version;
+    if (!sinGuardar && e.tipo === 'fin') apuntarDuracion(t.uso, Date.now() - t.inicio);
+    if (r.estado !== 'generando') { avisar(id); return; }
     // Si el último guardado no se pudo dibujar, ese error es el que hay que ver (p. ej. falta el navegador)
     const sinDibujar = !sinGuardar && r.error && !json(r.previas, []).length;
     actualizar(id, {
@@ -277,7 +337,7 @@ Pasos: 1) Read de la referencia; 2) ver_kit_diseno (formato técnico de las diap
         return f;
       });
       for (const f of readdirSync(dir)) if (!nombres.includes(f)) rmSync(path.join(dir, f), { force: true });
-      const sigueGenerando = generando?.id === r.id;
+      const sigueGenerando = enCurso.has(r.id);
       actualizar(r.id, { estado: sigueGenerando ? 'generando' : 'listo', previas: JSON.stringify(nombres), avisos: JSON.stringify(res.avisos), error: null });
       avisar(r.id);
       return {
@@ -299,7 +359,8 @@ Pasos: 1) Read de la referencia; 2) ver_kit_diseno (formato técnico de las diap
     const r = leer(id);
     const datos = json(r.datos, null);
     if (!datos?.slides?.length) throw new DisenoError('Este diseño aún no tiene diapositivas');
-    if (['exportando', 'renderizando', 'generando'].includes(r.estado)) throw new DisenoError('Espera a que termine lo que está haciendo');
+    // Mientras Claude diseña solo puede exportarlo él mismo (al replicar, lo exporta al terminar)
+    if (['exportando', 'renderizando'].includes(r.estado) || (r.estado === 'generando' && !enCurso.has(r.id))) throw new DisenoError('Espera a que termine lo que está haciendo');
     actualizar(r.id, { estado: 'exportando', error: null, progreso: 0 });
     avisar(r.id);
     let ultimo = 0;
@@ -367,7 +428,7 @@ Pasos: 1) Read de la referencia; 2) ver_kit_diseno (formato técnico de las diap
     if (r.estado === 'exportando') throw new DisenoError('Espera a que termine la exportación');
     q.del.run(r.id);
     rmSync(path.join(previasDir, String(r.id)), { recursive: true, force: true });
-    if (generando?.id === r.id) generando = null;
+    enCurso.delete(r.id);
     avisar(r.id);
     return { ok: true };
   }
