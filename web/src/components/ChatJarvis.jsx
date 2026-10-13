@@ -17,6 +17,33 @@ const guardar = (k, v) => { try { localStorage.setItem(k, JSON.stringify(v)); } 
 
 const md = (t) => DOMPurify.sanitize(marked.parse(t || '', { breaks: true }));
 
+// Lo que va tras «[Adjuntos]» es para Claude (rutas, fotogramas, transcripción): en el chat solo se ven los nombres
+const MARCA_ADJUNTOS = '\n\n[Adjuntos]\n';
+function partirPregunta(t = '') {
+  const i = t.indexOf(MARCA_ADJUNTOS);
+  if (i < 0) return { cuerpo: t, adjuntos: [] };
+  const adjuntos = [...t.slice(i).matchAll(/^- (Foto|Vídeo) «([^»]+)»/gm)].map((m) => ({ tipo: m[1], nombre: m[2] }));
+  return { cuerpo: t.slice(0, i), adjuntos };
+}
+
+// Sube un adjunto con su progreso; el servidor lo prepara (fotogramas y transcripción si es un vídeo)
+function subirAdjunto(file, onProgreso) {
+  return new Promise((ok, ko) => {
+    const x = new XMLHttpRequest();
+    x.open('POST', `/api/jarvis/adjuntos?nombre=${encodeURIComponent(file.name)}&mime=${encodeURIComponent(file.type || '')}`);
+    x.setRequestHeader('content-type', 'application/octet-stream');
+    x.upload.onprogress = (e) => e.lengthComputable && onProgreso(Math.round((e.loaded / e.total) * 100));
+    x.onload = () => {
+      let d = {};
+      try { d = JSON.parse(x.responseText); } catch { /* sin cuerpo */ }
+      if (x.status >= 200 && x.status < 300) ok(d); else ko(new Error(d.error || `No se pudo adjuntar «${file.name}»`));
+    };
+    x.onerror = () => ko(new Error(`Se cortó la subida de «${file.name}»`));
+    x.send(file);
+  });
+}
+const ADJUNTABLE = /^(image|video)\//;
+
 function turnos(eventos) {
   const m = new Map();
   for (const e of eventos) {
@@ -37,7 +64,8 @@ function turnos(eventos) {
 // conGuardarGuion: el botón «Guardar en el vault» del chat de guiones.
 // conModelo: elegir Normal / Rápido / A fondo. conVoz: dictar con el micro y oír las respuestas.
 // pendiente: un mensaje que llega de otra pestaña (p. ej. «Pregúntale a JARVIS» de Inicio) y se envía solo.
-export default function ChatJarvis({ conversacion, titulo, subtitulo, placeholder, intro, sugerencias = [], borrador, onBorradorUsado, prefijo = '', mostrarPregunta = (t) => t, conGuardarGuion = true, deshabilitado = '', conModelo = false, conVoz = false, pendiente, onPendienteUsado, clase = '' }) {
+// conAdjuntos: adjuntar fotos y vídeos (clip, arrastrar o pegar) para que JARVIS los tenga en cuenta.
+export default function ChatJarvis({ conversacion, titulo, subtitulo, placeholder, intro, sugerencias = [], borrador, onBorradorUsado, prefijo = '', mostrarPregunta = (t) => t, conGuardarGuion = true, deshabilitado = '', conModelo = false, conVoz = false, conAdjuntos = true, pendiente, onPendienteUsado, clase = '' }) {
   const [eventos, setEventos] = useState([]);
   const [ocupado, setOcupado] = useState(false);
   const [texto, setTexto] = useState('');
@@ -51,6 +79,22 @@ export default function ChatJarvis({ conversacion, titulo, subtitulo, placeholde
   const ultimoCanal = useRef('texto');
   const caja = useRef(null);
   const input = useRef(null);
+  const elegirArchivo = useRef(null);
+  // Adjuntos del próximo mensaje: { clave, nombre, tipo, pct, id (ya preparado), error }
+  const [adjuntos, setAdjuntos] = useState([]);
+  const [encima, setEncima] = useState(false);
+  const preparando = adjuntos.some((a) => !a.id && !a.error);
+  const adjuntar = (files) => {
+    const lista = [...(files || [])].filter((f) => ADJUNTABLE.test(f.type));
+    if (!lista.length) { if (files?.length) setAviso('Solo se pueden adjuntar fotos y vídeos'); return; }
+    setAviso('');
+    for (const f of lista) {
+      const clave = `${Date.now()}-${Math.random()}`;
+      const cambiar = (c) => setAdjuntos((l) => l.map((a) => (a.clave === clave ? { ...a, ...c } : a)));
+      setAdjuntos((l) => [...l, { clave, nombre: f.name, tipo: f.type.startsWith('video/') ? 'video' : 'foto', pct: 0 }]);
+      subirAdjunto(f, (pct) => cambiar({ pct })).then((r) => cambiar({ id: r.id, pct: 100, avisos: r.avisos, transcrito: r.transcrito })).catch((e) => cambiar({ error: e.message }));
+    }
+  };
   useEffect(() => guardar(`chat.modelo.${conversacion}`, modelo), [conversacion, modelo]);
   useEffect(() => guardar('chat.vozAlta', enVozAlta), [enVozAlta]);
   useEffect(() => () => { escucha.current?.parar(); callar(); }, []);
@@ -86,14 +130,17 @@ export default function ChatJarvis({ conversacion, titulo, subtitulo, placeholde
   useEffect(() => { caja.current?.scrollTo({ top: caja.current.scrollHeight, behavior: 'smooth' }); }, [eventos]);
 
   const enviar = async (t, canal = 'texto') => {
-    const limpio = t.trim();
+    const listos = adjuntos.filter((a) => a.id);
+    const limpio = t.trim() || (listos.length ? 'Mira lo que te adjunto y tenlo en cuenta.' : '');
     if (!limpio || ocupado || deshabilitado) return;
+    if (preparando) { setAviso('Espera a que terminen de prepararse los adjuntos'); return; }
     setAviso('');
     callar();
     ultimoCanal.current = canal;
     try {
-      await api('/api/jarvis/preguntar', { method: 'POST', body: { texto: prefijo ? `${prefijo} ${limpio}` : limpio, conversacion, canal, modelo: modelo || undefined } });
+      await api('/api/jarvis/preguntar', { method: 'POST', body: { texto: prefijo ? `${prefijo} ${limpio}` : limpio, conversacion, canal, modelo: modelo || undefined, adjuntos: listos.map((a) => a.id) } });
       setTexto('');
+      setAdjuntos([]);
       sincronizar();
     } catch (err) { setAviso(err.message); }
   };
@@ -147,7 +194,15 @@ export default function ChatJarvis({ conversacion, titulo, subtitulo, placeholde
         )}
         {lista.map((t) => (
           <div key={t.id} className="chat-turno">
-            <div className="burbuja tu">{mostrarPregunta(t.pregunta || '')}</div>
+            {(() => {
+              const p = partirPregunta(t.pregunta || '');
+              return (
+                <div className="burbuja tu">
+                  {mostrarPregunta(p.cuerpo)}
+                  {p.adjuntos.length > 0 && <div className="chat-adjuntos-enviados">{p.adjuntos.map((a, i) => <span key={i} className="tag"><Icon name={a.tipo === 'Vídeo' ? 'play' : 'eye'} size={11} />{a.nombre}</span>)}</div>}
+                </div>
+              );
+            })()}
             <div className="burbuja jarvis">
               {t.herramientas.length > 0 && (
                 <div className="chat-tools">{[...new Set(t.herramientas)].map((h) => <span key={h} className="tag">{h}</span>)}</div>
@@ -165,7 +220,31 @@ export default function ChatJarvis({ conversacion, titulo, subtitulo, placeholde
         ))}
       </div>
       {aviso && <div className="aviso-error" style={{ padding: '0 14px' }}>{aviso}</div>}
-      <form className="chat-input" onSubmit={(e) => { e.preventDefault(); enviar(texto); }}>
+      {adjuntos.length > 0 && (
+        <div className="chat-adjuntos">
+          {adjuntos.map((a) => (
+            <span key={a.clave} className={`chat-adjunto${a.error ? ' error' : ''}`} title={a.error || (a.avisos?.length ? a.avisos.join('. ') : '')}>
+              <Icon name={a.tipo === 'video' ? 'play' : 'eye'} size={12} />
+              <span className="chat-adjunto-nombre">{a.nombre}</span>
+              <small>{a.error ? 'Error' : a.id ? (a.tipo === 'video' ? (a.transcrito ? 'listo · transcrito' : 'listo') : 'listo') : a.pct < 100 ? `subiendo ${a.pct}%` : a.tipo === 'video' ? 'viéndolo…' : 'preparando…'}</small>
+              <button type="button" className="icon-btn mini" onClick={() => setAdjuntos((l) => l.filter((x) => x.clave !== a.clave))} aria-label={`Quitar ${a.nombre}`}>×</button>
+            </span>
+          ))}
+        </div>
+      )}
+      <form
+        className={`chat-input${encima ? ' encima' : ''}`}
+        onSubmit={(e) => { e.preventDefault(); enviar(texto); }}
+        onDragOver={conAdjuntos ? (e) => { if ([...e.dataTransfer.types].includes('Files')) { e.preventDefault(); setEncima(true); } } : undefined}
+        onDragLeave={conAdjuntos ? () => setEncima(false) : undefined}
+        onDrop={conAdjuntos ? (e) => { e.preventDefault(); setEncima(false); adjuntar(e.dataTransfer.files); } : undefined}
+      >
+        {conAdjuntos && (
+          <>
+            <input ref={elegirArchivo} type="file" accept="image/*,video/*" multiple hidden onChange={(e) => { adjuntar(e.target.files); e.target.value = ''; }} />
+            <button type="button" className="ask-send micro" onClick={() => elegirArchivo.current?.click()} disabled={ocupado || Boolean(deshabilitado)} aria-label="Adjuntar fotos o vídeos" title="Adjuntar fotos o vídeos (también puedes arrastrarlos aquí)"><Icon name="clip" size={15} /></button>
+          </>
+        )}
         <textarea
           ref={input}
           className="campo"
@@ -174,6 +253,7 @@ export default function ChatJarvis({ conversacion, titulo, subtitulo, placeholde
           placeholder={deshabilitado || placeholder}
           onChange={(e) => setTexto(e.target.value)}
           onKeyDown={(e) => { if (e.key === 'Enter' && !e.shiftKey) { e.preventDefault(); enviar(texto); } }}
+          onPaste={conAdjuntos ? (e) => { const f = [...(e.clipboardData?.files || [])]; if (f.length) { e.preventDefault(); adjuntar(f); } } : undefined}
           disabled={ocupado || Boolean(deshabilitado)}
           aria-label={placeholder}
         />
@@ -182,7 +262,7 @@ export default function ChatJarvis({ conversacion, titulo, subtitulo, placeholde
         )}
         {ocupado
           ? <button type="button" className="ask-send parar" onClick={() => api('/api/jarvis/cancelar', { method: 'POST', body: { conversacion } })} aria-label="Cancelar">■</button>
-          : <button className="ask-send" aria-label="Enviar"><Icon name="send" size={15} /></button>}
+          : <button className="ask-send" aria-label="Enviar" disabled={preparando}><Icon name="send" size={15} /></button>}
       </form>
     </div>
   );

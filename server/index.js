@@ -34,6 +34,7 @@ import { promptReplicarCompetencia, promptReplicarPropia, normalizarFormatos, se
 import { createLaboratorio, carpetaPorDefecto } from './laboratorio.js';
 import { promptCaption, limpiarCaption, createContextoCaption } from './caption.js';
 import { createRecortador } from './recortar.js';
+import { createAdjuntos, textoAdjuntos } from './adjuntos.js';
 
 dotenv.config({ path: path.join(ROOT, '.env'), quiet: true });
 
@@ -42,7 +43,7 @@ const DIST = path.join(ROOT, 'web', 'dist');
 // Replicar con diseño de carruseles o stories: lo hace Opus, como en Diseño
 const modeloReplicar = (formatos, disenar) => { try { return seDisena(normalizarFormatos(formatos), disenar) ? 'opus' : undefined; } catch { return undefined; } };
 
-export function createApp({ jarvis, archivos, publicadorIg, asistente, instagram, competencia, ads, publicar, hermes, jobs, kit, disenos, recordatorios, laboratorio, resultados, port, onChange = () => {}, status, tts = sintetizar }) {
+export function createApp({ jarvis, archivos, publicadorIg, asistente, instagram, competencia, ads, publicar, hermes, jobs, kit, disenos, recordatorios, laboratorio, resultados, adjuntos, port, onChange = () => {}, status, tts = sintetizar }) {
   const estadoSistema = status || (() => systemStatus({ vaultPath: jarvis.vault.base, instagram: Boolean(instagram?.estado().conectado), ads: Boolean(ads?.estado().conectado && ads?.estado().cuenta), hermes: Boolean(hermes?.estado().gateway.online) }));
   const app = express();
 
@@ -445,7 +446,24 @@ export function createApp({ jarvis, archivos, publicadorIg, asistente, instagram
 
   // JARVIS (Claude Code + JEV). La respuesta llega en directo por el WebSocket.
   if (asistente) {
-    app.post('/api/jarvis/preguntar', h((req) => asistente.preguntar(req.body || {})));
+    // Fotos y vídeos adjuntos al chat: se preparan al subirlos (fotogramas y transcripción) y el mensaje los lleva por su id
+    const preparados = new Map();
+    if (adjuntos && archivos) {
+      app.post('/api/jarvis/adjuntos', h(async (req) => {
+        const a = await archivos.guardar(req, { nombre: String(req.query.nombre || ''), mime: String(req.query.mime || '') });
+        const p = await adjuntos.preparar(a);
+        const id = randomBytes(6).toString('hex');
+        preparados.set(id, p);
+        if (preparados.size > 100) preparados.delete(preparados.keys().next().value);
+        return { id, nombre: p.nombre, tipo: p.tipo, url: p.url, duracion: p.duracion, fotogramas: p.fotogramas.length, transcrito: Boolean(p.transcripcion), avisos: p.avisos };
+      }));
+    }
+    app.post('/api/jarvis/preguntar', h((req) => {
+      const { adjuntos: ids, ...resto } = req.body || {};
+      const lista = (Array.isArray(ids) ? ids : []).map((id) => preparados.get(String(id))).filter(Boolean);
+      if (Array.isArray(ids) && ids.length && !lista.length) throw Object.assign(new Error('Los adjuntos han caducado (¿se reinició JARVIS?): vuelve a adjuntarlos'), { publico: true });
+      return asistente.preguntar({ ...resto, texto: `${resto.texto || ''}${textoAdjuntos(lista)}` });
+    }));
     app.post('/api/jarvis/cancelar', h((req) => asistente.cancelar(req.body || {})));
     app.post('/api/jarvis/nueva-sesion', h((req) => asistente.nuevaSesion(req.body || {})));
     app.get('/api/jarvis/estado', h((req) => asistente.estado({ conversacion: req.query.conversacion || 'principal' })));
@@ -509,7 +527,8 @@ function main() {
   if (process.platform !== 'win32') setTimeout(() => motor.preparar(), 5000).unref();
   disenos = createDisenos({ db, jarvis, kit, motor, archivos, previasDir: path.join(cfg.vaultPath, '.jarvis', 'disenos'), recortarFoto: createRecortador({ archivos, python: () => laboratorio.python() }), asistente, emitir, alCambiar: onChange });
   const recordatorios = createRecordatorios({ db });
-  const server = createServer(createApp({ jarvis, archivos, publicadorIg, asistente, instagram, competencia, ads, publicar, hermes, jobs, kit, disenos, recordatorios, laboratorio, resultados, port: cfg.port, onChange }));
+  const adjuntos = createAdjuntos({ archivos, vaultPath: cfg.vaultPath });
+  const server = createServer(createApp({ jarvis, archivos, publicadorIg, asistente, instagram, competencia, ads, publicar, hermes, jobs, kit, disenos, recordatorios, laboratorio, resultados, adjuntos, port: cfg.port, onChange }));
   // Solo el propio dashboard puede escuchar los eventos (otra web abierta en el navegador, no)
   const local = hostsPermitidos(cfg.port);
   wss = new WebSocketServer({ server, path: '/ws', verifyClient: ({ origin, req }) => local.has(req.headers.host) && (!origin || local.has(origin.replace(/^https?:\/\//, ''))) });

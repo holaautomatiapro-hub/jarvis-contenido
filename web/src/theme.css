@@ -486,6 +486,14 @@ select.campo option { background: var(--panel); }
 .chat-acciones { display: flex; gap: 12px; margin-top: 6px; padding-top: 6px; border-top: 1px solid var(--border-soft); }
 .chat-input { display: flex; gap: 8px; align-items: flex-end; padding: 10px 12px 12px; border-top: 1px solid var(--border-soft); }
 .chat-input .campo { resize: none; }
+.chat-input.encima { outline: 2px dashed var(--accent-2); outline-offset: -6px; border-radius: 12px; }
+.chat-adjuntos { display: flex; flex-wrap: wrap; gap: 6px; padding: 8px 12px 0; border-top: 1px solid var(--border-soft); }
+.chat-adjunto { display: inline-flex; align-items: center; gap: 6px; max-width: 100%; padding: 4px 4px 4px 8px; border: 1px solid var(--border); border-radius: 8px; font-size: 12px; background: var(--panel-2, transparent); }
+.chat-adjunto.error { border-color: var(--red); color: var(--red); }
+.chat-adjunto-nombre { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; max-width: 160px; }
+.chat-adjunto small { color: var(--muted); white-space: nowrap; }
+.chat-adjuntos-enviados { display: flex; flex-wrap: wrap; gap: 4px; margin-top: 6px; }
+.chat-adjuntos-enviados .tag { display: inline-flex; align-items: center; gap: 4px; }
 
 /* ---------- Instagram ---------- */
 .ig-vista { display: flex; flex-direction: column; gap: 14px; }

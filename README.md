@@ -98,6 +98,7 @@ Ya no hace falta un chat de Claude Code para cada cosa. Abre `claude` dentro de 
 Necesitas **Claude Code** instalado y con tu sesión iniciada: abre una terminal, ejecuta `claude` una vez y entra con tu cuenta (Pro o Max). JARVIS lo usa en segundo plano, dentro de tu vault, así que lee `CLAUDE.md` y tiene el MCP `jarvis` conectado.
 
 - **Modelo**: Normal (Sonnet, por defecto), Rápido (Haiku) o A fondo (Opus). Diseño y Laboratorio usan siempre Opus.
+- **Adjuntar fotos y vídeos** (clip, arrastrar o pegar), en todos los chats: JARVIS ve la foto o unos fotogramas del vídeo, lee lo que se dice (con `ELEVENLABS_API_KEY`) y tiene su enlace por si lo quieres dentro de un diseño. Por ejemplo, en Diseño: «usa este vídeo en la portada».
 - **Dictar**: el micro usa el reconocimiento de voz de Chrome o Edge (es-ES). **En voz alta**: con `ELEVENLABS_API_KEY` y `ELEVENLABS_VOICE_ID` en `.env` lee las respuestas con ElevenLabs; sin ellas, con la voz del navegador.
 - JARVIS puede leer y escribir notas del vault y buscar en la web, pero **no puede ejecutar comandos** en tu PC (Bash está desactivado).
 
