@@ -36,6 +36,7 @@ import { promptCaption, limpiarCaption, createContextoCaption } from './caption.
 import { createRecortador } from './recortar.js';
 import { createAdjuntos, textoAdjuntos } from './adjuntos.js';
 import { createPreferencias, AMBITOS } from './preferencias.js';
+import { createActualizar } from './actualizar.js';
 
 dotenv.config({ path: path.join(ROOT, '.env'), quiet: true });
 
@@ -44,7 +45,7 @@ const DIST = path.join(ROOT, 'web', 'dist');
 // Replicar con diseño de carruseles o stories: lo hace Opus, como en Diseño
 const modeloReplicar = (formatos, disenar) => { try { return seDisena(normalizarFormatos(formatos), disenar) ? 'opus' : undefined; } catch { return undefined; } };
 
-export function createApp({ jarvis, archivos, publicadorIg, asistente, instagram, competencia, ads, publicar, hermes, jobs, kit, disenos, recordatorios, laboratorio, resultados, adjuntos, preferencias, port, onChange = () => {}, status, tts = sintetizar }) {
+export function createApp({ jarvis, archivos, publicadorIg, asistente, instagram, competencia, ads, publicar, hermes, jobs, kit, disenos, recordatorios, laboratorio, resultados, adjuntos, preferencias, actualizar, port, onChange = () => {}, status, tts = sintetizar }) {
   const estadoSistema = status || (() => systemStatus({ vaultPath: jarvis.vault.base, instagram: Boolean(instagram?.estado().conectado), ads: Boolean(ads?.estado().conectado && ads?.estado().cuenta), hermes: Boolean(hermes?.estado().gateway.online) }));
   const app = express();
 
@@ -435,6 +436,13 @@ export function createApp({ jarvis, archivos, publicadorIg, asistente, instagram
     }));
   }
 
+  // Actualizar JARVIS desde el dashboard (Apps)
+  if (actualizar) {
+    app.get('/api/actualizar', h(() => actualizar.estado()));
+    app.post('/api/actualizar/comprobar', h(() => actualizar.comprobar()));
+    app.post('/api/actualizar', h((req) => actualizar.actualizar({ aunqueOcupado: req.body?.aunqueOcupado === true })));
+  }
+
   // Lo que JARVIS ha aprendido de tus correcciones (se ve, se cambia y se quita en Diseño)
   if (preferencias) {
     app.get('/api/preferencias', h(() => ({ ambitos: AMBITOS, preferencias: preferencias.listar() })));
@@ -546,7 +554,9 @@ function main() {
   disenos = createDisenos({ db, jarvis, kit, motor, archivos, previasDir: path.join(cfg.vaultPath, '.jarvis', 'disenos'), recortarFoto: createRecortador({ archivos, python: () => laboratorio.python() }), asistente, emitir, alCambiar: onChange });
   const recordatorios = createRecordatorios({ db });
   const adjuntos = createAdjuntos({ archivos, vaultPath: cfg.vaultPath });
-  const server = createServer(createApp({ jarvis, archivos, publicadorIg, asistente, instagram, competencia, ads, publicar, hermes, jobs, kit, disenos, recordatorios, laboratorio, resultados, adjuntos, preferencias, port: cfg.port, onChange }));
+  const actualizar = createActualizar({ dir: ROOT, dataDir: path.dirname(cfg.dbPath),
+    ocupado: () => asistente.estado().ocupado || asistente.estado({ conversacion: 'laboratorio' }).ocupado || disenos?.listar().some((d) => d.estado === 'exportando') });
+  const server = createServer(createApp({ jarvis, archivos, publicadorIg, asistente, instagram, competencia, ads, publicar, hermes, jobs, kit, disenos, recordatorios, laboratorio, resultados, adjuntos, preferencias, actualizar, port: cfg.port, onChange }));
   // Solo el propio dashboard puede escuchar los eventos (otra web abierta en el navegador, no)
   const local = hostsPermitidos(cfg.port);
   wss = new WebSocketServer({ server, path: '/ws', verifyClient: ({ origin, req }) => local.has(req.headers.host) && (!origin || local.has(origin.replace(/^https?:\/\//, ''))) });
