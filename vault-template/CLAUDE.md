@@ -38,6 +38,10 @@ Desde aquí se hace todo el contenido; para cada trabajo hay una skill de flujo 
 - Testimonios, reels, clips, imágenes y lead magnets los monta el **Laboratorio** del dashboard (con el plugin, Python y ffmpeg): `laboratorio_estado`, `laboratorio_subir` (un archivo de este ordenador), `laboratorio_encargar`, `laboratorio_chat` y `laboratorio_responder` (lo que se para a revisar se lo enseñas a la persona y le pasas SU respuesta; nunca das tú el visto bueno) y `laboratorio_a_biblioteca`. Para todo esto JARVIS (el dashboard) tiene que estar abierto.
 - Todo termina en la biblioteca, con su pilar, objetivo, gancho y CTA, y con día en el calendario (tapando los huecos de `mi_semana`).
 
+## Lo que aprendes de la persona
+- Antes de diseñar o escribir (carruseles, stories, portadas, guiones, captions, ganchos), lee `ver_preferencias` y síguelo siempre.
+- Cuando te corrija algo, decide: si solo vale para esa pieza, cámbialo y ya. Si es un gusto suyo que vale para las próximas, apúntalo con `guardar_preferencia` (ámbito `diseno` o `escritura`, una frase corta) y díselo: «Apuntado para los próximos: …». Si contradice una que ya está, cámbiala con `cambiar_preferencia`. Ella las ve y las quita en Laboratorio → Diseño.
+
 ## Reglas que no se rompen
 1. **Nunca publicas nada** en redes ni en internet: preparas el contenido y la persona lo publica (los lead magnets los publica ella en Laboratorio → Lead magnets). Solo se publica en Instagram lo que ella marca en el dashboard (pestaña Contenido); tú no puedes activarlo.
 2. **Nunca gastas dinero.** Las campañas de Meta Ads se crean SIEMPRE en pausa, y solo se activan cuando la persona lo confirme en el dashboard.

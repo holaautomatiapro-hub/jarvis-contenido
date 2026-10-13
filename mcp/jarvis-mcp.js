@@ -22,13 +22,14 @@ import { TIPOS_LM } from '../server/leadmagnets.js';
 import { FORMATOS_IMAGEN, TIPOS_IMAGEN } from '../server/imagenes.js';
 import { createKit } from '../server/diseno/kit.js';
 import { createRecordatorios } from '../server/recordatorios.js';
+import { createPreferencias, AMBITOS } from '../server/preferencias.js';
 import { reglasDiseno } from '../server/diseno/reglas.js';
 import { createReadStream, existsSync, readFileSync, statSync } from 'node:fs';
 import { Readable } from 'node:stream';
 
 dotenv.config({ path: path.join(ROOT, '.env'), quiet: true });
 
-export function buildServer(jarvis, { origen = 'claude', avisar = () => {}, instagram = null, competencia = null, ads = null, publicar = null, diseno = null, recordatorios = null, resultados = null, laboratorio = null } = {}) {
+export function buildServer(jarvis, { origen = 'claude', avisar = () => {}, instagram = null, competencia = null, ads = null, publicar = null, diseno = null, recordatorios = null, resultados = null, laboratorio = null, preferencias = null } = {}) {
   const server = new McpServer({ name: 'jarvis', version: '0.2.0' });
 
   const tool = (name, description, inputSchema, fn, escribe = false) =>
@@ -59,6 +60,18 @@ export function buildServer(jarvis, { origen = 'claude', avisar = () => {}, inst
     ({ fecha }) => jarvis.miSemana(fecha ? { fecha } : {}));
 
   tool('ver_pilares', 'Pilares de contenido que ya usan las piezas de la persona, con cuántas piezas tiene cada uno.', {}, () => jarvis.pilares());
+
+  // Lo que aprende de la persona: sus gustos al corregir diseños y textos, para tenerlos en cuenta la próxima vez
+  if (preferencias) {
+    const ambito = z.enum(Object.keys(AMBITOS)).describe('diseno (carruseles, stories, portadas) o escritura (guiones, captions, ganchos)');
+    tool('ver_preferencias', 'Lo que la persona te ha ido enseñando al corregirte (sus gustos de diseño y de escritura). Léelo antes de diseñar o escribir y síguelo siempre.',
+      { ambito: ambito.optional() }, ({ ambito: a }) => preferencias.listar({ ambito: a }).map(({ id, ambito: am, texto }) => ({ id, ambito: am, texto })));
+    tool('guardar_preferencia', 'Apunta un gusto de la persona que vale para las próximas piezas (no lo que solo vale para esta). Una frase corta y concreta. Después díselo: «Apuntado para los próximos: …».',
+      { ambito, texto: z.string() }, (a) => preferencias.guardar({ ...a, origen }), true);
+    tool('cambiar_preferencia', 'Cambia una preferencia apuntada (cuando la persona ahora quiere otra cosa).',
+      { id: z.number().int(), texto: z.string() }, ({ id, texto }) => preferencias.cambiar(id, { texto }), true);
+    tool('quitar_preferencia', 'Quita una preferencia apuntada que ya no vale.', { id: z.number().int() }, ({ id }) => preferencias.quitar(id), true);
+  }
 
   tool('crear_nota', 'Crea una nota Markdown en el vault de Obsidian.',
     { titulo: z.string(), contenido: z.string().optional(), carpeta: z.enum(CARPETAS).optional().describe('Por defecto 00-Inbox') },
@@ -491,7 +504,7 @@ async function main() {
     if (!res.ok) throw new Error(j.error || `Error ${res.status}`);
     return j;
   };
-  await buildServer(jarvis, { origen, avisar, instagram, competencia, ads, publicar, diseno, recordatorios, resultados, laboratorio: { servidor, subir } }).connect(new StdioServerTransport());
+  await buildServer(jarvis, { origen, avisar, instagram, competencia, ads, publicar, diseno, recordatorios, resultados, laboratorio: { servidor, subir }, preferencias: createPreferencias({ db }) }).connect(new StdioServerTransport());
 }
 
 const esPrincipal = process.argv[1] && path.resolve(process.argv[1]) === fileURLToPath(import.meta.url);
