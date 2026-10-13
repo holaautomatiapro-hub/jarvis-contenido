@@ -150,6 +150,9 @@ export function createAsistente({ db, jarvis, vaultPath, emitir = () => {}, ejec
     return { ok: true };
   }
 
+  // La conversación que está trabajando ahora en un carril (p. ej. «replicar»), o null
+  const conversacionActiva = (carril = 'principal') => actuales[carril]?.conversacion || null;
+
   function estado({ conversacion = 'principal' } = {}) {
     return {
       ocupado: Boolean(actuales[carrilDe(conversacion)]),
@@ -186,5 +189,5 @@ export function createAsistente({ db, jarvis, vaultPath, emitir = () => {}, ejec
     });
   }
 
-  return { preguntar, cancelar, nuevaSesion, estado, redactar };
+  return { preguntar, cancelar, nuevaSesion, estado, conversacionActiva, redactar };
 }
