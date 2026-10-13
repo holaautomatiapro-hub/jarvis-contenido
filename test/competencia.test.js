@@ -242,6 +242,9 @@ describe('replicar desde un enlace', () => {
       const campos = new URL(u).searchParams.get('fields') || '';
       const usuario = campos.match(/business_discovery\.username\(([^)]+)\)/)?.[1];
       if (usuario === 'personal') return json({ error: { code: 110, message: 'Invalid user id' } }, 400);
+      // Una cuenta con carruseles muy largos: Meta no deja pedir más de 10 a la vez
+      const limite = Number(campos.match(/limit\((\d+)\)/)?.[1]);
+      if (usuario === 'pesada' && limite > 10) return json({ error: { code: 1, message: "Please reduce the amount of data you're asking for, then retry your request" } }, 500);
       const despues = campos.match(/media\.after\(([^)]+)\)/)?.[1] || null;
       paginas.push(`${usuario}:${despues || 'inicio'}`);
       // Dos páginas: en la segunda está el carrusel COD77xx
@@ -273,6 +276,13 @@ describe('replicar desde un enlace', () => {
     // La segunda vez no vuelve a preguntar a Instagram
     await c3.porEnlace({ url: 'https://instagram.com/p/COD77xx' });
     assert.equal(paginas.length, 2);
+  });
+
+  test('si Meta dice que son demasiados datos, pide menos publicaciones por página', async () => {
+    paginas = [];
+    const d = await c3.porEnlace({ url: 'https://www.instagram.com/pesada/p/COD78xx/' });
+    assert.equal(d.id, 'e78');
+    assert.deepEqual(paginas, ['pesada:inicio', 'pesada:CUR1'], 'la segunda página ya va con el tamaño que funcionó');
   });
 
   test('si no sabe de quién es, la pide; las cuentas personales no se pueden traer', async () => {
