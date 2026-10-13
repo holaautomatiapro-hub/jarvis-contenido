@@ -7,57 +7,93 @@ import { BotonCopiar, Modal } from '../contenido/comun.jsx';
 import { urlArchivo } from './comun.jsx';
 
 // Lead magnets: páginas web interactivas (guías, checklists, tests, generadores) que JARVIS hace con tu sistema
-// de diseño y publica en Vercel. El enlace se copia o se pone directamente en la pieza que lo anuncia.
+// de diseño y publica en tu dominio (con tu repositorio de GitHub) o en Vercel. El enlace se copia o se pone en la pieza.
 const VACIO = { titulo: '', tipo: 'guia', palabra: '', pieza: '', contenido: '', indicaciones: '' };
 
 // En el chat, del encargo largo solo se enseñan las primeras líneas
 const resumenPregunta = (t) => (/^(Crea|Rehaz) un LEAD MAGNET/.test(t) ? t.split('\n').slice(0, 3).join('\n') : t);
 
+// Dónde se publican: en tu repositorio de GitHub (una carpeta por lead magnet; Vercel lo publica solo en tu
+// dominio, p. ej. recursos.tudominio.com/<nombre>/) o directamente en un proyecto de Vercel.
 function Vercel({ v, recargar }) {
-  const [abierto, setAbierto] = useState(!v.conectado);
+  const g = v.github || {};
+  const conectado = g.conectado || v.conectado;
+  const [abierto, setAbierto] = useState(!conectado);
+  const [modo, setModo] = useState(g.conectado || !v.conectado ? 'github' : 'vercel');
   const [f, setF] = useState({ token: '', equipo: v.equipo || '', proyecto: v.proyecto || 'leadmagnets', dominio: v.dominio || '' });
+  const [fg, setFg] = useState({ repo: g.repo || '', token: '', dominio: g.dominio || '' });
   const [aviso, setAviso] = useState(null);
   const [guardando, setGuardando] = useState(false);
   const guardar = async (e) => {
     e.preventDefault();
     setGuardando(true); setAviso(null);
     try {
-      const r = await api('/api/laboratorio/leadmagnets/vercel', { method: 'PUT', body: f });
-      setAviso({ tipo: 'ok', texto: `Vercel conectado${r.usuario ? ` (${r.usuario})` : ''}. El token se guarda solo en tu servidor.` });
-      setF((x) => ({ ...x, token: '' }));
+      if (modo === 'github') {
+        await api('/api/laboratorio/leadmagnets/github', { method: 'PUT', body: fg });
+        setAviso({ tipo: 'ok', texto: `Conectado: se publicarán en ${fg.dominio.replace(/^https?:\/\//, '').replace(/\/.*$/, '')}/… El token se guarda solo en tu servidor.` });
+        setFg((x) => ({ ...x, token: '' }));
+      } else {
+        const r = await api('/api/laboratorio/leadmagnets/vercel', { method: 'PUT', body: f });
+        setAviso({ tipo: 'ok', texto: `Vercel conectado${r.usuario ? ` (${r.usuario})` : ''}. El token se guarda solo en tu servidor.` });
+        setF((x) => ({ ...x, token: '' }));
+      }
       setAbierto(false);
       recargar();
     } catch (err) { setAviso({ tipo: 'error', texto: err.message }); }
     setGuardando(false);
   };
+  const donde = g.conectado ? <>se publican en <b>{g.dominio}</b>/… (repositorio <code>{g.repo}</code>)</> : v.conectado ? <>Vercel conectado <code>{v.final}</code> · se publican en <b>{v.dominio || `${v.proyecto}.vercel.app`}</b>/…</> : null;
   return (
     <div className="panel panel-pad lm-vercel">
       <div className="lab-checks">
-        <div className={v.conectado ? 'ok' : ''}>
-          <Icon name={v.conectado ? 'checkCircle' : 'clock'} size={15} />
-          <span>{v.conectado ? <>Vercel conectado <code>{v.final}</code> · se publican en <b>{v.dominio || `${v.proyecto}.vercel.app`}</b>/…</> : 'Conecta Vercel para publicar tus lead magnets con un enlace'}</span>
-          <button className="chip" onClick={() => setAbierto((x) => !x)}>{v.conectado ? 'Cambiar' : 'Conectar'}</button>
+        <div className={conectado ? 'ok' : ''}>
+          <Icon name={conectado ? 'checkCircle' : 'clock'} size={15} />
+          <span>{donde || 'Elige dónde se publican tus lead magnets para tener su enlace'}</span>
+          <button className="chip" onClick={() => setAbierto((x) => !x)}>{conectado ? 'Cambiar' : 'Conectar'}</button>
         </div>
       </div>
       {abierto && (
         <form className="lab-form" onSubmit={guardar} autoComplete="off">
-          <label className="lab-campo lab-ancho"><span className="label">Token de Vercel</span>
-            <input className="campo" type="password" autoComplete="new-password" value={f.token} onChange={(e) => setF({ ...f, token: e.target.value })} placeholder={v.conectado ? 'Déjalo vacío para mantener el actual' : 'Pégalo aquí (no lo pegues en el chat)'} />
-            <small className="ayuda">Créalo en <a href="https://vercel.com/account/tokens" target="_blank" rel="noreferrer">vercel.com/account/tokens</a> (Create Token, alcance: tu cuenta, sin caducidad o la que prefieras).</small>
-          </label>
-          <label className="lab-campo"><span className="label">Nombre del proyecto</span>
-            <input className="campo" value={f.proyecto} onChange={(e) => setF({ ...f, proyecto: e.target.value })} placeholder="leadmagnets" maxLength={60} />
-            <small className="ayuda">Tu enlace será {(f.proyecto || 'leadmagnets').toLowerCase().replace(/[^a-z0-9-]+/g, '-')}.vercel.app/…</small>
-          </label>
-          <label className="lab-campo"><span className="label">ID del equipo (opcional)</span>
-            <input className="campo" value={f.equipo} onChange={(e) => setF({ ...f, equipo: e.target.value })} placeholder="team_… (vacío = tu cuenta personal)" />
-          </label>
-          <label className="lab-campo lab-ancho"><span className="label">Dominio propio (opcional)</span>
-            <input className="campo" value={f.dominio} onChange={(e) => setF({ ...f, dominio: e.target.value })} placeholder="recursos.tudominio.com (añádelo antes al proyecto en Vercel)" />
-          </label>
+          <div className="seg seg-mini lab-ancho" role="group" aria-label="Dónde publicar">
+            <button type="button" className={modo === 'github' ? 'on' : ''} onClick={() => setModo('github')}>En mi dominio (GitHub)</button>
+            <button type="button" className={modo === 'vercel' ? 'on' : ''} onClick={() => setModo('vercel')}>Directamente en Vercel</button>
+          </div>
+          {modo === 'github' ? (
+            <>
+              <p className="ayuda lab-ancho">Cada lead magnet va a su carpeta en tu repositorio de GitHub y Vercel lo publica solo en tu dominio: <b>{(fg.dominio || 'recursos.tudominio.com').replace(/^https?:\/\//, '').replace(/\/.*$/, '')}/nombre-del-lead-magnet/</b>. Así puedes tener en el mismo sitio los que hace JARVIS y los que subas tú.</p>
+              <label className="lab-campo"><span className="label">Repositorio</span>
+                <input className="campo" value={fg.repo} onChange={(e) => setFg({ ...fg, repo: e.target.value })} placeholder="tu-usuario/recursos" />
+              </label>
+              <label className="lab-campo"><span className="label">Dominio</span>
+                <input className="campo" value={fg.dominio} onChange={(e) => setFg({ ...fg, dominio: e.target.value })} placeholder="recursos.tudominio.com" />
+              </label>
+              <label className="lab-campo lab-ancho"><span className="label">Token de GitHub</span>
+                <input className="campo" type="password" autoComplete="new-password" value={fg.token} onChange={(e) => setFg({ ...fg, token: e.target.value })} placeholder={g.conectado ? 'Déjalo vacío para mantener el actual' : 'Pégalo aquí (no lo pegues en el chat)'} />
+                <small className="ayuda">Créalo en <a href="https://github.com/settings/personal-access-tokens/new" target="_blank" rel="noreferrer">github.com/settings/personal-access-tokens/new</a>: en «Repository access» elige <b>solo ese repositorio</b> y en «Permissions → Contents», <b>Read and write</b>. Sin caducidad o la que prefieras.</small>
+              </label>
+            </>
+          ) : (
+            <>
+              <label className="lab-campo lab-ancho"><span className="label">Token de Vercel</span>
+                <input className="campo" type="password" autoComplete="new-password" value={f.token} onChange={(e) => setF({ ...f, token: e.target.value })} placeholder={v.conectado ? 'Déjalo vacío para mantener el actual' : 'Pégalo aquí (no lo pegues en el chat)'} />
+                <small className="ayuda">Créalo en <a href="https://vercel.com/account/tokens" target="_blank" rel="noreferrer">vercel.com/account/tokens</a> (Create Token, alcance: tu cuenta, sin caducidad o la que prefieras).</small>
+              </label>
+              <label className="lab-campo"><span className="label">Nombre del proyecto</span>
+                <input className="campo" value={f.proyecto} onChange={(e) => setF({ ...f, proyecto: e.target.value })} placeholder="leadmagnets" maxLength={60} />
+                <small className="ayuda">Tu enlace será {(f.proyecto || 'leadmagnets').toLowerCase().replace(/[^a-z0-9-]+/g, '-')}.vercel.app/…</small>
+              </label>
+              <label className="lab-campo"><span className="label">ID del equipo (opcional)</span>
+                <input className="campo" value={f.equipo} onChange={(e) => setF({ ...f, equipo: e.target.value })} placeholder="team_… (vacío = tu cuenta personal)" />
+              </label>
+              <label className="lab-campo lab-ancho"><span className="label">Dominio propio (opcional)</span>
+                <input className="campo" value={f.dominio} onChange={(e) => setF({ ...f, dominio: e.target.value })} placeholder="recursos.tudominio.com (añádelo antes al proyecto en Vercel)" />
+              </label>
+              {g.conectado && <p className="ayuda lab-ancho">Ahora se publican en tu dominio con GitHub; si guardas esto, eso se mantiene (para usar solo Vercel, quita el repositorio).</p>}
+            </>
+          )}
           <div className="modal-pie lab-ancho">
             {aviso && <div className={`aviso ${aviso.tipo}`}>{aviso.texto}</div>}
-            <button className="btn" disabled={guardando || (!v.conectado && !f.token.trim())}>{guardando ? 'Comprobando…' : 'Guardar'}</button>
+            <button className="btn" disabled={guardando || (modo === 'github' ? (!fg.repo.trim() || !fg.dominio.trim() || (!g.conectado && !fg.token.trim())) : (!v.conectado && !f.token.trim()))}>{guardando ? 'Comprobando…' : 'Guardar'}</button>
           </div>
         </form>
       )}
@@ -99,7 +135,7 @@ function Tarjeta({ lm, piezas, tipos, ocupado, onCambios, recargar, setAviso }) 
   };
   const publicar = () => accion('publicar', async () => {
     const r = await api(`/api/laboratorio/leadmagnets/${lm.slug}/publicar`, { method: 'POST' });
-    setAviso({ tipo: 'ok', texto: `Publicado: ${r.url}${lm.pieza ? ' (y puesto en su pieza)' : ''}` });
+    setAviso({ tipo: 'ok', texto: `Publicado: ${r.url}${lm.pieza ? ' (y puesto en su pieza)' : ''}${r.aviso ? `. ${r.aviso}` : ''}` });
   });
   const quitar = () => window.confirm(`¿Quitar «${lm.titulo}» de internet? El enlace dejará de funcionar.`) && accion('quitar', () => api(`/api/laboratorio/leadmagnets/${lm.slug}/despublicar`, { method: 'POST' }));
   const borrar = () => window.confirm(`¿Borrar «${lm.titulo}»?${lm.url ? ' También se quita de internet.' : ''}`) && accion('borrar', () => api(`/api/laboratorio/leadmagnets/${lm.slug}`, { method: 'DELETE' }));
