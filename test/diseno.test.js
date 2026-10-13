@@ -237,6 +237,24 @@ describe('diseños: API, exportar a la biblioteca y Claude', () => {
     assert.deepEqual(exportadas.at(-1), [1, 2, 3, 4, 5]);
   });
 
+  test('otra versión desde el diseño: sabe de qué diseño sale una pieza y deja la exportación en el nuevo formato', async () => {
+    const ds = createDisenos({ db, jarvis, kit: createKit({ vaultPath: vault }), motor: motorFalso, archivos, previasDir: path.join(vault, '.jarvis', 'disenos') });
+    const d = ds.crear({ formato: 'carrusel', plantilla: 'rejilla', guion: 'Para convertir', generar: false });
+    await ds.guardarDatos(d.id, { slides: [1, 2].map(slide) });
+    ds.exportar(d.id, { tipo: 'jpg' });
+    await esperar(d.id);
+    const pid = ds.obtener(d.id).exportado.piezas[0];
+    assert.deepEqual(ds.deLaPieza(pid), { id: d.id, formato: 'carrusel', tipo: 'jpg', indice: 0 });
+    assert.equal(ds.deLaPieza(999999), null);
+    const r = await ds.otraVersion(d.id, 'mp4');
+    assert.deepEqual(r.archivos.map((a) => a.mime), ['video/mp4', 'video/mp4']);
+    assert.equal(jarvis.leerPieza(pid).archivos[0].mime, 'image/jpeg', 'la pieza no cambia hasta aceptarla');
+    ds.aceptarOtraVersion(d.id, { tipo: 'mp4', archivos: r.archivos, huellas: r.huellas });
+    const v = ds.obtener(d.id);
+    assert.equal(v.exportado.tipo, 'mp4');
+    assert.deepEqual(v.cambiadas, [], 'y la próxima exportación en vídeo solo saca lo que cambie');
+  });
+
   test('stories: una pieza por story, en una carpeta; la pieza del guion pasa a listo', async () => {
     const origen = jarvis.crearPieza({ titulo: 'Caso de Andrea', estado: 'guion', caption: 'Antes 15, ahora 30' });
     const { data: d } = await api('/api/disenos', { formato: 'story', plantilla: 'rejilla', pieza_id: origen.id, generar: false });

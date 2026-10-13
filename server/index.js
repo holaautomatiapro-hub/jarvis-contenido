@@ -37,6 +37,7 @@ import { createRecortador } from './recortar.js';
 import { createAdjuntos, textoAdjuntos } from './adjuntos.js';
 import { createPreferencias, AMBITOS } from './preferencias.js';
 import { createActualizar } from './actualizar.js';
+import { createConversiones } from './convertir.js';
 
 dotenv.config({ path: path.join(ROOT, '.env'), quiet: true });
 
@@ -45,7 +46,7 @@ const DIST = path.join(ROOT, 'web', 'dist');
 // Replicar con diseño de carruseles o stories: lo hace Opus, como en Diseño
 const modeloReplicar = (formatos, disenar) => { try { return seDisena(normalizarFormatos(formatos), disenar) ? 'opus' : undefined; } catch { return undefined; } };
 
-export function createApp({ jarvis, archivos, publicadorIg, asistente, instagram, competencia, ads, publicar, hermes, jobs, kit, disenos, recordatorios, laboratorio, resultados, adjuntos, preferencias, actualizar, port, onChange = () => {}, status, tts = sintetizar }) {
+export function createApp({ jarvis, archivos, publicadorIg, asistente, instagram, competencia, ads, publicar, hermes, jobs, kit, disenos, recordatorios, laboratorio, resultados, adjuntos, preferencias, actualizar, conversiones, port, onChange = () => {}, status, tts = sintetizar }) {
   const estadoSistema = status || (() => systemStatus({ vaultPath: jarvis.vault.base, instagram: Boolean(instagram?.estado().conectado), ads: Boolean(ads?.estado().conectado && ads?.estado().cuenta), hermes: Boolean(hermes?.estado().gateway.online) }));
   const app = express();
 
@@ -437,6 +438,14 @@ export function createApp({ jarvis, archivos, publicadorIg, asistente, instagram
     }));
   }
 
+  // «Generar vídeo» / «Generar imagen» de una pieza: se saca la otra versión y se ve antes de cambiarla
+  if (conversiones) {
+    app.get('/api/piezas/:id/convertir', h((req) => conversiones.estado(req.params.id)));
+    app.post('/api/piezas/:id/convertir', h((req) => conversiones.empezar(req.params.id, { a: ['video', 'imagen'].includes(req.body?.a) ? req.body.a : undefined })));
+    app.post('/api/piezas/:id/convertir/aceptar', h((req) => conversiones.aceptar(req.params.id), true));
+    app.delete('/api/piezas/:id/convertir', h((req) => conversiones.descartar(req.params.id), true));
+  }
+
   // «Trabajando en…»: todo lo que JARVIS está haciendo ahora, para verlo desde cualquier pestaña
   if (asistente) {
     const NOMBRE = { principal: 'Chat', replicar: 'Replicando una publicación', diseno: 'Diseño', laboratorio: 'Laboratorio', guiones: 'Guiones', ads: 'Meta Ads', publicar: 'Adaptando a otras redes', sistema: 'Tarea de fondo' };
@@ -458,6 +467,9 @@ export function createApp({ jarvis, archivos, publicadorIg, asistente, instagram
       for (const c of asistente.enMarcha()) {
         if (c.conversacion === 'diseno' && conDiseno.has('diseno')) continue; // ya sale como su diseño
         lista.push({ id: `claude-${c.conversacion}-${c.id}`, tipo: 'claude', titulo: NOMBRE[c.conversacion] || 'JARVIS', detalle: resumir(c.texto), desde: c.desde, ir: IR[c.conversacion] || null });
+      }
+      for (const c of conversiones?.trabajos() || []) {
+        lista.push({ id: `convertir-${c.pieza}`, tipo: 'convertir', titulo: `${c.a === 'video' ? 'Vídeo' : 'Imagen'} de «${c.titulo}»`, detalle: c.deDiseno ? 'Exportando desde su diseño' : c.a === 'video' ? 'Pasando las fotos a vídeo' : 'Sacando un fotograma', progreso: c.progreso, desde: c.inicio, ir: { tab: 'contenido', pieza: c.pieza } });
       }
       const u = actualizar?.enCurso();
       if (u) lista.push({ id: 'actualizar', tipo: 'actualizar', titulo: 'Actualizando JARVIS', detalle: 'Se reiniciará en medio: es normal que la página se corte un momento', desde: Date.parse(u.inicio) || null, ir: { tab: 'apps' } });
@@ -583,9 +595,10 @@ function main() {
   disenos = createDisenos({ db, jarvis, kit, motor, archivos, previasDir: path.join(cfg.vaultPath, '.jarvis', 'disenos'), recortarFoto: createRecortador({ archivos, python: () => laboratorio.python() }), asistente, emitir, alCambiar: onChange });
   const recordatorios = createRecordatorios({ db });
   const adjuntos = createAdjuntos({ archivos, vaultPath: cfg.vaultPath });
+  const conversiones = createConversiones({ jarvis, archivos, disenos, emitir, alCambiar: onChange });
   const actualizar = createActualizar({ dir: ROOT, dataDir: path.dirname(cfg.dbPath),
     ocupado: () => asistente.estado().ocupado || asistente.estado({ conversacion: 'laboratorio' }).ocupado || disenos?.listar().some((d) => d.estado === 'exportando') });
-  const server = createServer(createApp({ jarvis, archivos, publicadorIg, asistente, instagram, competencia, ads, publicar, hermes, jobs, kit, disenos, recordatorios, laboratorio, resultados, adjuntos, preferencias, actualizar, port: cfg.port, onChange }));
+  const server = createServer(createApp({ jarvis, archivos, publicadorIg, asistente, instagram, competencia, ads, publicar, hermes, jobs, kit, disenos, recordatorios, laboratorio, resultados, adjuntos, preferencias, actualizar, conversiones, port: cfg.port, onChange }));
   // Solo el propio dashboard puede escuchar los eventos (otra web abierta en el navegador, no)
   const local = hostsPermitidos(cfg.port);
   wss = new WebSocketServer({ server, path: '/ws', verifyClient: ({ origin, req }) => local.has(req.headers.host) && (!origin || local.has(origin.replace(/^https?:\/\//, ''))) });
