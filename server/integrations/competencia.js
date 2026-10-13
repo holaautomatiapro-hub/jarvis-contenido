@@ -26,9 +26,11 @@ const NIVELES_CAMPOS = [`${CAMPOS_BASE},view_count,children{media_type,media_url
 // Por qué se puede ordenar la lista de publicaciones
 export const ORDENES = { engagement: 'Engagement', interacciones: 'Interacciones', vistas: 'Visualizaciones', likes: 'Me gusta', comentarios: 'Comentarios', fecha: 'Más recientes' };
 const publico = (m, extra = {}) => Object.assign(new Error(m), { publico: true }, extra);
-// Cuántas páginas de 50 publicaciones se miran como mucho para encontrar un enlace (las 400 últimas)
-const PAGINAS_ENLACE = 8;
+// Cuántas publicaciones de su cuenta se miran como mucho para encontrar un enlace
+const MAX_ENLACE = 400;
 const NO_USUARIOS = ['p', 'reel', 'reels', 'tv', 'stories', 'explore'];
+// «Please reduce the amount of data you're asking for» (código 1): la página de publicaciones pesa demasiado
+const demasiadosDatos = (e) => e.codigo === 1 || /reduce the amount of data/i.test(e.message);
 
 // Enlace de una publicación de Instagram: instagram.com/p/CODIGO, /reel/CODIGO, /tv/CODIGO o /usuario/p/CODIGO
 export function leerEnlace(url) {
@@ -84,19 +86,22 @@ export function createCompetencia({ db, instagram, vault, env = process.env, fet
   let sincronizando = false;
 
   // Business Discovery de un perfil. Si esta versión de la API no deja pedir algún campo de las publicaciones,
-  // se prueba con menos campos y se recuerda.
-  async function descubrir(g, c, usuario, paginaMedia) {
-    const pedir = (nivel) => g.get(c.igUserId, { fields: `business_discovery.username(${usuario}){username,name,biography,followers_count,media_count,profile_picture_url,media.${paginaMedia}{${NIVELES_CAMPOS[nivel]}}}` });
+  // se prueba con menos campos y se recuerda. Si Meta dice que son demasiados datos (cuentas con muchos carruseles
+  // largos), se piden menos publicaciones por página. Devuelve también el tamaño de página que ha funcionado.
+  async function descubrir(g, c, usuario, { limite = 50, after = null } = {}) {
+    const pedir = (nivel, n) => g.get(c.igUserId, { fields: `business_discovery.username(${usuario}){username,name,biography,followers_count,media_count,profile_picture_url,media.${after ? `after(${after}).` : ''}limit(${n}){${NIVELES_CAMPOS[nivel]}}}` });
     let nivel = Math.min(Number(aj.leer('comp_nivel_campos', 0)) || 0, NIVELES_CAMPOS.length - 1);
+    let n = limite;
     let r;
     for (;;) {
-      try { r = await pedir(nivel); break; } catch (e) {
+      try { r = await pedir(nivel, n); break; } catch (e) {
         if (e instanceof MetaError && e.codigo === 100 && /field/i.test(e.message) && nivel < NIVELES_CAMPOS.length - 1) { nivel++; continue; }
+        if (e instanceof MetaError && demasiadosDatos(e) && n > 5) { n = Math.max(5, Math.floor(n / 2)); continue; }
         throw e;
       }
     }
     if (nivel !== (Number(aj.leer('comp_nivel_campos', 0)) || 0)) aj.guardar('comp_nivel_campos', nivel);
-    return r.business_discovery || {};
+    return { bd: r.business_discovery || {}, limite: n };
   }
   function guardarMedia(m, username) {
     q.upMedia.run({
@@ -140,7 +145,7 @@ export function createCompetencia({ db, instagram, vault, env = process.env, fet
     try {
       for (const p of rows(q.perfiles).filter((x) => !soloUsuario || x.username === soloUsuario)) {
         try {
-          const bd = await descubrir(g, c, p.username, `limit(${Number(env.COMP_MAX_PUBLICACIONES) || 50})`);
+          const { bd } = await descubrir(g, c, p.username, { limite: Number(env.COMP_MAX_PUBLICACIONES) || 50 });
           q.actPerfil.run(bd.name || null, bd.biography || null, bd.followers_count ?? null, bd.media_count ?? null, bd.profile_picture_url || null, p.username);
           for (const m of bd.media?.data || []) {
             guardarMedia(m, p.username);
@@ -189,10 +194,11 @@ export function createCompetencia({ db, instagram, vault, env = process.env, fet
     if (!u || !USUARIO_OK.test(u)) throw publico('No sé de qué cuenta es: escribe su @usuario', { campo: 'usuario' });
     const g = createGraph({ token: c.token, fetchImpl });
     let after = null;
-    for (let pagina = 0; pagina < PAGINAS_ENLACE; pagina++) {
+    let limite = 50;
+    for (let vistas = 0, pedidas = 0; vistas < MAX_ENLACE && pedidas < 30; pedidas++) {
       let bd;
       try {
-        bd = await descubrir(g, c, u, `${after ? `after(${after}).` : ''}limit(50)`);
+        ({ bd, limite } = await descubrir(g, c, u, { limite, after }));
       } catch (err) {
         if (err instanceof MetaError && (err.codigo === 110 || err.codigo === 100)) throw publico(`@${u} no es una cuenta profesional, no existe o es privada: Instagram no deja traer sus publicaciones. Copia su texto y pídeselo a JARVIS en el Chat.`, { campo: 'usuario' });
         throw err;
@@ -204,6 +210,7 @@ export function createCompetencia({ db, instagram, vault, env = process.env, fet
         alCambiar();
         return detalle(m.id);
       }
+      vistas += bd.media?.data?.length || limite;
       after = bd.media?.paging?.cursors?.after;
       if (!after || !bd.media?.paging?.next) break;
     }
