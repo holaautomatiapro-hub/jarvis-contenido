@@ -12,7 +12,10 @@ import { guardarEnv } from './env-archivo.js';
 //   leadmagnets/<slug>/leadmagnet.json  título, tipo, palabra clave, enlace publicado y pieza
 //   leadmagnets/<slug>/captura.png      la portada a 375 px (la saca laboratorio/captura.mjs)
 //   leadmagnets/_comun/                 banners de las comunidades (Skool, WhatsApp), se suben una vez
-// En Vercel van todos juntos en un proyecto (VERCEL_PROYECTO): https://<proyecto>.vercel.app/<slug>
+// Se publican de una de dos formas:
+//   · En tu repositorio de GitHub (LM_GITHUB_REPO), una carpeta por lead magnet (<slug>/index.html), y Vercel
+//     lo publica solo en tu dominio (LM_DOMINIO): https://recursos.tudominio.com/<slug>/  (lo recomendado)
+//   · Directamente en Vercel, todos juntos en un proyecto (VERCEL_PROYECTO): https://<proyecto>.vercel.app/<slug>
 
 export class LeadMagnetError extends Error {
   constructor(m) { super(m); this.publico = true; }
@@ -30,6 +33,8 @@ export const BANNERS = { skool: 'Banner de Skool', whatsapp: 'Banner de WhatsApp
 const IMAGEN = /\.(jpe?g|png|webp)$/i;
 const MAX_HTML = 15 * 1024 ** 2;
 const API = 'https://api.vercel.com';
+const GH = 'https://api.github.com';
+const limpiarDominio = (d) => String(d || '').trim().replace(/^https?:\/\//, '').replace(/\/.*$/, '').toLowerCase();
 
 export const slugLm = (s) => String(s || '').toLowerCase().normalize('NFD').replace(/[̀-ͯ]/g, '')
   .replace(/[^a-z0-9]+/g, '-').replace(/^-+|-+$/g, '').slice(0, 60).replace(/-+$/, '');
@@ -73,6 +78,76 @@ export function createLeadMagnets({ base, vaultPath = null, jarvis = null, env =
       throw new LeadMagnetError(`Vercel: ${d.error?.message || `error ${r.status}`}`);
     }
     return d;
+  }
+
+  // ---------- GitHub (una carpeta por lead magnet en tu repositorio: Vercel publica solo cada push) ----------
+  const github = () => ({ repo: String(env.LM_GITHUB_REPO || '').trim(), token: env.LM_GITHUB_TOKEN || '', rama: env.LM_GITHUB_RAMA || 'main', dominio: limpiarDominio(env.LM_DOMINIO) });
+  const conGithub = () => Boolean(github().repo && github().token && github().dominio);
+
+  async function gh(ruta, { metodo = 'GET', cuerpo, token = github().token, siNoExiste = false } = {}) {
+    let r;
+    try {
+      r = await fetchImpl(`${GH}${ruta}`, {
+        method: metodo,
+        headers: { Authorization: `Bearer ${token}`, Accept: 'application/vnd.github+json', 'X-GitHub-Api-Version': '2022-11-28', 'User-Agent': 'JARVIS', ...(cuerpo ? { 'Content-Type': 'application/json' } : {}) },
+        body: cuerpo ? JSON.stringify(cuerpo) : undefined,
+        signal: AbortSignal.timeout(60_000),
+      });
+    } catch (e) { throw new LeadMagnetError(`No he podido conectar con GitHub (${e.message})`); }
+    if (r.status === 404 && siNoExiste) return null;
+    const d = await r.json().catch(() => ({}));
+    if (!r.ok) {
+      if (r.status === 401) throw new LeadMagnetError('GitHub no acepta el token: crea otro (Lead magnets → Publicar) y vuelve a guardarlo.');
+      if (r.status === 403 || r.status === 404) throw new LeadMagnetError(`GitHub no deja ${metodo === 'GET' ? 'ver' : 'escribir en'} ${github().repo || 'el repositorio'} con ese token: dale permiso de «Contents: Read and write» a ese repositorio.`);
+      throw new LeadMagnetError(`GitHub: ${d.message || `error ${r.status}`}`);
+    }
+    return d;
+  }
+  const rutaGh = (slug, archivo = 'index.html') => `/repos/${github().repo}/contents/${encodeURIComponent(slug)}/${archivo}`;
+
+  async function conectarGithub({ repo, token, dominio, rama } = {}) {
+    const r = String(repo || '').trim().replace(/^https?:\/\/github\.com\//i, '').replace(/\.git$/, '').replace(/\/+$/, '');
+    if (!/^[\w.-]+\/[\w.-]+$/.test(r)) throw new LeadMagnetError('Escribe el repositorio como usuario/nombre (p. ej. tu-usuario/recursos)');
+    const t = String(token || '').trim() || github().token;
+    if (!t) throw new LeadMagnetError('Pega el token de GitHub');
+    const dom = limpiarDominio(dominio);
+    if (!/^[a-z0-9-]+(\.[a-z0-9-]+)+$/.test(dom)) throw new LeadMagnetError('Escribe el dominio donde Vercel publica ese repositorio (p. ej. recursos.tudominio.com)');
+    const info = await gh(`/repos/${r}`, { token: t });
+    if (!info.permissions?.push) throw new LeadMagnetError('Ese token puede ver el repositorio pero no escribir en él: dale «Contents: Read and write».');
+    const cambios = { LM_GITHUB_REPO: r, LM_GITHUB_TOKEN: t, LM_GITHUB_RAMA: String(rama || '').trim() || info.default_branch || 'main', LM_DOMINIO: dom };
+    guardarClaves(cambios);
+    Object.assign(env, cambios);
+    return estadoPublicar();
+  }
+
+  // Sube (o cambia) la página en su carpeta del repositorio. Si ya hay una página con ese nombre que no es de
+  // este lead magnet (p. ej. una hecha a mano), no se pisa.
+  async function subirGithub(slug, m) {
+    const g = github();
+    const actual = await gh(`${rutaGh(slug)}?ref=${encodeURIComponent(g.rama)}`, { siNoExiste: true });
+    const mio = m.publicado?.repo === g.repo;
+    if (actual && !mio) throw new LeadMagnetError(`En ${g.dominio}/${slug}/ ya hay otra página. Cambia el nombre del lead magnet (o borra esa carpeta del repositorio).`);
+    const html = completarDocumento(readFileSync(path.join(carpeta(slug), 'index.html')));
+    await gh(rutaGh(slug), { metodo: 'PUT', cuerpo: { message: `${actual ? 'Actualiza' : 'Añade'} el lead magnet «${m.titulo || slug}»`, content: html.toString('base64'), branch: g.rama, ...(actual?.sha ? { sha: actual.sha } : {}) } });
+    return `https://${g.dominio}/${slug}/`;
+  }
+  async function quitarGithub(slug) {
+    const g = github();
+    const actual = await gh(`${rutaGh(slug)}?ref=${encodeURIComponent(g.rama)}`, { siNoExiste: true });
+    if (actual?.sha) await gh(rutaGh(slug), { metodo: 'DELETE', cuerpo: { message: `Quita el lead magnet «${slug}»`, sha: actual.sha, branch: g.rama } });
+  }
+  // Vercel tarda un poco en publicar cada push: se espera a que la página responda (como mucho ~3 min)
+  async function esperarPublicada(url, { intentos = 90 } = {}) {
+    for (let i = 0; i < intentos; i++) {
+      try { const r = await fetchImpl(url, { signal: AbortSignal.timeout(15_000), cache: 'no-store' }); if (r.ok) return true; } catch { /* aún no */ }
+      await new Promise((ok) => setTimeout(ok, esperaMs));
+    }
+    return false;
+  }
+
+  function estadoPublicar() {
+    const g = github();
+    return { ...estadoVercel(), modo: conGithub() ? 'github' : 'vercel', github: { conectado: conGithub(), repo: g.repo || null, dominio: g.dominio || null, rama: g.rama, final: g.token ? `••••${g.token.slice(-4)}` : null } };
   }
 
   function estadoVercel() {
@@ -185,7 +260,7 @@ export function createLeadMagnets({ base, vaultPath = null, jarvis = null, env =
   };
 
   function estado() {
-    return { leadmagnets: lista(), banners: banners(), vercel: estadoVercel(), tipos: TIPOS_LM, kit: Boolean(guia()) };
+    return { leadmagnets: lista(), banners: banners(), vercel: estadoPublicar(), tipos: TIPOS_LM, kit: Boolean(guia()) };
   }
 
   // ---------- Banners de las comunidades ----------
@@ -261,7 +336,15 @@ Cómo hacerlo:
     const st = statSync(html);
     if (st.size > MAX_HTML) throw new LeadMagnetError('La página pesa más de 15 MB: pídele a JARVIS que reduzca las imágenes');
     if (/\{\{(SKOOL|WA)\}\}/.test(readFileSync(html, 'utf8'))) throw new LeadMagnetError('La página aún tiene {{SKOOL}} o {{WA}} sin cambiar: sube los banners o pídele a JARVIS que quite esos bloques');
-    const publicados = lista().filter((l) => l.url && l.listo && l.slug !== slug).map((l) => l.slug);
+    // En tu repositorio de GitHub: solo se sube esta página; Vercel la publica en tu dominio
+    if (conGithub()) {
+      const url = await subirGithub(slug, m);
+      const enLinea = await esperarPublicada(url);
+      guardarMeta(slug, { ...m, publicado: { url, fecha: new Date().toISOString(), repo: github().repo } });
+      if (m.pieza && jarvis) { try { jarvis.actualizarPieza(m.pieza, { leadmagnet: true, leadmagnet_url: url }); } catch (e) { log(`No he podido poner el enlace en la pieza ${m.pieza}: ${e.message}`); } }
+      return { url, leadmagnets: lista(), ...(enLinea ? {} : { aviso: 'Subido a GitHub: Vercel aún lo está publicando. En un par de minutos el enlace funcionará.' }) };
+    }
+    const publicados = lista().filter((l) => l.url && l.listo && l.slug !== slug && !leerMeta(l.slug)?.publicado?.repo).map((l) => l.slug);
     const { host } = await desplegar([...publicados, slug]);
     const fecha = new Date().toISOString();
     for (const s of publicados) { const mm = leerMeta(s); if (mm?.publicado) guardarMeta(s, { ...mm, publicado: { ...mm.publicado, url: `https://${host}/${s}` } }); }
@@ -286,8 +369,13 @@ Cómo hacerlo:
   async function despublicar(slug) {
     const m = leerMeta(slug);
     if (!m?.publicado) return { leadmagnets: lista() };
-    const quedan = lista().filter((l) => l.url && l.listo && l.slug !== slug).map((l) => l.slug);
-    await desplegar(quedan);
+    if (m.publicado.repo) {
+      if (!conGithub() || github().repo !== m.publicado.repo) throw new LeadMagnetError(`Está publicado en el repositorio ${m.publicado.repo}: conéctalo en Lead magnets → Publicar para poder quitarlo.`);
+      await quitarGithub(slug);
+    } else {
+      const quedan = lista().filter((l) => l.url && l.listo && l.slug !== slug && !leerMeta(l.slug)?.publicado?.repo).map((l) => l.slug);
+      await desplegar(quedan);
+    }
     quitarDePieza(m);
     const { publicado, ...resto } = m;
     guardarMeta(slug, resto);
@@ -312,5 +400,5 @@ Cómo hacerlo:
     return { leadmagnets: lista() };
   }
 
-  return { estado, lista, nuevo, publicar, despublicar, asignar, borrar, subirBanner, conectarVercel, estadoVercel, banners, guia };
+  return { estado, lista, nuevo, publicar, despublicar, asignar, borrar, subirBanner, conectarVercel, conectarGithub, estadoVercel, estadoPublicar, banners, guia };
 }

@@ -305,6 +305,7 @@ export function createApp({ jarvis, archivos, publicadorIg, asistente, instagram
     app.get('/api/laboratorio/leadmagnets', h(() => lm.estado()));
     app.post('/api/laboratorio/leadmagnets/banner', h((req) => lm.subirBanner(req, { cual: String(req.query.cual || ''), nombre: String(req.query.nombre || '') }), true));
     app.put('/api/laboratorio/leadmagnets/vercel', h((req) => lm.conectarVercel(req.body || {}), true));
+    app.put('/api/laboratorio/leadmagnets/github', h((req) => lm.conectarGithub(req.body || {}), true));
     app.post('/api/laboratorio/leadmagnets/:slug/publicar', h((req) => lm.publicar(req.params.slug), true));
     app.post('/api/laboratorio/leadmagnets/:slug/despublicar', h((req) => lm.despublicar(req.params.slug), true));
     app.put('/api/laboratorio/leadmagnets/:slug/pieza', h((req) => lm.asignar(req.params.slug, req.body?.pieza || null), true));
