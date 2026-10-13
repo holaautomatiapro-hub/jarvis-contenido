@@ -259,6 +259,14 @@ export function openDb(file) {
     creado TEXT NOT NULL DEFAULT (datetime('now','localtime'))
   );
   CREATE INDEX IF NOT EXISTS tareas_plazo ON tareas(plazo_desde, plazo_hasta);
+  -- Lo que JARVIS ha aprendido de las correcciones de la persona (sus gustos), para las próximas piezas
+  CREATE TABLE IF NOT EXISTS preferencias (
+    id INTEGER PRIMARY KEY,
+    ambito TEXT NOT NULL DEFAULT 'diseno',
+    texto TEXT NOT NULL,
+    origen TEXT,
+    creado TEXT NOT NULL DEFAULT (datetime('now','localtime'))
+  );
   -- Diseños (carruseles y stories) hechos con el sistema de diseño del vault
   CREATE TABLE IF NOT EXISTS disenos (
     id INTEGER PRIMARY KEY,

@@ -1,6 +1,7 @@
 import { test, describe, before, after } from 'node:test';
 import assert from 'node:assert/strict';
-import { existsSync, mkdirSync, mkdtempSync, readFileSync, rmSync } from 'node:fs';
+import { createReadStream, existsSync, mkdirSync, mkdtempSync, readFileSync, rmSync } from 'node:fs';
+import { spawnSync } from 'node:child_process';
 import os from 'node:os';
 import path from 'node:path';
 import http from 'node:http';
@@ -14,7 +15,7 @@ import { createApp } from '../server/index.js';
 import { createAsistente } from '../server/asistente.js';
 import { crearZip, leerZip } from '../server/diseno/zip.js';
 import { createKit } from '../server/diseno/kit.js';
-import { createMotor, instalarChromium, normalizarDiseno, paginaDiapositiva } from '../server/diseno/motor.js';
+import { createMotor, instalarChromium, normalizarDiseno, paginaDiapositiva, rutaFfmpeg } from '../server/diseno/motor.js';
 import { EventEmitter } from 'node:events';
 import { createDisenos } from '../server/diseno/disenos.js';
 import { buildServer } from '../mcp/jarvis-mcp.js';
@@ -342,6 +343,22 @@ describe('motor con navegador', () => {
     const textos = malo.avisos.map((a) => a.texto).join('\n');
     assert.match(textos, /se sale de la imagen/);
     assert.match(textos, /«Uno» se monta sobre «Dos»|«Dos» se monta sobre «Uno»/);
+  });
+
+  test('un vídeo MP4 de la biblioteca (H.264, como los del móvil) se ve en el diseño', async (t) => {
+    if (!hayNavegador) return t.skip('No hay navegador en este equipo');
+    const ffmpeg = await rutaFfmpeg();
+    const origen = path.join(dir, 'movil.mp4');
+    if (spawnSync(ffmpeg, ['-hide_banner', '-loglevel', 'error', '-y', '-f', 'lavfi', '-i', 'testsrc=duration=3:size=320x568:rate=15', '-c:v', 'libx264', '-pix_fmt', 'yuv420p', origen]).status !== 0) return t.skip('No hay ffmpeg con H.264');
+    const archivos = createArchivos({ dir: path.join(dir, 'contenido-video') });
+    const a = await archivos.guardar(createReadStream(origen), { nombre: 'grabacion.mp4', mime: 'video/mp4' });
+    const conVideo = createMotor({ kit, archivos, cerrarTrasMs: 10 });
+    try {
+      const d = JSON.parse(readFileSync('diseno/kit-ejemplo/ejemplos/basica.json', 'utf8'));
+      const r = await conVideo.previsualizar({ ...d, slides: [{ bg: 'black', html: `<video src="${a.url}" muted playsinline style="width:600px"></video><div class="titular">Con vídeo</div>` }] });
+      assert.deepEqual(r.avisos.map((x) => x.texto), [], 'el vídeo carga');
+      assert.ok(existsSync(path.join(archivos.dir, '.webm')), 'se guarda la versión WebM para la próxima vez');
+    } finally { await conVideo.cerrar(); }
   });
 
   test('vídeo MP4 de 7 s (si hay ffmpeg)', async (t) => {

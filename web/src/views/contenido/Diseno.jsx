@@ -66,6 +66,72 @@ function EstadoItem({ d, progreso }) {
   return <>{d.estado === 'exportando' && progreso != null ? `Exportando… ${progreso}%` : ESTADO[d.estado]?.[0]}{d.exportado && d.estado === 'listo' ? ' · en la biblioteca' : ''}</>;
 }
 
+// Lo que JARVIS ha aprendido de tus correcciones: lo apunta Claude cuando corriges algo que vale para las próximas
+// piezas, y lo tiene en cuenta en todo lo que hace. Aquí se ve, se cambia, se quita o se añade a mano.
+function Aprendido() {
+  const [data, recargar] = useRecurso('/api/preferencias', null);
+  const [nueva, setNueva] = useState('');
+  const [ambito, setAmbito] = useState('diseno');
+  const [editando, setEditando] = useState(null); // { id, texto }
+  const [error, setError] = useState('');
+  const [abierto, setAbierto] = useState(() => { try { return localStorage.getItem('aprendido_abierto') === '1'; } catch { return false; } });
+  if (!data) return null;
+  const lista = data.preferencias;
+  const hacer = async (fn) => { setError(''); try { await fn(); recargar(); } catch (e) { setError(e.message); } };
+  const anadir = (e) => { e.preventDefault(); if (nueva.trim()) hacer(async () => { await api('/api/preferencias', { method: 'POST', body: { ambito, texto: nueva } }); setNueva(''); }); };
+  const guardarEdicion = () => hacer(async () => { await api(`/api/preferencias/${editando.id}`, { method: 'PUT', body: { texto: editando.texto } }); setEditando(null); });
+  const alternar = () => { setAbierto(!abierto); try { localStorage.setItem('aprendido_abierto', abierto ? '0' : '1'); } catch { /* sin localStorage */ } };
+  return (
+    <div className="panel panel-pad aprendido">
+      <button type="button" className="aprendido-cab" onClick={alternar} aria-expanded={abierto}>
+        <Icon name="bulb" size={14} />
+        <b>Lo que JARVIS ha aprendido de ti</b>
+        <span className="t-dim">{lista.length ? `${lista.length} ${lista.length === 1 ? 'regla' : 'reglas'}` : 'aún nada'}</span>
+        <span className="aprendido-flecha">{abierto ? '▾' : '▸'}</span>
+      </button>
+      {abierto && (
+        <div className="aprendido-cuerpo">
+          <p className="ayuda">Cuando corriges un carrusel o un texto y es un gusto tuyo (no solo de esa pieza), JARVIS lo apunta aquí y lo tiene en cuenta en todo lo que hace después. Puedes cambiar o quitar cualquiera.</p>
+          {Object.entries(data.ambitos).map(([id, nombre]) => {
+            const delAmbito = lista.filter((p) => p.ambito === id);
+            if (!delAmbito.length) return null;
+            return (
+              <div key={id} className="aprendido-grupo">
+                <div className="label">{nombre}</div>
+                {delAmbito.map((p) => (
+                  <div key={p.id} className="aprendido-fila">
+                    {editando?.id === p.id ? (
+                      <>
+                        <input className="campo" value={editando.texto} onChange={(e) => setEditando({ ...editando, texto: e.target.value })} onKeyDown={(e) => { if (e.key === 'Enter') guardarEdicion(); if (e.key === 'Escape') setEditando(null); }} maxLength={300} autoFocus aria-label="Cambiar la regla" />
+                        <button type="button" className="link-btn" onClick={guardarEdicion}>Guardar</button>
+                        <button type="button" className="link-btn" onClick={() => setEditando(null)}>Cancelar</button>
+                      </>
+                    ) : (
+                      <>
+                        <span className="aprendido-texto">{p.texto}</span>
+                        <button type="button" className="link-btn" onClick={() => setEditando({ id: p.id, texto: p.texto })}>Cambiar</button>
+                        <button type="button" className="link-btn peligro" onClick={() => hacer(() => api(`/api/preferencias/${p.id}`, { method: 'DELETE' }))}>Quitar</button>
+                      </>
+                    )}
+                  </div>
+                ))}
+              </div>
+            );
+          })}
+          <form className="aprendido-nueva" onSubmit={anadir}>
+            <select className="campo" value={ambito} onChange={(e) => setAmbito(e.target.value)} aria-label="De qué es">
+              {Object.entries(data.ambitos).map(([id, nombre]) => <option key={id} value={id}>{nombre.split(' (')[0]}</option>)}
+            </select>
+            <input className="campo" value={nueva} onChange={(e) => setNueva(e.target.value)} maxLength={300} placeholder="Añade una regla: «títulos de 6 palabras como mucho», «la última slide siempre con @automatiapro»…" aria-label="Nueva regla" />
+            <button className="btn btn-sec" disabled={!nueva.trim()}><Icon name="plus" size={14} />Añadir</button>
+          </form>
+          {error && <div className="aviso error">{error}</div>}
+        </div>
+      )}
+    </div>
+  );
+}
+
 const seleccionGuardada = () => { try { return Number(localStorage.getItem('diseno_sel')) || null; } catch { return null; } };
 
 export function Diseno({ piezas, ig, onAbrir, onProgramar }) {
@@ -117,6 +183,7 @@ export function Diseno({ piezas, ig, onAbrir, onProgramar }) {
         <button className="btn" onClick={() => setNuevo(true)} disabled={!kit || Boolean(kit.error)}><Icon name="plus" size={14} />Nuevo diseño</button>
       </div>
       {(aviso || errorCarga) && <div className={`aviso${/No se pudo|error/i.test(aviso || errorCarga) ? ' error' : ' ok'}`}>{aviso || `No se pudieron cargar los diseños. ${errorCarga}`}</div>}
+      <Aprendido />
 
       <div className="diseno-grid">
         <div className="panel panel-pad diseno-lista">

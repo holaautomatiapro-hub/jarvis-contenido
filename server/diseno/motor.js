@@ -8,7 +8,7 @@ import os from 'node:os';
 import path from 'node:path';
 import { spawn } from 'node:child_process';
 import { createRequire } from 'node:module';
-import { closeSync, existsSync, mkdtempSync, openSync, readSync, rmSync, statSync, readFileSync } from 'node:fs';
+import { closeSync, existsSync, mkdirSync, mkdtempSync, openSync, readSync, renameSync, rmSync, statSync, readFileSync } from 'node:fs';
 import { FORMATOS } from './kit.js';
 
 const require = createRequire(import.meta.url);
@@ -289,6 +289,35 @@ export function createMotor({ kit: kitApi, archivos = null, lanzar = lanzarNaveg
     temporizador.unref?.();
   }
 
+  // El Chromium de Playwright (el del VPS) no reproduce H.264, que es el MP4 de los móviles y de las grabaciones de
+  // pantalla: los vídeos de la biblioteca que usa un diseño se le dan convertidos a WebM (una vez; se guardan aparte).
+  const VIDEO_BIBLIOTECA = /\/api\/contenido\/archivos\/(\d{4}-\d{2})\/([^"'\s)?#<>]+\.(?:mp4|m4v|mov|mkv))/gi;
+  const webmDe = (mes, fichero) => (archivos ? path.join(archivos.dir, '.webm', `${mes}_${fichero}.webm`) : null);
+  async function prepararVideos(d) {
+    if (!archivos) return;
+    const vistos = new Set();
+    for (const [, mes, fichero] of JSON.stringify(d.slides).matchAll(VIDEO_BIBLIOTECA)) {
+      const clave = `${mes}/${fichero}`;
+      if (vistos.has(clave)) continue;
+      vistos.add(clave);
+      let origen;
+      try { origen = archivos.ruta(clave); } catch { continue; }
+      const destino = webmDe(mes, fichero);
+      if (!existsSync(origen) || existsSync(destino)) continue;
+      mkdirSync(path.dirname(destino), { recursive: true });
+      const tmp = `${destino}.tmp.webm`;
+      log(`Convirtiendo ${fichero} a WebM para el diseño…`);
+      const ok = await new Promise((fin) => {
+        rutaFfmpeg().then((bin) => {
+          const p = spawn(bin, ['-hide_banner', '-loglevel', 'error', '-y', '-i', origen, '-t', '120', '-vf', "scale='min(1080,iw)':-2", '-c:v', 'libvpx', '-deadline', 'realtime', '-cpu-used', '8', '-b:v', '4M', '-an', tmp], { windowsHide: true });
+          p.on('error', () => fin(false));
+          p.on('close', (code) => fin(code === 0));
+        }).catch(() => fin(false));
+      });
+      if (ok) renameSync(tmp, destino); else rmSync(tmp, { force: true });
+    }
+  }
+
   async function enrutar(route, kit, html) {
     const url = route.request().url();
     if (FUERA_PERMITIDO.test(url)) return route.continue();
@@ -300,6 +329,8 @@ export function createMotor({ kit: kitApi, archivos = null, lanzar = lanzarNaveg
     if (deArchivos && archivos) {
       let abs = null;
       try { abs = archivos.ruta(`${deArchivos[1]}/${deArchivos[2]}`); } catch { /* ruta no válida */ }
+      const webm = webmDe(deArchivos[1], deArchivos[2]);
+      if (webm && /\.(mp4|m4v|mov|mkv)$/i.test(deArchivos[2]) && existsSync(webm)) return servirArchivo(route, webm);
       if (abs && existsSync(abs)) return servirArchivo(route, abs);
     }
     if (ruta.startsWith('/kit/')) {
@@ -339,6 +370,7 @@ export function createMotor({ kit: kitApi, archivos = null, lanzar = lanzarNaveg
     return enCola(async () => {
       const kit = kitApi.leer();
       const d = normalizarDiseno(diseno, kit);
+      await prepararVideos(d);
       const imagenes = [];
       const avisos = [];
       try {
@@ -363,6 +395,7 @@ export function createMotor({ kit: kitApi, archivos = null, lanzar = lanzarNaveg
     return enCola(async () => {
       const kit = kitApi.leer();
       const d = normalizarDiseno(diseno, kit);
+      await prepararVideos(d);
       const total = d.slides.length;
       const salida = [];
       const tmp = tipo === 'mp4' ? mkdtempSync(path.join(os.tmpdir(), 'jarvis-diseno-')) : null;
