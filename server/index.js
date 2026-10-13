@@ -442,7 +442,7 @@ export function createApp({ jarvis, archivos, publicadorIg, asistente, instagram
   if (conversiones) {
     app.get('/api/piezas/:id/convertir', h((req) => conversiones.estado(req.params.id)));
     app.post('/api/piezas/:id/convertir', h((req) => conversiones.empezar(req.params.id, { a: ['video', 'imagen'].includes(req.body?.a) ? req.body.a : undefined })));
-    app.post('/api/piezas/:id/convertir/aceptar', h((req) => conversiones.aceptar(req.params.id), true));
+    app.post('/api/piezas/:id/convertir/aceptar', h((req) => conversiones.aceptar(req.params.id, { elegidos: Array.isArray(req.body?.elegidos) ? req.body.elegidos.map(String) : undefined }), true));
     app.delete('/api/piezas/:id/convertir', h((req) => conversiones.descartar(req.params.id), true));
   }
 

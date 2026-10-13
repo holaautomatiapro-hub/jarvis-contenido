@@ -237,7 +237,7 @@ describe('diseños: API, exportar a la biblioteca y Claude', () => {
     assert.deepEqual(exportadas.at(-1), [1, 2, 3, 4, 5]);
   });
 
-  test('otra versión desde el diseño: sabe de qué diseño sale una pieza y deja la exportación en el nuevo formato', async () => {
+  test('otra versión desde el diseño: sabe de qué diseño sale una pieza y no toca ni la pieza ni lo exportado', async () => {
     const ds = createDisenos({ db, jarvis, kit: createKit({ vaultPath: vault }), motor: motorFalso, archivos, previasDir: path.join(vault, '.jarvis', 'disenos') });
     const d = ds.crear({ formato: 'carrusel', plantilla: 'rejilla', guion: 'Para convertir', generar: false });
     await ds.guardarDatos(d.id, { slides: [1, 2].map(slide) });
@@ -248,11 +248,8 @@ describe('diseños: API, exportar a la biblioteca y Claude', () => {
     assert.equal(ds.deLaPieza(999999), null);
     const r = await ds.otraVersion(d.id, 'mp4');
     assert.deepEqual(r.archivos.map((a) => a.mime), ['video/mp4', 'video/mp4']);
-    assert.equal(jarvis.leerPieza(pid).archivos[0].mime, 'image/jpeg', 'la pieza no cambia hasta aceptarla');
-    ds.aceptarOtraVersion(d.id, { tipo: 'mp4', archivos: r.archivos, huellas: r.huellas });
-    const v = ds.obtener(d.id);
-    assert.equal(v.exportado.tipo, 'mp4');
-    assert.deepEqual(v.cambiadas, [], 'y la próxima exportación en vídeo solo saca lo que cambie');
+    assert.equal(jarvis.leerPieza(pid).archivos[0].mime, 'image/jpeg', 'la pieza no cambia');
+    assert.equal(ds.obtener(d.id).exportado.tipo, 'jpg', 'lo exportado del diseño sigue igual');
   });
 
   test('una exportación se puede parar a medias: se queda como estaba y sin error', async () => {

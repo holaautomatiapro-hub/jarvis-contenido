@@ -55,20 +55,25 @@ export function GenerarLeadMagnet({ pieza, onClose, onEncargado }) {
   );
 }
 
-// La otra versión de la pieza (en vídeo si son fotos; en imagen si son vídeos). Se ve antes de cambiarla.
-// estado: lo que dice el servidor (null si aún no se ha pedido)
-export function OtraVersion({ pieza, haciaVideo, estado, onCerrar, onUsada }) {
+// La otra versión de la pieza (en vídeo, de sus fotos; en imagen, de sus vídeos). Se ve antes y eliges cuáles
+// quieres: se añaden al final de la pieza sin quitar nada (lo que sobre lo quitas tú con ✕).
+// a: 'video' | 'imagen' (lo que se pide); estado: lo que dice el servidor (null si aún no se ha pedido)
+export function OtraVersion({ pieza, a, estado, onCerrar, onAnadidos }) {
   const [haciendo, setHaciendo] = useState('');
   const [error, setError] = useState('');
-  const que = estado?.a ? estado.a === 'video' : haciaVideo;
+  const [quitados, setQuitados] = useState(() => new Set()); // los que NO se quieren (por defecto, todos marcados)
+  const que = estado?.a ? estado.a === 'video' : a === 'video';
   const nombre = que ? 'vídeo' : 'imagen';
   const accion = async (cual, fn) => {
     setHaciendo(cual); setError('');
     try { await fn(); } catch (e) { setError(e.message); }
     setHaciendo('');
   };
-  const empezar = () => accion('empezar', () => api(`/api/piezas/${pieza.id}/convertir`, { method: 'POST', body: { a: haciaVideo ? 'video' : 'imagen' } }));
-  const usar = () => accion('usar', async () => onUsada(await api(`/api/piezas/${pieza.id}/convertir/aceptar`, { method: 'POST' })));
+  const empezar = () => accion('empezar', async () => { setQuitados(new Set()); await api(`/api/piezas/${pieza.id}/convertir`, { method: 'POST', body: { a } }); });
+  const lista = estado?.archivos || [];
+  const elegidos = lista.filter((x) => !quitados.has(x.path));
+  const marcar = (x) => setQuitados((q) => { const n = new Set(q); if (n.has(x.path)) n.delete(x.path); else n.add(x.path); return n; });
+  const anadir = () => accion('anadir', async () => onAnadidos(await api(`/api/piezas/${pieza.id}/convertir/aceptar`, { method: 'POST', body: { elegidos: elegidos.map((x) => x.path) } })));
   const descartar = () => accion('descartar', async () => { await api(`/api/piezas/${pieza.id}/convertir`, { method: 'DELETE' }); onCerrar(); });
 
   return (
@@ -82,7 +87,7 @@ export function OtraVersion({ pieza, haciaVideo, estado, onCerrar, onUsada }) {
         <>
           <p className="ayuda">{que
             ? 'Si sale de un diseño, se exporta en vídeo con su animación (unos 15 s por diapositiva); si son fotos subidas, cada una pasa a un vídeo corto con un zoom suave.'
-            : 'Si sale de un diseño, se exporta en imágenes; si son vídeos, se saca un fotograma de cada uno.'} Lo ves antes de cambiar nada.</p>
+            : 'Si sale de un diseño, se exporta en imágenes; si son vídeos, se saca un fotograma de cada uno.'} Luego eliges cuáles quieres y se añaden a la pieza: no se quita nada de lo que ya tiene.</p>
           <button type="button" className="btn" onClick={empezar} disabled={Boolean(haciendo)}><Icon name="sparkle" size={14} />{haciendo ? 'Empezando…' : `Generar la versión en ${nombre}`}</button>
         </>
       )}
@@ -97,16 +102,27 @@ export function OtraVersion({ pieza, haciaVideo, estado, onCerrar, onUsada }) {
       )}
       {estado?.estado === 'listo' && (
         <>
+          <p className="ayuda">Marca con ✓ los que quieras quedarte (pulsa el círculo para quitar o poner la marca; los vídeos se pueden ver antes).</p>
           <div className="otra-version-archivos">
-            {estado.archivos.map((a) => (esVideo(a)
-              ? <video key={a.url} src={`${a.url}#t=0.1`} controls muted playsInline preload="metadata" />
-              : <img key={a.url} src={a.url} alt={a.nombre} loading="lazy" />))}
+            {lista.map((x, i) => {
+              const on = !quitados.has(x.path);
+              return (
+                <div key={x.path} className={`otra-version-item${on ? ' on' : ''}`}>
+                  {esVideo(x)
+                    ? <video src={`${x.url}#t=0.1`} controls muted playsInline preload="metadata" />
+                    : <img src={x.url} alt={x.nombre} loading="lazy" onClick={() => marcar(x)} />}
+                  <button type="button" className="otra-version-check" onClick={() => marcar(x)} aria-pressed={on} title={on ? 'Se añadirá: pulsa para no añadirlo' : 'Pulsa para añadirlo'}>{on ? <Icon name="check" size={13} /> : null}</button>
+                  <span className="otra-version-n">{i + 1}</span>
+                </div>
+              );
+            })}
           </div>
           <div className="otra-version-acciones">
-            <button type="button" className="btn" onClick={usar} disabled={Boolean(haciendo)}><Icon name="check" size={14} />{haciendo === 'usar' ? 'Cambiando…' : 'Usar esta versión'}</button>
+            <button type="button" className="btn" onClick={anadir} disabled={Boolean(haciendo) || !elegidos.length}><Icon name="plus" size={14} />{haciendo === 'anadir' ? 'Añadiendo…' : `Añadir ${elegidos.length === lista.length && lista.length > 1 ? 'todos' : elegidos.length} a la pieza`}</button>
+            <button type="button" className="link-btn" onClick={() => setQuitados(elegidos.length ? new Set(lista.map((x) => x.path)) : new Set())}>{elegidos.length ? 'Desmarcar todos' : 'Marcar todos'}</button>
             <button type="button" className="btn btn-sec" onClick={descartar} disabled={Boolean(haciendo)}>Descartar</button>
-            <span className="ayuda">Al usarla, sustituye a lo que tiene ahora la pieza.</span>
           </div>
+          <span className="ayuda">Se añaden al final, sin quitar lo que ya tiene la pieza. Si luego sobra algo, quítalo con ✕ en «Contenido».</span>
         </>
       )}
       {error && <div className="aviso error">{error}</div>}

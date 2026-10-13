@@ -119,7 +119,7 @@ export function EditorContenido({ pieza, carpetas, ig, onClose, onGuardado, onVi
   };
   useMensajes('portada', (e) => { if (pieza.id && e.pieza === pieza.id) ponerPortadaHecha(e.archivo, e.comoPortada); });
   // Generar lead magnet / la otra versión (vídeo o imagen)
-  const [generando, setGenerando] = useState(null); // null | 'leadmagnet' | 'version'
+  const [generando, setGenerando] = useState(null); // null | 'leadmagnet' | 'video' | 'imagen'
   const [avisoGenerar, setAvisoGenerar] = useState('');
   const [version, setVersion] = useState(null); // la otra versión en marcha o lista (del servidor)
   const cargarVersion = () => { if (pieza.id) api(`/api/piezas/${pieza.id}/convertir`).then(setVersion).catch(() => {}); };
@@ -172,8 +172,9 @@ export function EditorContenido({ pieza, carpetas, ig, onClose, onGuardado, onVi
   });
 
   const plan = planDePublicacion({ ...d, archivos });
-  // «Generar vídeo» si son fotos; «Generar imagen» si son vídeos (null: nada que convertir)
-  const haciaVideo = archivos.length && archivos.every((a) => /^image\//.test(a.mime)) ? true : archivos.length && archivos.every((a) => /^video\//.test(a.mime)) ? false : null;
+  // «Generar vídeo» si hay fotos; «Generar imagen» si hay vídeos (con las dos cosas, salen los dos botones)
+  const conFotos = archivos.some((a) => /^image\//.test(a.mime));
+  const conVideos = archivos.some((a) => /^video\//.test(a.mime));
   const conIg = ig?.disponible && !ig.motivo && pieza.ig_estado !== 'publicado';
   // Vuelve a subir como JPG las fotos que no lo son (Instagram solo publica JPG)
   const convertirAJpg = async () => {
@@ -285,7 +286,8 @@ export function EditorContenido({ pieza, carpetas, ig, onClose, onGuardado, onVi
           <div className="generar-botones">
             {d.formato !== 'Story' && <button type="button" className="btn btn-sec" onClick={() => setGenerandoPortada(true)} disabled={ocupado} title={esFormatoVideo(d.formato) ? 'Con tu sistema de diseño; queda como portada del reel' : 'Con tu sistema de diseño; entra como primera imagen'}><Icon name="sparkle" size={14} />Generar portada</button>}
             <button type="button" className="btn btn-sec" onClick={() => setGenerando('leadmagnet')} disabled={ocupado || nueva} title={nueva ? 'Guarda la pieza primero' : 'JARVIS hace el lead magnet de esta pieza'}><Icon name="target" size={14} />Generar lead magnet</button>
-            {haciaVideo != null && <button type="button" className="btn btn-sec" onClick={() => setGenerando('version')} disabled={ocupado || nueva} title={nueva ? 'Guarda la pieza primero' : haciaVideo ? 'Ver esta pieza en vídeo y, si te gusta, cambiarla' : 'Ver esta pieza en imagen y, si te gusta, cambiarla'}><Icon name={haciaVideo ? 'play' : 'eye'} size={14} />{haciaVideo ? 'Generar vídeo' : 'Generar imagen'}</button>}
+            {conFotos && <button type="button" className="btn btn-sec" onClick={() => setGenerando('video')} disabled={ocupado || nueva || version?.estado === 'haciendo'} title={nueva ? 'Guarda la pieza primero' : 'Saca la versión en vídeo y añade a la pieza los que elijas'}><Icon name="play" size={14} />Generar vídeo</button>}
+            {conVideos && <button type="button" className="btn btn-sec" onClick={() => setGenerando('imagen')} disabled={ocupado || nueva || version?.estado === 'haciendo'} title={nueva ? 'Guarda la pieza primero' : 'Saca la versión en imagen y añade a la pieza las que elijas'}><Icon name="eye" size={14} />Generar imagen</button>}
           </div>
           {avisoPortada && <div className="ayuda">{avisoPortada}</div>}
           {avisoGenerar && <div className="aviso ok">{avisoGenerar}</div>}
@@ -332,11 +334,12 @@ export function EditorContenido({ pieza, carpetas, ig, onClose, onGuardado, onVi
         </div>
       </form>
       {!nueva && <ResultadosPieza pieza={{ ...pieza, estado: d.estado, fecha: d.fecha }} onVinculada={(p) => p && setD((x) => ({ ...x, estado: p.estado, fecha: p.fecha || '' }))} />}
-      {!nueva && (generando === 'version' || version) && (
+      {!nueva && (['video', 'imagen'].includes(generando) || version) && (
         <OtraVersion
-          pieza={pieza} haciaVideo={haciaVideo} estado={version}
+          key={version ? 'servidor' : generando}
+          pieza={pieza} a={generando === 'imagen' ? 'imagen' : 'video'} estado={version}
           onCerrar={() => setGenerando(null)}
-          onUsada={(p) => { setArchivos(p.archivos || []); setD((x) => ({ ...x, formato: tipoDe(p.formato)?.id || p.formato || x.formato })); setGenerando(null); onGuardado?.(); }}
+          onAnadidos={({ nuevos }) => { setArchivos((l) => [...l, ...nuevos.filter((n) => !l.some((x) => x.path === n.path))]); setGenerando(null); onGuardado?.(); }}
         />
       )}
       {generando === 'leadmagnet' && (
