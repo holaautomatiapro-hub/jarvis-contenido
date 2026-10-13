@@ -237,6 +237,14 @@ export function buildServer(jarvis, { origen = 'claude', avisar = () => {}, inst
         const { m, slides } = await competencia.paraReplicar(id);
         return { id: m.id, username: m.username, formato: m.formato, fecha: m.fecha, permalink: m.permalink, caption: m.caption, likes: m.likes, comentarios: m.comentarios, vistas: m.vistas, engagement: m.engagement, transcripcion: m.transcripcion || null, slides };
       });
+    tool('traer_publicacion', 'Trae una publicación de Instagram de cualquier cuenta profesional desde su enlace (post, carrusel o reel), para replicarla: caption, métricas, transcripción si es un reel y rutas de las imágenes de los slides (léelas con Read, en orden). Si no sabe de qué cuenta es, pide el @usuario.',
+      { url: z.string().describe('Enlace de Instagram: instagram.com/p/… o instagram.com/reel/…'), usuario: z.string().optional().describe('La cuenta de la publicación (sin @), si te la pide') },
+      async ({ url, usuario }) => {
+        const d = await competencia.porEnlace({ url, usuario });
+        const { m, slides } = await competencia.paraReplicar(d.id);
+        return { id: m.id, username: m.username, formato: m.formato, fecha: m.fecha, permalink: m.permalink, caption: m.caption, likes: m.likes, comentarios: m.comentarios, vistas: m.vistas, engagement: m.engagement, transcripcion: m.transcripcion || null, slides,
+          ...(m.formato === 'Reels' && !m.transcripcion ? { aviso: 'Sin transcripción: Instagram no da el vídeo (o falta la clave de ElevenLabs). Pídele que lo descargue y lo suba en Laboratorio → Replicar, o trabaja con el caption.' } : {}) };
+      }, true);
     tool('anadir_competidor', 'Añade un perfil de Instagram a la lista de competidores a analizar.',
       { usuario: z.string() },
       ({ usuario }) => competencia.anadir(usuario), true);

@@ -33,6 +33,7 @@ Tienes el MCP **jarvis** conectado (ver `.mcp.json`). Úsalo SIEMPRE para guarda
 ## Un solo chat para todo
 Desde aquí se hace todo el contenido; para cada trabajo hay una skill de flujo completo que sigues de principio a fin:
 - Carrusel o stories → `flujo-carrusel-stories` (diseñas tú con `crear_diseno` / `guardar_diseno` y lo pasas a la biblioteca con `exportar_diseno`).
+- Un enlace de Instagram de otra cuenta para hacer tu versión (carrusel con tu diseño o guion de reel) → `flujo-replicar` (`traer_publicacion` trae slides, caption y transcripción).
 - Testimonio de un cliente → `flujo-testimonio`. Reel hablando a cámara → `flujo-reel`. Clips de un vídeo largo → `flujo-clips`. Lead magnet → `flujo-lead-magnet`.
 - Testimonios, reels, clips, imágenes y lead magnets los monta el **Laboratorio** del dashboard (con el plugin, Python y ffmpeg): `laboratorio_estado`, `laboratorio_subir` (un archivo de este ordenador), `laboratorio_encargar`, `laboratorio_chat` y `laboratorio_responder` (lo que se para a revisar se lo enseñas a la persona y le pasas SU respuesta; nunca das tú el visto bueno) y `laboratorio_a_biblioteca`. Para todo esto JARVIS (el dashboard) tiene que estar abierto.
 - Todo termina en la biblioteca, con su pilar, objetivo, gancho y CTA, y con día en el calendario (tapando los huecos de `mi_semana`).
