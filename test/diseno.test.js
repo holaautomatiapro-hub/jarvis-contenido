@@ -326,6 +326,31 @@ describe('diseños: API, exportar a la biblioteca y Claude', () => {
     assert.ok(!(await api('/api/disenos')).data.disenos.some((x) => x.id === d.id));
   });
 
+  test('portada en segundo plano: al terminar se pone sola en la pieza y sale en «Trabajando en…» mientras tanto', async () => {
+    const emitidos = [];
+    const asistenteFalso = { estado: () => ({ ocupado: false }), nuevaSesion() {}, preguntar: () => ({ id: 1 }), conversacionActiva: () => null };
+    const ds = createDisenos({ db, jarvis, kit: createKit({ vaultPath: vault }), motor: motorFalso, archivos, previasDir: path.join(vault, '.jarvis', 'disenos'), asistente: asistenteFalso, emitir: (e) => emitidos.push(e) });
+    const reel = jarvis.crearPieza({ titulo: 'Reel del setter IA', formato: 'Reel' });
+    const carrusel = jarvis.crearPieza({ titulo: 'Carrusel del setter', formato: 'Carrusel', archivos: [] });
+    const hacer = async (pieza) => {
+      const d = await ds.crearPortada({ tipo: 'testimonio', titulo: `Portada de ${pieza.titulo}`, pieza });
+      assert.ok(ds.trabajos().some((t) => t.id === d.id && t.trabajo?.paso === 'empezando'), 'mientras, sale en lo que está haciendo');
+      await ds.guardarDatos(d.id, { slides: [slide(1)] });
+      ds.alEventoClaude({ conversacion: 'diseno', tipo: 'fin', texto: 'hecha' });
+      for (let i = 0; i < 50 && !emitidos.some((e) => e.type === 'portada' && e.diseno === d.id); i++) await new Promise((r) => setTimeout(r, 20));
+      assert.ok(!ds.trabajos().some((t) => t.id === d.id), 'y al terminar deja de salir');
+      return emitidos.find((e) => e.type === 'portada' && e.diseno === d.id);
+    };
+    const e1 = await hacer(reel);
+    assert.equal(e1.comoPortada, true);
+    assert.equal(jarvis.leerPieza(reel.id).portada.path, e1.archivo.path, 'en un reel queda como su portada');
+    const e2 = await hacer(carrusel);
+    assert.equal(e2.comoPortada, false);
+    assert.equal(jarvis.leerPieza(carrusel.id).archivos[0].path, e2.archivo.path, 'en un carrusel, como primera imagen');
+    // Si la ventana sigue abierta y la exporta también, no se duplica
+    assert.deepEqual(await ds.exportarPortada(e2.diseno), e2.archivo);
+  });
+
   test('importar el kit por la API', async () => {
     const r = await fetch(`${base}/api/disenos/kit`, { method: 'POST', headers: { 'content-type': 'application/zip' }, body: zipDeKit() });
     assert.equal(r.status, 200);

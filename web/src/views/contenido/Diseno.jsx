@@ -4,6 +4,7 @@ import ChatJarvis from '../../components/ChatJarvis.jsx';
 import { api, useMensajes, useRecurso } from '../../lib/api.js';
 import { Modal } from './comun.jsx';
 import { Visor } from './Editor.jsx';
+import { avanceDiseno } from '../../lib/avance.js';
 
 // Diseño: de un guion a un carrusel o unas stories con tu sistema de diseño. Claude lo diseña, JARVIS lo dibuja
 // y lo revisa; tú lo ajustas en el chat y lo exportas a la biblioteca (imágenes o vídeo) para programarlo.
@@ -17,12 +18,7 @@ const ESTADO = {
   exportando: ['Exportando…', 'var(--orange)'],
   error: ['Con error', 'var(--red)'],
 };
-// Cómo va un diseño que está haciendo Claude: el paso marca el tramo de la barra y el tiempo avanza dentro de él
-export function avanceDiseno(t, ahora = Date.now()) {
-  const pasado = Math.max(0, ahora - t.inicio);
-  const pct = Math.round(Math.min(t.hasta, Math.max(t.desde, (pasado / t.estimado) * 100)));
-  return { pct, pasado, queda: t.estimado - pasado, quieto: Math.max(0, ahora - t.senal) };
-}
+export { avanceDiseno };
 const mmss = (ms) => { const s = Math.round(ms / 1000); return `${Math.floor(s / 60)}:${String(s % 60).padStart(2, '0')}`; };
 function useAhora() {
   const [ahora, setAhora] = useState(Date.now);
@@ -145,6 +141,12 @@ export function Diseno({ piezas, ig, onAbrir, onProgramar }) {
   const zip = useRef(null);
 
   const setSel = (id) => { setSelEstado(id); try { localStorage.setItem('diseno_sel', String(id || '')); } catch { /* sin localStorage */ } };
+  // Desde «Trabajando en…»: abrir este diseño
+  useEffect(() => {
+    const f = (e) => setSelEstado(e.detail);
+    window.addEventListener('jarvis:diseno', f);
+    return () => window.removeEventListener('jarvis:diseno', f);
+  }, []);
   useMensajes('diseno', (m) => {
     if (m.progreso != null) setProgreso((p) => ({ ...p, [m.id]: m.progreso }));
     else recargar();

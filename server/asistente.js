@@ -128,7 +128,7 @@ export function createAsistente({ db, jarvis, vaultPath, emitir = () => {}, ejec
         enviar({ id, conversacion, ...e });
       },
     });
-    actuales[carril] = { id, run, decision, conversacion };
+    actuales[carril] = { id, run, decision, conversacion, desde: Date.now(), texto: prompt.slice(0, 300) };
     run.terminado.then(() => { if (actuales[carril]?.id === id) delete actuales[carril]; });
     return { id, ...decision };
   }
@@ -152,6 +152,8 @@ export function createAsistente({ db, jarvis, vaultPath, emitir = () => {}, ejec
 
   // La conversación que está trabajando ahora en un carril (p. ej. «replicar»), o null
   const conversacionActiva = (carril = 'principal') => actuales[carril]?.conversacion || null;
+  // Todo lo que está haciendo Claude ahora (un trabajo por carril)
+  const enMarcha = () => Object.values(actuales).map(({ id, conversacion, desde, texto, decision }) => ({ id, conversacion, desde, texto, modelo: decision.etiqueta }));
 
   function estado({ conversacion = 'principal' } = {}) {
     return {
@@ -189,5 +191,5 @@ export function createAsistente({ db, jarvis, vaultPath, emitir = () => {}, ejec
     });
   }
 
-  return { preguntar, cancelar, nuevaSesion, estado, conversacionActiva, redactar };
+  return { preguntar, cancelar, nuevaSesion, estado, conversacionActiva, enMarcha, redactar };
 }

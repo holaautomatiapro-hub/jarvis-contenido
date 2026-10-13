@@ -9,6 +9,7 @@ import Reels from './laboratorio/Reels.jsx';
 import LeadMagnets from './laboratorio/LeadMagnets.jsx';
 import Imagenes from './laboratorio/Imagenes.jsx';
 import DesdeEnlace from './laboratorio/DesdeEnlace.jsx';
+import { useIr } from '../lib/ir.js';
 
 // Laboratorio: donde se crea lo visual. Replicar desde un enlace, Diseño (carruseles y stories), clips de testimonios,
 // edición de reels, lead magnets (páginas web publicadas en Vercel) e imágenes.
@@ -25,6 +26,13 @@ const guardada = () => { try { const v = localStorage.getItem('lab_seccion'); re
 export default function Laboratorio() {
   const [seccion, setSeccionEstado] = useState(guardada);
   const setSeccion = (v) => { setSeccionEstado(v); try { localStorage.setItem('lab_seccion', v); } catch { /* sin localStorage */ } };
+  // Desde «Trabajando en…»: la sección (y el diseño) de lo que se está haciendo
+  useIr((d) => {
+    if (d.tab !== 'laboratorio') return false;
+    if (d.diseno) { try { localStorage.setItem('diseno_sel', String(d.diseno)); } catch { /* sin localStorage */ } window.dispatchEvent(new CustomEvent('jarvis:diseno', { detail: d.diseno })); }
+    if (d.seccion && SECCIONES.some((x) => x.id === d.seccion)) setSeccion(d.seccion);
+    return true;
+  });
   const [lab, recargarLab, errorLab] = useRecurso(['testimonios', 'reels', 'leadmagnets', 'imagenes'].includes(seccion) ? '/api/laboratorio' : null, null);
   const [contenido, recargarContenido] = useRecurso(seccion === 'diseno' ? '/api/contenido' : null, null);
   const [editando, setEditando] = useState(null);

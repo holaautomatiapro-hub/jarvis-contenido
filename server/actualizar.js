@@ -86,5 +86,8 @@ export function createActualizar({ dir, dataDir, env = process.env, plataforma =
     return { ok: true, desde, inicio };
   }
 
-  return { estado, comprobar, actualizar };
+  // Sin tocar git: solo si hay una actualización en marcha (para «Trabajando en…»)
+  const enCurso = () => { const u = ultimaActualizacion(); return u?.estado === 'actualizando' ? u : null; };
+
+  return { estado, comprobar, actualizar, enCurso };
 }

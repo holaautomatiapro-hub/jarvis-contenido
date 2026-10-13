@@ -1,6 +1,7 @@
 import { useEffect, useState } from 'react';
 import Icon from './Icon.jsx';
 import Apariencia from './Apariencia.jsx';
+import Trabajando from './Trabajando.jsx';
 
 export const TABS = [
   { id: 'inicio', label: 'Inicio', icon: 'home' },
@@ -46,6 +47,7 @@ export default function Topbar({ tab, onTab, onBuscar }) {
         ))}
       </nav>
       <div className="top-right">
+        <Trabajando onTab={onTab} />
         <button className="icon-btn hide-sm" aria-label="Buscar en tus notas" onClick={onBuscar}><Icon name="search" /></button>
         <Apariencia />
         <div className="avatar">J</div>
