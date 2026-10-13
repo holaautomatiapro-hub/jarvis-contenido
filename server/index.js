@@ -436,6 +436,34 @@ export function createApp({ jarvis, archivos, publicadorIg, asistente, instagram
     }));
   }
 
+  // «Trabajando en…»: todo lo que JARVIS está haciendo ahora, para verlo desde cualquier pestaña
+  if (asistente) {
+    const NOMBRE = { principal: 'Chat', replicar: 'Replicando una publicación', diseno: 'Diseño', laboratorio: 'Laboratorio', guiones: 'Guiones', ads: 'Meta Ads', publicar: 'Adaptando a otras redes', sistema: 'Tarea de fondo' };
+    const IR = { principal: { tab: 'chat' }, replicar: { tab: 'contenido' }, diseno: { tab: 'laboratorio', seccion: 'diseno' }, laboratorio: { tab: 'laboratorio' }, guiones: { tab: 'skills' }, ads: { tab: 'ads' }, publicar: { tab: 'contenido' } };
+    const resumir = (t) => String(t || '').replace(/^\[[^\]]*\]\s*/, '').split('\n').find((l) => l.trim())?.trim().slice(0, 90) || '';
+    app.get('/api/trabajos', h(() => {
+      const lista = [];
+      const disenosEnCurso = disenos?.trabajos() || [];
+      for (const d of disenosEnCurso) {
+        const portada = d.uso === 'portada';
+        lista.push({
+          id: `diseno-${d.id}`, tipo: portada ? 'portada' : 'diseno', titulo: portada ? `Portada: ${d.titulo}` : `Diseño: ${d.titulo}`,
+          detalle: d.estado === 'exportando' ? 'Exportando a la biblioteca' : d.trabajo?.texto || (d.estado === 'renderizando' ? 'Dibujando la vista previa' : 'Diseñando'),
+          trabajo: d.estado === 'exportando' ? null : d.trabajo, progreso: d.estado === 'exportando' ? d.progreso ?? 0 : null, desde: d.trabajo?.inicio || null,
+          ir: portada ? (d.pieza_origen ? { tab: 'contenido', pieza: d.pieza_origen } : { tab: 'laboratorio', seccion: 'diseno' }) : { tab: 'laboratorio', seccion: 'diseno', diseno: d.id },
+        });
+      }
+      const conDiseno = new Set(disenosEnCurso.map((d) => d.trabajo?.conversacion).filter(Boolean));
+      for (const c of asistente.enMarcha()) {
+        if (c.conversacion === 'diseno' && conDiseno.has('diseno')) continue; // ya sale como su diseño
+        lista.push({ id: `claude-${c.conversacion}-${c.id}`, tipo: 'claude', titulo: NOMBRE[c.conversacion] || 'JARVIS', detalle: resumir(c.texto), desde: c.desde, ir: IR[c.conversacion] || null });
+      }
+      const u = actualizar?.enCurso();
+      if (u) lista.push({ id: 'actualizar', tipo: 'actualizar', titulo: 'Actualizando JARVIS', detalle: 'Se reiniciará en medio: es normal que la página se corte un momento', desde: Date.parse(u.inicio) || null, ir: { tab: 'apps' } });
+      return { trabajos: lista };
+    }));
+  }
+
   // Actualizar JARVIS desde el dashboard (Apps)
   if (actualizar) {
     app.get('/api/actualizar', h(() => actualizar.estado()));

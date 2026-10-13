@@ -215,11 +215,29 @@ Pasos: 1) ver_kit_diseno; 2) lee con Read la guía del kit y el ejemplo de esta 
     if (r.estado !== 'generando') { avisar(id); return; }
     // Si el último guardado no se pudo dibujar, ese error es el que hay que ver (p. ej. falta el navegador)
     const sinDibujar = !sinGuardar && r.error && !json(r.previas, []).length;
+    const estado = sinDibujar || (sinGuardar && !r.version) ? 'error' : 'listo';
     actualizar(id, {
-      estado: sinDibujar || (sinGuardar && !r.version) ? 'error' : 'listo',
+      estado,
       error: e.tipo === 'error' ? `Claude no ha podido terminar: ${e.mensaje || 'error'}` : sinGuardar ? 'Claude ha terminado sin guardar el diseño. Pídeselo en el chat.' : sinDibujar ? r.error : null,
     });
     avisar(id);
+    if (estado === 'listo' && r.uso === 'portada' && r.pieza_origen) ponerPortada(id).catch((err) => actualizar(id, { error: `No se ha podido añadir la portada a la pieza: ${err.message}` }));
+  }
+
+  // La portada terminada va a su pieza: en un vídeo, como portada; en lo demás, como primera imagen
+  const FORMATOS_VIDEO = ['Reel', 'Short', 'Reel split', 'B-roll'];
+  async function ponerPortada(id) {
+    const r = leer(id);
+    const pieza = jarvis.listarPiezas().find((p) => p.id === r.pieza_origen);
+    if (!pieza) return null;
+    const archivo = await exportarPortada(id);
+    const comoPortada = FORMATOS_VIDEO.includes(pieza.formato);
+    if (comoPortada) jarvis.actualizarPieza(pieza.id, { portada: archivo });
+    else if (!pieza.archivos.some((a) => a.path === archivo.path)) jarvis.actualizarPieza(pieza.id, { archivos: [archivo, ...pieza.archivos] });
+    actualizar(id, { exportado: JSON.stringify({ ...json(leer(id).exportado, {}), aplicada: pieza.id }) });
+    emitir({ type: 'portada', diseno: id, pieza: pieza.id, titulo: pieza.titulo, archivo, comoPortada });
+    avisar(id);
+    return archivo;
   }
 
   // ---------- Portadas (desde una pieza: «Generar portada») ----------
@@ -303,7 +321,8 @@ Pasos: 1) ver_kit_diseno; 2) lee con Read la guía del kit y el ejemplo de esta 
     }
     const medios = (Array.isArray(pieza?.archivos) ? pieza.archivos : []).filter((a) => a?.url).slice(0, 6).map((a) => `${a.url} (${/^video\//.test(a.mime || '') ? 'vídeo' : 'foto'})`);
     const guion = [tit, desc].filter(Boolean).join('\n\n');
-    const { lastInsertRowid } = db.prepare("INSERT INTO disenos (titulo, formato, plantilla, guion, uso) VALUES (?, ?, ?, ?, 'portada')").run(tit, formato, pl.id, guion);
+    // Si la pieza ya existe, la portada se le añade sola al terminar (aunque se cierre la ventana)
+    const { lastInsertRowid } = db.prepare("INSERT INTO disenos (titulo, formato, plantilla, guion, uso, pieza_origen) VALUES (?, ?, ?, ?, 'portada', ?)").run(tit, formato, pl.id, guion, Number(pieza?.id) || null);
     const id = Number(lastInsertRowid);
     const fmt = FORMATOS[formato];
     const prompt = `Diseña SOLO UNA PORTADA (una única diapositiva) en el diseño #${id} de JARVIS, copiando el diseño de mi portada de referencia.
@@ -486,7 +505,13 @@ Pasos: 1) Read de la referencia; 2) ver_kit_diseno (formato técnico de las diap
   // Al arrancar: lo que se quedó a medias (JARVIS se cerró) vuelve a estar disponible
   db.prepare("UPDATE disenos SET estado = CASE WHEN version > 0 THEN 'listo' ELSE 'error' END, error = CASE WHEN version > 0 THEN error ELSE 'Se interrumpió al cerrar JARVIS' END, progreso = NULL WHERE estado IN ('generando', 'renderizando', 'exportando')").run();
 
-  return { listar, obtener, crear, generar: generarConClaude, alEventoClaude, guardarDatos, exportar, borrar, rutaPrevia, tiposPortada, muestraPortada, guardarPlantillaPortada, borrarPlantillaPortada, crearPortada, exportarPortada, ESTADOS };
+  // Lo que se está haciendo ahora con los diseños (para «Trabajando en…» de la barra de arriba)
+  function trabajos() {
+    const ids = new Set([...enCurso.keys(), ...rows(db.prepare("SELECT id FROM disenos WHERE estado IN ('exportando', 'renderizando')")).map((x) => x.id)]);
+    return [...ids].map((id) => { try { return vista(leer(id)); } catch { return null; } }).filter(Boolean);
+  }
+
+  return { listar, obtener, crear, generar: generarConClaude, trabajos, alEventoClaude, guardarDatos, exportar, borrar, rutaPrevia, tiposPortada, muestraPortada, guardarPlantillaPortada, borrarPlantillaPortada, crearPortada, exportarPortada, ESTADOS };
 }
 
 const slug = (s) => String(s).normalize('NFD').replace(/[̀-ͯ]/g, '').replace(/[^A-Za-z0-9]+/g, '-').replace(/^-+|-+$/g, '').slice(0, 40).toLowerCase() || 'diseno';

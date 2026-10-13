@@ -10,7 +10,7 @@ import { Modal, esVideo, subirArchivo } from './comun.jsx';
 const FORMATOS_VIDEO = ['Reel', 'Short', 'Reel split', 'B-roll'];
 export const esFormatoVideo = (f) => FORMATOS_VIDEO.includes(f);
 
-export default function GenerarPortada({ pieza, onHecha, onClose }) {
+export default function GenerarPortada({ pieza, onHecha, onClose, onSegundoPlano }) {
   const [tipos, setTipos] = useState(null);
   const [error, setError] = useState('');
   const [f, setF] = useState({ tipo: '', titulo: pieza.titulo || '', descripcion: '', foto: null, sinFondo: true });
@@ -90,14 +90,22 @@ export default function GenerarPortada({ pieza, onHecha, onClose }) {
   };
 
   const trabajando = Boolean(estado);
+  // Si la pieza ya está guardada, la portada se termina y se le añade sola en el servidor: se puede cerrar
+  const enSegundoPlano = Boolean(pieza.id && estado?.id);
+  const seguirEnSegundoPlano = () => { onSegundoPlano?.(); onClose(); };
+  const cerrar = () => {
+    if (enSegundoPlano) return seguirEnSegundoPlano();
+    if (!trabajando || window.confirm('JARVIS sigue haciendo la portada. Como la pieza aún no está guardada, si cierras no se añadirá a ella (la tendrás en Laboratorio → Diseño). ¿Cerrar?')) onClose();
+    return undefined;
+  };
   return (
-    <Modal titulo="Generar portada" onClose={() => { if (!trabajando || window.confirm('JARVIS sigue haciendo la portada. Si cierras, no se añadirá a la pieza (la tendrás en Laboratorio → Diseño). ¿Cerrar?')) onClose(); }} ancho={760} cerrarFuera={false}>
+    <Modal titulo="Generar portada" onClose={cerrar} ancho={760} cerrarFuera={false}>
       {estado ? (
         <div className="portada-haciendo">
           {estado.previa ? <img src={estado.previa} alt="" /> : <div className="portada-spinner"><Icon name="sparkle" size={22} /></div>}
           <b>{estado.texto}</b>
           {aviso && <span className="aviso error">{aviso}</span>}
-          <span className="ayuda">Tarda unos minutos. Cuando esté, se añade sola a la pieza{esFormatoVideo(pieza.formato) ? ' como portada del reel' : ' como primera imagen'}.</span>
+          <span className="ayuda">Tarda unos minutos. Cuando esté, se añade sola a la pieza{esFormatoVideo(pieza.formato) ? ' como portada del reel' : ' como primera imagen'}.{enSegundoPlano ? ' Puedes cerrar esta ventana y seguir con otras cosas: lo ves arriba, en «Trabajando».' : ''}</span>
         </div>
       ) : (
         <>
@@ -156,7 +164,9 @@ export default function GenerarPortada({ pieza, onHecha, onClose }) {
       )}
       {error && <div className="caja-error">{error}</div>}
       <div className="modal-pie">
-        <button type="button" className="btn btn-sec" onClick={onClose} disabled={trabajando}>Cancelar</button>
+        {enSegundoPlano
+          ? <button type="button" className="btn btn-sec" onClick={seguirEnSegundoPlano}>Seguir en segundo plano</button>
+          : <button type="button" className="btn btn-sec" onClick={onClose} disabled={trabajando}>Cancelar</button>}
         <button type="button" className="btn" onClick={generar} disabled={trabajando || !f.tipo || !actual?.muestra || !f.titulo.trim() || subiendo}><Icon name="sparkle" size={14} />{trabajando ? 'Generando…' : 'Generar'}</button>
       </div>
     </Modal>

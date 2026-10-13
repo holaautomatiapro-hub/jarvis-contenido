@@ -4,7 +4,7 @@ import CampoCaption from '../../components/CampoCaption.jsx';
 import GenerarPortada, { esFormatoVideo } from './Portada.jsx';
 import { VersionesRed } from './Versiones.jsx';
 import { ResultadosPieza } from './Resultados.jsx';
-import { api } from '../../lib/api.js';
+import { api, useMensajes } from '../../lib/api.js';
 import { markdownANegrita } from '../../lib/negrita.js';
 import { diaLargo, hoyIso, sumarDias } from '../../lib/fechas.js';
 import { NOMBRE_TIPO_IG, planDePublicacion } from '../../lib/planIg.js';
@@ -111,6 +111,13 @@ export function EditorContenido({ pieza, carpetas, ig, onClose, onGuardado, onVi
   const [portada, setPortada] = useState(pieza.portada || null); // la de un reel (Instagram la usa de cover)
   const [generandoPortada, setGenerandoPortada] = useState(false);
   const [avisoPortada, setAvisoPortada] = useState('');
+  // La portada se hace en segundo plano: cuando está, el servidor la pone en la pieza y aquí se refleja
+  const ponerPortadaHecha = (a, comoPortada = esFormatoVideo(d.formato)) => {
+    if (comoPortada) setPortada(a);
+    else setArchivos((l) => (l.some((x) => x.path === a.path) ? l : [a, ...l]));
+    setAvisoPortada('✓ Portada añadida.');
+  };
+  useMensajes('portada', (e) => { if (pieza.id && e.pieza === pieza.id) ponerPortadaHecha(e.archivo, e.comoPortada); });
   const subidos = useRef(new Set()); // subidos en esta edición: si se cancela, se borran
   const [quitados, setQuitados] = useState([]); // ya guardados y quitados ahora: se borran al guardar
   const [subiendo, setSubiendo] = useState(0);
@@ -316,10 +323,8 @@ export function EditorContenido({ pieza, carpetas, ig, onClose, onGuardado, onVi
         <GenerarPortada
           pieza={{ ...pieza, titulo: d.titulo, formato: d.formato, archivos }}
           onClose={() => setGenerandoPortada(false)}
-          onHecha={(a) => {
-            if (esFormatoVideo(d.formato)) setPortada(a); else setArchivos((l) => [a, ...l]);
-            setAvisoPortada('✓ Portada añadida. Pulsa Guardar para quedártela.');
-          }}
+          onHecha={(a) => ponerPortadaHecha(a)}
+          onSegundoPlano={() => setAvisoPortada('JARVIS sigue haciendo la portada: se añadirá sola a la pieza (lo ves arriba, en «Trabajando»).')}
         />
       )}
       <div className="modal-pie">

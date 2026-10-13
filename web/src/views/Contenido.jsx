@@ -2,6 +2,7 @@ import { useCallback, useEffect, useMemo, useState } from 'react';
 import Icon from '../components/Icon.jsx';
 import { api, normaliza, useRecurso } from '../lib/api.js';
 import { hoyIso } from '../lib/fechas.js';
+import { useIr } from '../lib/ir.js';
 import { OBJETIVOS, TIPOS, tipoDe, useFases } from './contenido/comun.jsx';
 import { BancoIdeas, Calendario, Lista, Pipeline } from './contenido/Vistas.jsx';
 import { Biblioteca } from './contenido/Biblioteca.jsx';
@@ -31,6 +32,14 @@ export default function Contenido({ onCaptura }) {
 
   const setVista = (v) => { setVistaEstado(v); try { localStorage.setItem('contenido_vista', v); } catch { /* sin localStorage */ } };
   const piezas = useMemo(() => data?.piezas || [], [data]);
+  // Desde «Trabajando en…»: abrir la pieza (p. ej. la de la portada que se acaba de hacer)
+  useIr((d) => {
+    if (d.tab !== 'contenido' || !d.pieza) return d.tab === 'contenido';
+    const p = piezas.find((x) => x.id === d.pieza);
+    if (!p) return false;
+    setEditando(p);
+    return true;
+  });
   const carpetas = data?.carpetas || [];
   // Biblioteca: lo que tiene archivos o ya está en marcha y aún no tiene día. Las ideas sin archivos van a «Ideas».
   const biblioteca = useMemo(() => piezas.filter((p) => !p.fecha && p.estado !== 'publicado' && (p.estado !== 'idea' || p.archivos.length)), [piezas]);
