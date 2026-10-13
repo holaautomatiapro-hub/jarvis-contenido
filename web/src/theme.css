@@ -1537,5 +1537,12 @@ button.portada-muestra { padding: 0; border: 0; width: 100%; cursor: pointer; fo
 .otra-version .vr-titulo .link-btn { margin-left: auto; }
 .otra-version .ayuda { margin: 0; }
 .otra-version-archivos { display: grid; grid-template-columns: repeat(auto-fill, minmax(140px, 1fr)); gap: 8px; }
-.otra-version-archivos img, .otra-version-archivos video { width: 100%; aspect-ratio: 4 / 5; object-fit: cover; border-radius: 8px; background: #000; }
+.otra-version-archivos img, .otra-version-archivos video { display: block; width: 100%; aspect-ratio: 4 / 5; object-fit: cover; border-radius: 8px; background: #000; }
+.otra-version-item { position: relative; border: 2px solid transparent; border-radius: 10px; opacity: .5; transition: opacity .15s, border-color .15s; }
+.otra-version-item:hover { opacity: .85; }
+.otra-version-item.on { opacity: 1; border-color: var(--accent-2); }
+.otra-version-item img { cursor: pointer; }
+.otra-version-check { position: absolute; top: 6px; right: 6px; width: 26px; height: 26px; padding: 0; display: grid; place-items: center; border-radius: 50%; border: 2px solid #fff; background: rgba(0,0,0,.45); color: #fff; cursor: pointer; }
+.otra-version-item.on .otra-version-check { background: var(--accent-2); border-color: var(--accent-2); }
+.otra-version-n { position: absolute; top: 6px; left: 6px; min-width: 20px; padding: 1px 6px; border-radius: 6px; background: rgba(0,0,0,.6); color: #fff; font-size: 11px; font-weight: 700; }
 .otra-version-acciones { display: flex; flex-wrap: wrap; align-items: center; gap: 8px; }
