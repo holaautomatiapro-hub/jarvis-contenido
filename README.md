@@ -142,6 +142,10 @@ Guía: **[docs/META-ADS.md](docs/META-ADS.md)**. Usa la conexión de Instagram; 
 - **Contenido orgánico para impulsar**: tus piezas que se guardan, comparten e interactúan más que tu media.
 - **Campañas**: JARVIS solo propone borradores. Tú pulsas **Crear en pausa** y la activas tú en el Administrador de anuncios. Ninguna herramienta de JARVIS puede crear ni activar campañas, el código bloquea cualquier cosa que no esté en pausa y hay un tope de presupuesto diario (`ADS_PRESUPUESTO_MAX_DIA`).
 
+## Actualizar JARVIS (pestaña Apps)
+
+Arriba en Apps: **Buscar actualizaciones** mira en GitHub qué cambios nuevos hay y los lista. En el VPS, **Actualizar ahora** ejecuta el instalador por ti (descarga, prepara y reinicia; tarda unos minutos y la página se corta un momento al reiniciar). En el PC con Windows te dice qué ejecutar.
+
 ## Hermes por Telegram (pestaña Apps)
 
 Guía paso a paso: **[docs/HERMES.md](docs/HERMES.md)**. Hermes es JARVIS en el móvil: le escribes o le mandas notas de voz por Telegram y usa la misma memoria, skills y datos que el dashboard.
