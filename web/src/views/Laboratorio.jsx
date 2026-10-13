@@ -8,10 +8,12 @@ import Testimonios from './laboratorio/Testimonios.jsx';
 import Reels from './laboratorio/Reels.jsx';
 import LeadMagnets from './laboratorio/LeadMagnets.jsx';
 import Imagenes from './laboratorio/Imagenes.jsx';
+import DesdeEnlace from './laboratorio/DesdeEnlace.jsx';
 
-// Laboratorio: donde se crea lo visual. Diseño (carruseles y stories), clips de testimonios, edición de reels,
-// lead magnets (páginas web publicadas en Vercel) e imágenes.
+// Laboratorio: donde se crea lo visual. Replicar desde un enlace, Diseño (carruseles y stories), clips de testimonios,
+// edición de reels, lead magnets (páginas web publicadas en Vercel) e imágenes.
 const SECCIONES = [
+  { id: 'replicar', label: 'Replicar', icon: 'link', ayuda: 'Pega el enlace de un post o un reel y JARVIS hace tu versión, con tu voz y tu diseño' },
   { id: 'diseno', label: 'Diseño', icon: 'palette', ayuda: 'Carruseles y stories con tu sistema de diseño' },
   { id: 'testimonios', label: 'Testimonios', icon: 'users', ayuda: 'De la entrevista a clips, stories, carrusel, portada y captions' },
   { id: 'reels', label: 'Reels', icon: 'play', ayuda: 'Tus vídeos: mejores momentos, subtítulos y sin muletillas' },
@@ -45,6 +47,7 @@ export default function Laboratorio() {
         </div>
       </div>
 
+      {seccion === 'replicar' && <DesdeEnlace />}
       {seccion === 'diseno' && <Diseno piezas={piezas} ig={contenido?.instagram} onAbrir={setEditando} onProgramar={(p) => setProgramando({ p })} />}
       {(seccion === 'testimonios' || seccion === 'reels') && (!lab ? (
         <div className="panel panel-pad vacio">

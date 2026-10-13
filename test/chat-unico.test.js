@@ -76,7 +76,7 @@ describe('chat único', () => {
 
   test('hay una skill de flujo completo para cada trabajo y usan las herramientas reales', () => {
     const flujos = SKILLS.filter((s) => s.c === 'flujos').map((s) => s.n).sort();
-    assert.deepEqual(flujos, ['flujo-carrusel-stories', 'flujo-clips', 'flujo-lead-magnet', 'flujo-reel', 'flujo-testimonio']);
+    assert.deepEqual(flujos, ['flujo-carrusel-stories', 'flujo-clips', 'flujo-lead-magnet', 'flujo-reel', 'flujo-replicar', 'flujo-testimonio']);
     const texto = (n) => SKILLS.find((s) => s.n === n).p.join(' ');
     assert.match(texto('flujo-carrusel-stories'), /exportar_diseno/);
     assert.match(texto('flujo-testimonio'), /laboratorio_responder/);

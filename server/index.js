@@ -30,7 +30,7 @@ import { createKit } from './diseno/kit.js';
 import { createMotor } from './diseno/motor.js';
 import { createDisenos } from './diseno/disenos.js';
 import { createRecordatorios } from './recordatorios.js';
-import { promptReplicarCompetencia, promptReplicarPropia } from './replicar.js';
+import { promptReplicarCompetencia, promptReplicarPropia, normalizarFormatos, seDisena } from './replicar.js';
 import { createLaboratorio, carpetaPorDefecto } from './laboratorio.js';
 import { promptCaption, limpiarCaption, createContextoCaption } from './caption.js';
 import { createRecortador } from './recortar.js';
@@ -38,6 +38,9 @@ import { createRecortador } from './recortar.js';
 dotenv.config({ path: path.join(ROOT, '.env'), quiet: true });
 
 const DIST = path.join(ROOT, 'web', 'dist');
+
+// Replicar con diseño de carruseles o stories: lo hace Opus, como en Diseño
+const modeloReplicar = (formatos, disenar) => { try { return seDisena(normalizarFormatos(formatos), disenar) ? 'opus' : undefined; } catch { return undefined; } };
 
 export function createApp({ jarvis, archivos, publicadorIg, asistente, instagram, competencia, ads, publicar, hermes, jobs, kit, disenos, recordatorios, laboratorio, resultados, port, onChange = () => {}, status, tts = sintetizar }) {
   const estadoSistema = status || (() => systemStatus({ vaultPath: jarvis.vault.base, instagram: Boolean(instagram?.estado().conectado), ads: Boolean(ads?.estado().conectado && ads?.estado().cuenta), hermes: Boolean(hermes?.estado().gateway.online) }));
@@ -67,7 +70,7 @@ export function createApp({ jarvis, archivos, publicadorIg, asistente, instagram
       if (e instanceof OcupadoError) return res.status(409).json({ error: e.message });
       if (e instanceof JarvisError || e instanceof TareaError || e instanceof ArchivoError || e instanceof PublicarError || e instanceof VaultError || /^Falta /.test(e.message)) return res.status(400).json({ error: e.message });
       if (e instanceof MetaError) return res.status(502).json({ error: e.message });
-      if (e.publico) return res.status(400).json({ error: e.message });
+      if (e.publico) return res.status(400).json({ error: e.message, ...(e.campo ? { campo: e.campo } : {}) });
       console.error(e);
       res.status(500).json({ error: 'Error interno' });
     }
@@ -124,8 +127,9 @@ export function createApp({ jarvis, archivos, publicadorIg, asistente, instagram
     app.post('/api/instagram/publicaciones/:id/replicar', h((req) => {
       if (!asistente) throw Object.assign(new Error('JARVIS (Claude Code) no está disponible'), { publico: true });
       const m = instagram.publicacion(req.params.id);
-      const texto = promptReplicarPropia(m, { formatos: req.body?.formatos, indicaciones: req.body?.indicaciones, medias: instagram.resumen({ dias: 90 }).medias });
-      const r = asistente.preguntar({ conversacion: 'replicar', texto });
+      const { formatos, indicaciones, disenar } = req.body || {};
+      const texto = promptReplicarPropia(m, { formatos, indicaciones, disenar, medias: instagram.resumen({ dias: 90 }).medias });
+      const r = asistente.preguntar({ conversacion: 'replicar', texto, modelo: modeloReplicar(formatos, disenar) });
       return { ok: true, peticion: r.id };
     }));
     app.get('/api/instagram/resumen', h((req) => instagram.resumen({ dias: Math.min(90, Math.max(7, Number(req.query.dias) || 30)) })));
@@ -189,12 +193,19 @@ export function createApp({ jarvis, archivos, publicadorIg, asistente, instagram
       res.set('Cache-Control', 'private, max-age=86400').sendFile(f);
     });
     app.post('/api/competencia/publicaciones/:id/transcribir', h((req) => competencia.transcribir(req.params.id), true));
+    // Cuando Instagram no da el vídeo del reel: la persona lo descarga y lo sube para transcribirlo
+    app.post('/api/competencia/publicaciones/:id/video', express.raw({ type: () => true, limit: '500mb' }), h((req) => competencia.transcribir(req.params.id, { video: req.body }), true));
+    // Laboratorio → Replicar: una publicación de cualquier cuenta profesional, desde su enlace
+    app.post('/api/competencia/enlace', h((req) => competencia.porEnlace({ url: req.body?.url, usuario: req.body?.usuario }), true));
+    app.get('/api/competencia/enlaces', h(() => competencia.traidas()));
     app.post('/api/competencia/publicaciones/:id/replicar', h(async (req) => {
       if (!asistente) throw Object.assign(new Error('JARVIS (Claude Code) no está disponible'), { publico: true });
       if (asistente.estado().ocupado) throw new OcupadoError('JARVIS está terminando otra petición. Espera un momento.');
+      const { formatos, indicaciones, disenar } = req.body || {};
+      normalizarFormatos(formatos); // antes de transcribir: si no hay formato, se avisa ya
       const { m, slides } = await competencia.paraReplicar(req.params.id);
-      const texto = promptReplicarCompetencia(m, { formatos: req.body?.formatos, indicaciones: req.body?.indicaciones, slides, seguidores: m.seguidores });
-      const r = asistente.preguntar({ conversacion: 'replicar', texto });
+      const texto = promptReplicarCompetencia(m, { formatos, indicaciones, disenar, slides, seguidores: m.seguidores });
+      const r = asistente.preguntar({ conversacion: 'replicar', texto, modelo: modeloReplicar(formatos, disenar) });
       return { ok: true, peticion: r.id, transcrita: Boolean(m.transcripcion), slides: slides.length };
     }));
   }

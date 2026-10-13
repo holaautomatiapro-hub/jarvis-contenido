@@ -23,22 +23,26 @@ export function normalizarFormatos(formatos) {
 
 const lineaMetricas = (m) => Object.entries(m).filter(([, v]) => v != null && v !== '').map(([k, v]) => `${k}: ${v}`).join(' · ');
 
-function pasosComunes(formatos, indicaciones) {
+// Carruseles y stories que se diseñan con el kit al terminar el texto
+export const seDisena = (formatos, disenar) => Boolean(disenar) && formatos.some(([f]) => f === 'Carrusel' || f === 'Story');
+
+function pasosComunes(formatos, indicaciones, disenar = false) {
   const lista = formatos.map(([f, n]) => `- ${f} × ${n}: ${FORMATOS_REPLICA[f]}`).join('\n');
   const total = formatos.reduce((a, [, n]) => a + n, 0);
   return `Formatos que quiero (${total} ${total === 1 ? 'versión' : 'versiones'}):
 ${lista}
-${indicaciones ? `Indicaciones: ${String(indicaciones).slice(0, 1500)}\n` : ''}
+${indicaciones ? `Indicaciones (mandan sobre todo lo demás): ${String(indicaciones).slice(0, 1500)}\n` : ''}
 Cómo hacerlo:
 1. Lee _voz.md y escribe con MI voz. Busca con buscar_notas en 03-Transcripciones y 01-Ideas material mío relacionado y úsalo.
 2. Si hay una skill adecuada en .claude/skills (guion-reel-30s, guion-reel-60s, ganchos-reel, carrusel-educativo…), síguela.
 3. Las versiones del mismo formato tienen que ser distintas entre sí (otro ángulo, otro gancho, otro ejemplo). No copies frases.
 4. Mira las fases con ver_pipeline. Guarda cada versión con crear_nota en 02-Guiones (título «<Formato>: <título>») y crea su pieza con crear_pieza: estado "guion" si existe esa fase (si no, la primera fase de trabajo), formato (Reel, Carrusel, Story o Post), nota = la ruta que devuelve crear_nota, el caption y su estrategia: gancho, cta, objetivo (atraer, nutrir o convertir) y pilar (reutiliza uno de ver_pilares si encaja).
-5. No publiques nada. Responde con la lista de piezas creadas, en una línea cada una.`;
+${seDisena(formatos, disenar) ? `5. Diseña cada carrusel y cada story con MI sistema de diseño, de uno en uno: ver_kit_diseno; lee con leer_archivo_kit la guía y el ejemplo de la plantilla que encaje; crear_diseno (formato carrusel o story, esa plantilla y el pieza_id de su pieza); guardar_diseno con las diapositivas y el caption; corrige los avisos y mira las vistas previas con Read. Después exportar_diseno (jpg): queda en la biblioteca, unido a su pieza. Los reels y posts se quedan en su guion.
+6.` : '5.'} No publiques nada. Responde con la lista de piezas creadas, en una línea cada una${seDisena(formatos, disenar) ? ', y qué diseños quedan para revisar en Laboratorio → Diseño' : ''}.`;
 }
 
 // Una publicación tuya de Instagram que funcionó (fila de ig_media)
-export function promptReplicarPropia(m, { formatos, indicaciones, medias = {} } = {}) {
+export function promptReplicarPropia(m, { formatos, indicaciones, medias = {}, disenar = false } = {}) {
   const l = normalizarFormatos(formatos);
   const metricas = lineaMetricas({
     alcance: m.alcance, visualizaciones: m.views, 'me gusta': m.likes, comentarios: m.comentarios,
@@ -54,17 +58,18 @@ ${String(m.caption || '(sin caption)').slice(0, 3000)}
 ${m.nota ? `Transcripción del vídeo: lee la nota ${m.nota} con leer_nota.\n` : ''}
 Primero, en dos líneas, di POR QUÉ crees que funcionó (gancho, tema, estructura, CTA), mirando sus métricas: guardados y compartidos altos = contenido útil; comentarios = conversación. Mantén eso en todas las versiones.
 
-${pasosComunes(l, indicaciones)}`;
+${pasosComunes(l, indicaciones, disenar)}`;
 }
 
 // Una publicación de la competencia (fila de comp_media). "slides" son rutas del vault con las imágenes del carrusel.
-export function promptReplicarCompetencia(m, { formatos, indicaciones, slides = [], seguidores } = {}) {
+// (o de cualquier cuenta, traída por su enlace)
+export function promptReplicarCompetencia(m, { formatos, indicaciones, slides = [], seguidores, disenar = false } = {}) {
   const l = normalizarFormatos(formatos);
   const metricas = lineaMetricas({
     'me gusta': m.likes, comentarios: m.comentarios, visualizaciones: m.vistas,
     'engagement (interacciones / seguidores)': m.engagement != null ? `${m.engagement} %` : null, seguidores,
   });
-  return `Quiero replicar CON MI ESTILO una publicación de la competencia que funciona: @${m.username}, ${m.formato || 'publicación'} del ${String(m.fecha || '').slice(0, 10)}${m.permalink ? ` (${m.permalink})` : ''}.
+  return `Quiero replicar CON MI ESTILO una publicación de otra cuenta que funciona: @${m.username}, ${m.formato || 'publicación'} del ${String(m.fecha || '').slice(0, 10)}${m.permalink ? ` (${m.permalink})` : ''}.
 Métricas: ${metricas || 'sin datos'}
 Caption:
 """
@@ -73,7 +78,7 @@ ${String(m.caption || '(sin caption)').slice(0, 3000)}
 ${m.transcripcion ? `Transcripción del reel:\n"""\n${String(m.transcripcion).slice(0, 8000)}\n"""\n` : ''}${slides.length ? `Imágenes del carrusel (míralas con Read, en orden): ${slides.join(', ')}\n` : ''}
 Paso previo: entiende la referencia. ${slides.length ? 'Lee cada slide y apunta su título y su texto. ' : ''}Resume en 3-5 líneas su estructura (gancho, desarrollo, CTA) y por qué funciona. Guarda esa referencia con crear_nota en 04-Competencia (título «Referencia @${m.username}: <tema>»), con el enlace, las métricas, el caption${m.transcripcion ? ', la transcripción' : ''}${slides.length ? ' y el texto de cada slide' : ''}.
 
-Después NO la copies: adapta el patrón a MI negocio (lee CLAUDE.md) y a mi voz, con mis ejemplos y mi oferta. En cada guion indica al final «Inspirado en: <enlace>».
+Después haz MI versión: mantén lo que la hace funcionar (su estructura: el mismo número de slides o bloques y la misma idea en cada uno, su tipo de gancho y su CTA), pero escribe todo de nuevo con mi voz, mis ejemplos y mi oferta (lee CLAUDE.md). Nunca frases literales suyas. En cada guion indica al final «Inspirado en: <enlace>».
 
-${pasosComunes(l, indicaciones)}`;
+${pasosComunes(l, indicaciones, disenar)}`;
 }

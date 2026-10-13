@@ -193,6 +193,9 @@ export function openDb(file) {
     'ALTER TABLE comp_media ADD COLUMN vistas INTEGER',
     'ALTER TABLE comp_media ADD COLUMN transcripcion TEXT',
     'ALTER TABLE comp_media ADD COLUMN nota TEXT',
+    // Publicaciones traídas por su enlace (Laboratorio → Replicar)
+    'ALTER TABLE comp_media ADD COLUMN por_enlace TEXT',
+    'ALTER TABLE comp_media ADD COLUMN autor_seguidores INTEGER',
   ]) migrar(sql);
   // Tareas con estado, prioridad y fecha límite (día, semana o mes)
   for (const sql of [

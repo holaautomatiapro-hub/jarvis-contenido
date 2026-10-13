@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState } from 'react';
+import { useEffect, useMemo, useRef, useState } from 'react';
 import Icon from '../components/Icon.jsx';
 import Replicar, { FORMATO_DE_IG } from '../components/Replicar.jsx';
 import { Modal } from './contenido/comun.jsx';
@@ -7,7 +7,7 @@ import { fechaCorta, num, numLargo } from '../lib/formato.js';
 
 // Las mejores publicaciones de la competencia según la métrica que elijas, con su detalle
 // (caption, transcripción del reel, slides del carrusel) y "Replicar con mi estilo".
-const COLOR_FORMATO = { Reels: '#3987e5', Carruseles: '#d95926', 'Imágenes': '#199e70' };
+export const COLOR_FORMATO = { Reels: '#3987e5', Carruseles: '#d95926', 'Imágenes': '#199e70' };
 const ORDENES = [
   { id: 'engagement', label: 'Engagement' },
   { id: 'interacciones', label: 'Interacciones' },
@@ -19,7 +19,7 @@ const ORDENES = [
 const FORMATOS = ['Reels', 'Carruseles', 'Imágenes'];
 const POR_PAGINA = 12;
 
-function Metricas({ m }) {
+export function Metricas({ m }) {
   return (
     <div className="comp-metricas">
       <span title="Me gusta"><Icon name="heart" size={11} />{num(m.likes)}</span>
@@ -30,12 +30,37 @@ function Metricas({ m }) {
   );
 }
 
-function Detalle({ id, demo, onClose }) {
+// Sube el vídeo de un reel (cuando Instagram no lo da) para transcribirlo, con su progreso
+function subirVideo(id, file, onProgreso) {
+  return new Promise((ok, ko) => {
+    const x = new XMLHttpRequest();
+    x.open('POST', `/api/competencia/publicaciones/${encodeURIComponent(id)}/video`);
+    x.setRequestHeader('content-type', 'application/octet-stream');
+    x.upload.onprogress = (e) => e.lengthComputable && onProgreso(Math.round((e.loaded / e.total) * 100));
+    x.onload = () => {
+      let d = {};
+      try { d = JSON.parse(x.responseText); } catch { /* sin cuerpo */ }
+      if (x.status >= 200 && x.status < 300) ok(d); else ko(new Error(d.error || 'No se ha podido transcribir el vídeo'));
+    };
+    x.onerror = () => ko(new Error('Se cortó la subida. Revisa la conexión y vuelve a intentarlo.'));
+    x.send(file);
+  });
+}
+
+// auto: al abrirla (desde su enlace) también se transcribe sola si es un reel
+export function Detalle({ id, demo, auto = false, onClose }) {
   const [d, setD] = useState(null);
   const [error, setError] = useState('');
   const [cargando, setCargando] = useState('');
   const [slide, setSlide] = useState(0);
   const [replicando, setReplicando] = useState(false);
+  const inputVideo = useRef(null);
+  const elegirVideo = async (f) => {
+    if (!f) return;
+    setError(''); setCargando('subiendo 0 %');
+    try { const r = await subirVideo(id, f, (p) => setCargando(p < 100 ? `subiendo ${p} %` : 'transcribir')); setD((x) => ({ ...x, ...r })); } catch (e) { setError(e.message); }
+    setCargando('');
+  };
 
   useEffect(() => {
     api(`/api/competencia/publicaciones/${encodeURIComponent(id)}`).then(setD).catch((e) => setError(e.message));
@@ -49,7 +74,11 @@ function Detalle({ id, demo, onClose }) {
     setCargando('');
   };
   // Al abrir un carrusel o una imagen se bajan sus slides solas
-  useEffect(() => { if (d && d.formato !== 'Reels' && !d.slides?.length && !demo) accion('slides'); }, [d?.id]); // eslint-disable-line react-hooks/exhaustive-deps
+  useEffect(() => {
+    if (!d || demo) return;
+    if (d.formato !== 'Reels' && !d.slides?.length) accion('slides');
+    else if (auto && d.formato === 'Reels' && !d.transcripcion && d.puedeTranscribir) accion('transcribir');
+  }, [d?.id]); // eslint-disable-line react-hooks/exhaustive-deps
 
   if (replicando && d) {
     return (
@@ -95,7 +124,16 @@ function Detalle({ id, demo, onClose }) {
                 <div className="label">Transcripción</div>
                 {d.transcripcion ? <div className="comp-caption">{d.transcripcion}</div>
                   : d.puedeTranscribir ? <button className="btn btn-sec" onClick={() => accion('transcribir')} disabled={cargando === 'transcribir'}><Icon name="mic" size={14} />{cargando === 'transcribir' ? 'Transcribiendo… (1-2 min)' : 'Transcribir el reel'}</button>
-                    : <div className="ayuda">{d.media_url ? 'Para transcribir hace falta la clave de ElevenLabs (ELEVENLABS_API_KEY).' : 'Instagram no da el vídeo de este reel (pasa con algunos reels con música con derechos).'}</div>}
+                    : !d.stt ? <div className="ayuda">Para transcribir hace falta la clave de ElevenLabs (ELEVENLABS_API_KEY).</div>
+                      : (
+                        <div>
+                          <div className="ayuda">Instagram no da el vídeo de este reel (pasa con algunos reels con música con derechos). Descárgalo y súbelo para transcribirlo.</div>
+                          <input ref={inputVideo} type="file" accept="video/*" hidden onChange={(e) => { elegirVideo(e.target.files?.[0]); e.target.value = ''; }} />
+                          <button className="btn btn-sec" style={{ marginTop: 8 }} onClick={() => inputVideo.current?.click()} disabled={Boolean(cargando)}>
+                            <Icon name="publish" size={14} />{cargando.startsWith('subiendo') ? `Subiendo… ${cargando.slice(9)}` : cargando === 'transcribir' ? 'Transcribiendo… (1-2 min)' : 'Subir el vídeo'}
+                          </button>
+                        </div>
+                      )}
               </>
             )}
             {d.formato !== 'Reels' && d.slides?.length > 0 && <div className="ayuda">Al replicarlo, JARVIS lee cada slide (títulos y textos).</div>}

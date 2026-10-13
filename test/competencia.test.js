@@ -7,7 +7,7 @@ import { openDb, ajustes } from '../server/db.js';
 import { createVault, ensureVault } from '../server/vault.js';
 import { createJarvis } from '../server/jarvis.js';
 import { getConfig } from '../server/config.js';
-import { createCompetencia, calcular, limpiarUsuario } from '../server/integrations/competencia.js';
+import { createCompetencia, calcular, limpiarUsuario, leerEnlace, usuarioDePagina } from '../server/integrations/competencia.js';
 import { buildServer } from '../mcp/jarvis-mcp.js';
 import { Client } from '@modelcontextprotocol/sdk/client/index.js';
 import { InMemoryTransport } from '@modelcontextprotocol/sdk/inMemory.js';
@@ -215,10 +215,90 @@ describe('mejores publicaciones, slides, transcripción y replicar', () => {
     assert.doesNotMatch(p, /Reel ×|Inventado/);
     assert.match(p, /\.jarvis\/competencia\/k1\/01\.jpg/);
     assert.match(p, /para clínicas/);
-    assert.match(p, /NO la copies/);
+    assert.match(p, /misma idea en cada uno[\s\S]*Nunca frases literales/);
+    assert.doesNotMatch(p, /crear_diseno/, 'sin diseñar si no se pide');
+    const conDiseno = promptReplicarCompetencia(m, { formatos: { Carrusel: 1, Reel: 1 }, slides, disenar: true });
+    assert.match(conDiseno, /ver_kit_diseno[\s\S]*crear_diseno[\s\S]*pieza_id[\s\S]*exportar_diseno/);
+    assert.match(conDiseno, /6\. No publiques nada/);
+    assert.doesNotMatch(promptReplicarCompetencia(m, { formatos: { Reel: 1 }, disenar: true }), /crear_diseno/, 'un reel no se diseña');
     const r = await c2.paraReplicar('k2');
     assert.match(promptReplicarCompetencia(r.m, { formatos: { Reel: 1 } }), /Transcripción del reel/);
     assert.throws(() => normalizarFormatos({ Reel: 0 }), /al menos un formato/);
     assert.match(promptReplicarPropia({ formato: 'Reels', caption: 'Mi reel', guardados: 90, nota: '03-Transcripciones/x.md' }, { formatos: { Story: 1 } }), /guardados: 90[\s\S]*leer_nota/);
+  });
+});
+
+describe('replicar desde un enlace', () => {
+  const json = (o, status = 200) => new Response(JSON.stringify(o), { status, headers: { 'content-type': 'application/json' } });
+  const media = (n) => ({ id: `e${n}`, caption: `Publicación ${n}`, like_count: n, comments_count: 1, media_type: n === 77 ? 'CAROUSEL_ALBUM' : 'IMAGE', timestamp: hace(n), permalink: `https://www.instagram.com/p/COD${n}xx/`, media_url: `https://cdn/e${n}.jpg` });
+  let c3, db3, paginas, paginaPublica;
+  before(() => {
+    db3 = openDb(':memory:');
+    paginas = [];
+    paginaPublica = '<meta property="og:description" content="1,234 likes, 56 comments - laura.setter on October 1, 2026: &quot;Hola&quot;">';
+    const fetchImpl = async (url) => {
+      const u = String(url);
+      if (u.startsWith('https://www.instagram.com/')) return new Response(paginaPublica, { status: 200 });
+      const campos = new URL(u).searchParams.get('fields') || '';
+      const usuario = campos.match(/business_discovery\.username\(([^)]+)\)/)?.[1];
+      if (usuario === 'personal') return json({ error: { code: 110, message: 'Invalid user id' } }, 400);
+      const despues = campos.match(/media\.after\(([^)]+)\)/)?.[1] || null;
+      paginas.push(`${usuario}:${despues || 'inicio'}`);
+      // Dos páginas: en la segunda está el carrusel COD77xx
+      const data = despues ? [media(77), media(78)] : [media(1), media(2)];
+      return json({ business_discovery: { username: usuario, followers_count: 2000, media: { data, paging: despues ? {} : { cursors: { after: 'CUR1' }, next: 'https://graph/next' } } } });
+    };
+    c3 = createCompetencia({ db: db3, instagram: instagramFalso, vault: createVault(path.join(dir, 'V3')), env: {}, fetchImpl });
+  });
+
+  test('lee los enlaces de Instagram', () => {
+    assert.deepEqual(leerEnlace('https://www.instagram.com/reel/ABC123x/?igsh=xyz'), { codigo: 'ABC123x', usuario: null });
+    assert.deepEqual(leerEnlace('instagram.com/Laura.Setter/p/ABC123x'), { codigo: 'ABC123x', usuario: 'laura.setter' });
+    assert.equal(leerEnlace('https://www.instagram.com/stories/laura/123'), null);
+    assert.equal(leerEnlace('https://tiktok.com/@x/video/1'), null);
+    assert.equal(usuarioDePagina('<meta property="og:title" content="Laura (@laura.setter) • Instagram">'), 'laura.setter');
+    assert.equal(usuarioDePagina('<html>Inicia sesión</html>'), null);
+  });
+
+  test('busca la publicación entre las de su cuenta (con varias páginas) y la guarda para replicarla', async () => {
+    const d = await c3.porEnlace({ url: 'https://www.instagram.com/p/COD77xx/?igsh=1' });
+    assert.equal(d.id, 'e77');
+    assert.equal(d.username, 'laura.setter', 'la cuenta sale de su página pública');
+    assert.equal(d.formato, 'Carruseles');
+    assert.equal(d.seguidores, 2000);
+    assert.equal(d.engagement, 3.9, '(77 + 1) / 2000');
+    assert.deepEqual(paginas, ['laura.setter:inicio', 'laura.setter:CUR1']);
+    assert.deepEqual(c3.traidas().map((m) => m.id), ['e77']);
+    assert.equal(c3.resumen().demo, true, 'no se mezcla con la competencia');
+    // La segunda vez no vuelve a preguntar a Instagram
+    await c3.porEnlace({ url: 'https://instagram.com/p/COD77xx' });
+    assert.equal(paginas.length, 2);
+  });
+
+  test('si no sabe de quién es, la pide; las cuentas personales no se pueden traer', async () => {
+    paginaPublica = '<html>Inicia sesión</html>';
+    await assert.rejects(() => c3.porEnlace({ url: 'https://www.instagram.com/reel/NUEVO99/' }), (e) => e.campo === 'usuario' && /@usuario/.test(e.message));
+    await assert.rejects(() => c3.porEnlace({ url: 'https://www.instagram.com/reel/NUEVO99/', usuario: '@personal' }), /no es una cuenta profesional/);
+    await assert.rejects(() => c3.porEnlace({ url: 'https://www.instagram.com/reel/NUEVO99/', usuario: 'laura.setter' }), /No encuentro esa publicación entre las últimas de @laura\.setter/);
+    await assert.rejects(() => c3.porEnlace({ url: 'hola' }), /enlace de una publicación/);
+  });
+
+  test('un reel sin vídeo de Instagram se transcribe con el vídeo subido a mano', async () => {
+    db3.prepare("INSERT INTO comp_media (id, username, formato, caption, fecha) VALUES ('r1', 'laura.setter', 'Reels', 'Reel', ?)").run(hace(1));
+    const c4 = createCompetencia({ db: db3, instagram: instagramFalso, vault: createVault(path.join(dir, 'V3')), env: { ELEVENLABS_API_KEY: 'x' }, sttImpl: async (buf) => `Dice ${buf.length} bytes` });
+    assert.equal(c4.detalle('r1').puedeTranscribir, false);
+    await assert.rejects(() => c4.transcribir('r1'), /descárgalo y súbelo/);
+    assert.equal((await c4.transcribir('r1', { video: Buffer.from('abcd') })).transcripcion, 'Dice 4 bytes');
+  });
+
+  test('MCP: traer_publicacion', async () => {
+    const [a, b] = InMemoryTransport.createLinkedPair();
+    await buildServer(createJarvis({ db: db3, vault: createVault(path.join(dir, 'V3')) }), { competencia: c3 }).connect(a);
+    const cli = new Client({ name: 't', version: '1' });
+    await cli.connect(b);
+    const r = await cli.callTool({ name: 'traer_publicacion', arguments: { url: 'https://www.instagram.com/p/COD77xx/' } });
+    const d = JSON.parse(r.content[0].text);
+    assert.equal(d.username, 'laura.setter');
+    assert.equal(d.slides.length, 1, 'baja las imágenes del carrusel para leerlas');
   });
 });
