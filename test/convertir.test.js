@@ -1,6 +1,6 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
-import { createReadStream, mkdtempSync, rmSync, statSync } from 'node:fs';
+import { createReadStream, mkdtempSync, readdirSync, rmSync, statSync, writeFileSync } from 'node:fs';
 import { spawnSync } from 'node:child_process';
 import os from 'node:os';
 import path from 'node:path';
@@ -88,5 +88,37 @@ test('si la pieza sale de un diseño, se saca la otra versión desde el diseño 
     assert.equal(p.formato, 'Carrusel', 'un carrusel en vídeo sigue siendo carrusel');
     assert.deepEqual(p.archivos.map((a) => a.mime), ['video/mp4', 'video/mp4']);
     assert.deepEqual(llamadas[1], ['aceptar', 9, 'mp4', ['h1', 'h2']], 'el diseño sabe que ahora está exportado en vídeo');
+  } finally { rmSync(dir, { recursive: true, force: true }); }
+});
+
+test('se puede parar a medias desde «Trabajando»: se corta y no se queda nada', async () => {
+  const dir = mkdtempSync(path.join(os.tmpdir(), 'jarvis-conv3-'));
+  try {
+    const jarvis = createJarvis({ db: openDb(':memory:'), vault: createVault(path.join(dir, 'V')) });
+    const archivos = createArchivos({ dir: path.join(dir, 'contenido') });
+    const guardar = (n, mime) => archivos.guardar((async function* () { yield Buffer.from(n); })(), { nombre: n, mime });
+    const fotos = [await guardar('a.jpg', 'image/jpeg'), await guardar('b.jpg', 'image/jpeg')];
+    const pieza = jarvis.crearPieza({ titulo: 'Post', formato: 'Post', archivos: fotos });
+    // Un ffmpeg de mentira que escribe el vídeo y luego se queda «trabajando» hasta que lo cortan
+    const senales = [];
+    const ff = (args, { signal } = {}) => new Promise((ok, ko) => {
+      senales.push(signal);
+      writeFileSync(args.at(-1), 'x');
+      if (senales.length === 1) return setTimeout(ok, 10);
+      signal.addEventListener('abort', () => ko(new Error('cortado')));
+    });
+    const conv = createConversiones({ jarvis, archivos, ff });
+    conv.empezar(pieza.id);
+    for (let i = 0; i < 100 && senales.length < 2; i++) await new Promise((r) => setTimeout(r, 10));
+    assert.equal(conv.trabajos().length, 1);
+    assert.deepEqual(conv.parar(pieza.id), { ok: true });
+    assert.ok(senales[1].aborted, 'se corta el ffmpeg que estaba en marcha');
+    assert.equal(conv.trabajos().length, 0);
+    assert.equal(conv.estado(pieza.id), null);
+    await new Promise((r) => setTimeout(r, 50));
+    assert.equal(conv.estado(pieza.id), null, 'no vuelve como error');
+    const enBiblioteca = readdirSync(path.join(dir, 'contenido'), { recursive: true }).filter((f) => /\.mp4$/.test(f));
+    assert.deepEqual(enBiblioteca, [], 'el vídeo que ya estaba hecho se borra');
+    assert.throws(() => conv.parar(pieza.id), /Ya ha terminado/);
   } finally { rmSync(dir, { recursive: true, force: true }); }
 });
