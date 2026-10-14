@@ -88,7 +88,7 @@ export function createContextoCaption({ archivos, vaultPath, env = process.env, 
       if (transcribirImpl) { texto = await transcribirImpl(audio); de = 'prueba'; }
       else if (sttConfigurado(env)) { texto = await transcribirElevenLabs(readFileSync(audio), { nombre: 'audio.mp3', tipo: 'audio/mpeg', env }); de = 'ElevenLabs'; }
       else if (python()) {
-        const w = await correr(python(), [whisperScript, audio], { timeout: 900_000, env: { PYTHONIOENCODING: 'utf-8' } });
+        const w = await correr(python(), [whisperScript, audio], { timeout: 900_000, env: { PYTHONIOENCODING: 'utf-8', JARVIS_FFMPEG: bin } });
         if (!w.ok) return { texto: '', aviso: `no se ha podido transcribir con Whisper (${w.err.trim().split('\n').pop() || 'error'})` };
         texto = w.out.trim(); de = 'Whisper';
       } else return { texto: '', aviso: 'no hay con qué transcribir: pon la clave de ElevenLabs (npm run claves) o prepara el Laboratorio en el VPS' };

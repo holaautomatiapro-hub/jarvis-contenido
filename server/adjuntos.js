@@ -64,12 +64,13 @@ export function createAdjuntos({ archivos, vaultPath, env = process.env, ffmpeg 
 
   // Whisper en este ordenador (el que instala el Laboratorio): gratis, sin internet; más lento que ElevenLabs
   const whisperDisponible = () => Boolean(whisperImpl || python());
-  function whisper(ruta) {
+  async function whisper(ruta) {
     if (whisperImpl) return whisperImpl(ruta);
+    const bin = await ffmpeg().catch(() => null);
     return new Promise((ok, ko) => {
       let out = '', err = '';
       let p;
-      try { p = spawn(python(), [whisperScript, ruta], { windowsHide: true, env: { ...process.env, PYTHONIOENCODING: 'utf-8' } }); } catch (e) { ko(e); return; }
+      try { p = spawn(python(), [whisperScript, ruta], { windowsHide: true, env: { ...process.env, PYTHONIOENCODING: 'utf-8', ...(bin ? { JARVIS_FFMPEG: bin } : {}) } }); } catch (e) { ko(e); return; }
       const reloj = setTimeout(() => p.kill('SIGKILL'), 45 * 60_000);
       p.stdout.on('data', (d) => { out += d; });
       p.stderr.on('data', (d) => { err = (err + d).slice(-2000); });
