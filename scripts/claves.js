@@ -110,7 +110,7 @@ async function main() {
   if (!n) { console.log('\n  No has cambiado nada.\n'); return; }
   guardarEnv(cambios, ruta);
   console.log(`\n  ✓ Guardado (${n} cambio${n > 1 ? 's' : ''}) en ${path.relative(process.cwd(), ruta) || ENV_PATH}.`);
-  console.log('  Reinicia JARVIS para que lo use:  powershell -ExecutionPolicy Bypass -File instalar.ps1 -Reiniciar\n');
+  console.log('  JARVIS lo usará en unos segundos, sin reiniciar. Si no lo coge, reinícialo: en el VPS  sudo systemctl restart jarvis ; en Windows  powershell -ExecutionPolicy Bypass -File instalar.ps1 -Reiniciar\n');
 }
 
 if (process.argv[1] && path.resolve(process.argv[1]) === fileURLToPath(import.meta.url)) main();

@@ -1,4 +1,5 @@
 // Voz de JARVIS con ElevenLabs. La clave se queda en el servidor: el navegador solo recibe el audio.
+import { errorElevenLabs } from './stt.js';
 
 // Quita Markdown, enlaces y bloques de código para que suene natural, y lo recorta a un tamaño razonable.
 export function textoParaVoz(md, max = 900) {
@@ -53,7 +54,7 @@ export async function sintetizar(texto, { env = process.env, fetchImpl = fetch }
   });
   if (!r.ok) {
     const detalle = await r.text().catch(() => '');
-    throw new Error(r.status === 401 ? 'La clave de ElevenLabs no es válida' : `ElevenLabs respondió ${r.status}${detalle ? `: ${detalle.slice(0, 160)}` : ''}`);
+    throw new Error(errorElevenLabs(r.status, detalle, { permiso: 'Text to Speech', que: 'voz' }));
   }
   return Buffer.from(await r.arrayBuffer());
 }

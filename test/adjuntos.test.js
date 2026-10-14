@@ -78,6 +78,12 @@ describe('adjuntos del chat', () => {
     assert.ok(una.archivos[0].ver.length >= 4 && una.archivos[0].ver.at(-1).endsWith('final.jpg'), una.archivos[0].ver.join(','));
     assert.equal((await adjuntos.verPieza(pieza, { diapositiva: 2, transcribir: true })).archivos[0].transcripcion.includes('slide-01.mp4'), true);
     await assert.rejects(adjuntos.verPieza(pieza, { diapositiva: 9 }), /no tiene la diapositiva 9/);
+    // Un vídeo con voz (una entrevista): se transcribe solo su audio, que pesa mucho menos
+    const conVoz = path.join(dir, 'entrevista.mp4');
+    spawnSync(ffmpeg, ['-hide_banner', '-loglevel', 'error', '-y', '-f', 'lavfi', '-i', 'testsrc=duration=3:size=320x240:rate=10', '-f', 'lavfi', '-i', 'sine=frequency=440:duration=3', '-shortest', '-pix_fmt', 'yuv420p', conVoz]);
+    const v3 = await archivos.guardar(createReadStream(conVoz), { nombre: 'entrevista completa.mp4', mime: 'video/mp4' });
+    const e = await adjuntos.verPieza({ id: 170, titulo: 'entrevista completa', formato: 'Reel', archivos: [v3] }, { transcribir: true });
+    assert.match(e.archivos[0].transcripcion, /soy el vídeo audio\.mp3/);
   });
 
   test('API: se sube, se prepara y el mensaje a Claude lleva los adjuntos por su id', async () => {

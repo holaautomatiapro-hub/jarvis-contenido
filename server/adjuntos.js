@@ -61,12 +61,19 @@ export function createAdjuntos({ archivos, vaultPath, env = process.env, ffmpeg 
     return { fotos, duracion, aviso: fotos.length ? null : 'No he podido sacar fotogramas del vídeo' };
   }
 
-  async function transcribir(origen, a, r) {
-    if (!sttConfigurado(env)) r.avisos.push('Sin clave de ElevenLabs no se transcribe lo que se dice en el vídeo');
-    else if (statSync(origen).size > MAX_TRANSCRIBIR) r.avisos.push('El vídeo es demasiado grande para transcribirlo');
-    else {
-      try { r.transcripcion = (await sttImpl(readFileSync(origen), { nombre: a.nombre, tipo: a.mime, env, fetchImpl })) || null; } catch (e) { r.avisos.push(`No se ha podido transcribir: ${e.message}`); }
+  // Se manda solo el audio (mucho más ligero que el vídeo, y así cabe una entrevista larga); si no se puede
+  // sacar, el vídeo tal cual. dir: dónde dejar el audio (se reaprovecha la próxima vez)
+  async function transcribir(origen, a, r, dir) {
+    if (!sttConfigurado(env)) { r.avisos.push('Sin clave de ElevenLabs no se transcribe lo que se dice en el vídeo'); return; }
+    let fuente = { ruta: origen, nombre: a.nombre, tipo: a.mime };
+    const audio = path.join(dir, 'audio.mp3');
+    if (!existsSync(audio)) {
+      const bin = await ffmpeg().catch(() => null);
+      if (bin) await ejecutar(bin, ['-hide_banner', '-loglevel', 'error', '-y', '-i', origen, '-vn', '-ac', '1', '-ar', '16000', '-b:a', '48k', audio]).catch(() => null);
     }
+    if (existsSync(audio) && statSync(audio).size > 0) fuente = { ruta: audio, nombre: 'audio.mp3', tipo: 'audio/mpeg' };
+    if (statSync(fuente.ruta).size > MAX_TRANSCRIBIR) { r.avisos.push('El vídeo es demasiado grande para transcribirlo'); return; }
+    try { r.transcripcion = (await sttImpl(readFileSync(fuente.ruta), { nombre: fuente.nombre, tipo: fuente.tipo, env, fetchImpl })) || null; } catch (e) { r.avisos.push(`No se ha podido transcribir: ${e.message}`); }
   }
 
   // a: lo que devuelve archivos.guardar. Devuelve lo que necesita Claude para tenerlo en cuenta.
@@ -84,7 +91,7 @@ export function createAdjuntos({ archivos, vaultPath, env = process.env, ffmpeg 
     const f = await fotogramas(origen, dir);
     Object.assign(r, { fotogramas: f.fotos, duracion: f.duracion });
     if (f.aviso) r.avisos.push(f.aviso);
-    await transcribir(origen, a, r);
+    await transcribir(origen, a, r, dir);
     return r;
   }
 
@@ -112,7 +119,7 @@ export function createAdjuntos({ archivos, vaultPath, env = process.env, ffmpeg 
       }
       const f = await fotogramas(origen, dir, { n: porVideo, final: true });
       const r = { n: num, nombre: a.nombre, tipo: 'video', url: a.url, duracion: f.duracion ? Math.round(f.duracion * 10) / 10 : null, ver: f.fotos, avisos: f.aviso ? [f.aviso] : [] };
-      if (conTexto) await transcribir(origen, a, r);
+      if (conTexto) await transcribir(origen, a, r, dir);
       if (!r.avisos.length) delete r.avisos;
       salida.push(r);
     }
