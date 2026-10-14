@@ -526,6 +526,21 @@ export function createApp({ jarvis, archivos, publicadorIg, asistente, instagram
         const entero = (v, max) => (v == null || v === '' ? null : Math.max(0, Math.min(max, Math.round(Number(v)) || 0)));
         return adjuntos.verPieza(pieza, { diapositiva: entero(b.diapositiva, 99) || null, fotogramas: entero(b.fotogramas, 12), transcribir: b.transcribir === true });
       }));
+      // Transcribir los vídeos de una pieza; la transcripción queda además como nota en 03-Transcripciones
+      app.post('/api/piezas/:id/transcribir', h(async (req) => {
+        const pieza = jarvis.leerPieza(Number(req.params.id));
+        if (!pieza) throw Object.assign(new Error('Esa pieza no existe'), { publico: true });
+        const d = Number(req.body?.diapositiva) || null;
+        const r = await adjuntos.transcribirPieza(pieza, { diapositiva: d });
+        const conTexto = r.transcripciones.filter((t) => t.texto);
+        if (conTexto.some((t) => t.nueva)) {
+          const contenido = [`Pieza #${pieza.id} · ${pieza.titulo}${pieza.carpeta ? ` · carpeta ${pieza.carpeta}` : ''}`, ...conTexto.map((t) => `${conTexto.length > 1 ? `## ${t.n}. ${t.nombre}\n\n` : ''}${t.texto}`)].join('\n\n');
+          r.nota = jarvis.crearNota({ carpeta: '03-Transcripciones', titulo: `Transcripción · ${String(pieza.titulo).slice(0, 100)}`, contenido, origen: 'dashboard', tipo: 'transcripcion' })?.nota || null;
+        }
+        for (const t of r.transcripciones) delete t.nueva;
+        if (!conTexto.length) throw Object.assign(new Error(r.transcripciones.map((t) => t.aviso).filter(Boolean)[0] || 'No se ha podido transcribir'), { publico: true });
+        return r;
+      }, true));
       app.post('/api/jarvis/adjuntos', h(async (req) => {
         const a = await archivos.guardar(req, { nombre: String(req.query.nombre || ''), mime: String(req.query.mime || '') });
         const p = await adjuntos.preparar(a);
