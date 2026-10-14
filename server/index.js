@@ -541,6 +541,12 @@ export function createApp({ jarvis, archivos, publicadorIg, asistente, instagram
         if (!conTexto.length) throw Object.assign(new Error(r.transcripciones.map((t) => t.aviso).filter(Boolean)[0] || 'No se ha podido transcribir'), { publico: true });
         return r;
       }, true));
+      app.post('/api/archivos/transcribir', h(async (req) => {
+        const r = await adjuntos.transcribirVideo(String(req.body?.url || ''));
+        if (r.nueva) r.nota = jarvis.crearNota({ carpeta: '03-Transcripciones', titulo: `Transcripción · ${path.basename(decodeURIComponent(r.url)).replace(/^\d+-[0-9a-f]+_/, '').slice(0, 100)}`, contenido: r.texto, origen: 'dashboard', tipo: 'transcripcion' })?.nota || null;
+        delete r.nueva;
+        return r;
+      }, true));
       app.post('/api/jarvis/adjuntos', h(async (req) => {
         const a = await archivos.guardar(req, { nombre: String(req.query.nombre || ''), mime: String(req.query.mime || '') });
         const p = await adjuntos.preparar(a);
@@ -629,7 +635,7 @@ function main() {
   if (process.platform !== 'win32') setTimeout(() => motor.preparar(), 5000).unref();
   disenos = createDisenos({ db, jarvis, kit, motor, archivos, previasDir: path.join(cfg.vaultPath, '.jarvis', 'disenos'), recortarFoto: createRecortador({ archivos, python: () => laboratorio.python() }), asistente, emitir, alCambiar: onChange });
   const recordatorios = createRecordatorios({ db });
-  const adjuntos = createAdjuntos({ archivos, vaultPath: cfg.vaultPath });
+  const adjuntos = createAdjuntos({ archivos, vaultPath: cfg.vaultPath, python: () => laboratorio?.python?.() || null });
   const conversiones = createConversiones({ jarvis, archivos, disenos, emitir, alCambiar: onChange });
   const actualizar = createActualizar({ dir: ROOT, dataDir: path.dirname(cfg.dbPath),
     ocupado: () => asistente.estado().ocupado || asistente.estado({ conversacion: 'laboratorio' }).ocupado || disenos?.listar().some((d) => d.estado === 'exportando') });

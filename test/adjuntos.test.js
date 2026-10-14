@@ -87,6 +87,39 @@ describe('adjuntos del chat', () => {
     assert.match(e.archivos[0].transcripcion, /soy el vídeo audio\.mp3/);
   });
 
+  test('si ElevenLabs falla (sin créditos) se transcribe gratis con Whisper; al subir un adjunto, solo ElevenLabs', async (t) => {
+    if (!video) return t.skip('No hay ffmpeg');
+    const usados = [];
+    const sinCreditos = async () => { usados.push('ElevenLabs'); throw new Error('Se han acabado los créditos de ElevenLabs'); };
+    const whisperImpl = async (ruta) => { usados.push('Whisper'); return `texto de Whisper (${path.basename(ruta)})`; };
+    const ad = createAdjuntos({ archivos, vaultPath: path.join(dir, 'W'), env: { ELEVENLABS_API_KEY: 'x' }, sttImpl: sinCreditos, whisperImpl });
+    const v = await archivos.guardar(createReadStream(video), { nombre: 'entrevista.mp4', mime: 'video/mp4' });
+    const r = await ad.transcribirPieza({ id: 7, titulo: 'Entrevista', archivos: [v] });
+    assert.deepEqual(usados, ['ElevenLabs', 'Whisper']);
+    assert.match(r.transcripciones[0].texto, /texto de Whisper/);
+    assert.equal(r.transcripciones[0].con, 'Whisper');
+    // Al subirlo al chat no se espera a Whisper: se avisa de cómo hacerlo después
+    usados.length = 0;
+    const p = await ad.preparar(await archivos.guardar(createReadStream(video), { nombre: 'adjunto.mp4', mime: 'video/mp4' }));
+    assert.deepEqual(usados, ['ElevenLabs']);
+    assert.equal(p.transcripcion, null);
+    assert.match(textoAdjuntos([p]), /créditos.*transcribir_video con url \/api\/contenido\/archivos\//s);
+    // …y transcribir_video lo hace por su url
+    usados.length = 0;
+    const tv = await ad.transcribirVideo(`${p.url}`);
+    assert.match(tv.texto, /texto de Whisper/);
+    await assert.rejects(ad.transcribirVideo('/api/contenido/archivos/no/existe.mp4'), /No encuentro/);
+    // Con JARVIS_TRANSCRIPCION=whisper, primero Whisper (gratis)
+    usados.length = 0;
+    const gratis = createAdjuntos({ archivos, vaultPath: path.join(dir, 'W2'), env: { ELEVENLABS_API_KEY: 'x', JARVIS_TRANSCRIPCION: 'whisper' }, sttImpl: sinCreditos, whisperImpl });
+    await gratis.transcribirPieza({ id: 8, titulo: 'Otra', archivos: [v] });
+    assert.deepEqual(usados, ['Whisper']);
+    // Sin clave ni Whisper: lo dice
+    const nada = createAdjuntos({ archivos, vaultPath: path.join(dir, 'W3'), env: {} });
+    const sin = await nada.transcribirPieza({ id: 9, titulo: 'Nada', archivos: [v] });
+    assert.match(sin.transcripciones[0].aviso, /No hay con qué transcribir/);
+  });
+
   test('API: se sube, se prepara y el mensaje a Claude lleva los adjuntos por su id', async () => {
     const preguntas = [];
     const asistente = { preguntar: (b) => { preguntas.push(b); return { id: 1 }; }, cancelar() {}, nuevaSesion() {}, estado: () => ({ ocupado: false, eventos: [] }) };
