@@ -88,7 +88,7 @@ function CajaInstagram({ ig, pieza, plan, marcado, onMarcar, onAhora, onConverti
       {marcado && plan.problemas.length > 0 && <ul className="caja-ig-problemas">{plan.problemas.map((x) => <li key={x}>{x}</li>)}</ul>}
       {marcado && onConvertir && plan.problemas.some((x) => /no es JPG/.test(x)) && <button type="button" className="btn btn-sec caja-ig-convertir" onClick={onConvertir} disabled={ocupado}>Convertir las imágenes a JPG</button>}
       {marcado && !plan.problemas.length && <div className="caja-ig-linea ok">Se publicará como {NOMBRE_TIPO_IG[plan.tipo]}.</div>}
-      {onAhora && <button type="button" className="link-btn caja-ig-ahora" onClick={onAhora} disabled={ocupado}>Publicar ahora en Instagram</button>}
+      {onAhora && <button type="button" className="btn btn-sec caja-ig-ahora" onClick={onAhora} disabled={ocupado}><Icon name="send" size={13} />Publicar ahora en Instagram</button>}
     </div>
   );
 }
@@ -280,9 +280,7 @@ export function EditorContenido({ pieza, carpetas, ig, onClose, onGuardado, onVi
           <CampoCaption rows={7} value={d.caption} onChange={cambia('caption')} placeholder="El texto que acompaña a la publicación…" onIA={() => crearCaption({ ...d, nota: pieza.nota, archivos })} />
           <CampoLeadMagnet activo={d.leadmagnet} url={d.leadmagnet_url} onCambio={(c) => setD((x) => ({ ...x, ...c }))} />
           {/* Programar y publicar en Instagram se hace desde «Programar» (biblioteca o calendario); aquí solo se ve cómo está */}
-          {pieza.ig_estado === 'publicado'
-            ? <CajaInstagram ig={ig} pieza={pieza} plan={plan} marcado={d.publicar_ig} onMarcar={marcarIg} ocupado={ocupado} onRepublicar={!nueva && onRepublicar ? () => { cerrar(); onRepublicar(pieza); } : null} />
-            : d.publicar_ig && conIg && <div className="caja-ig on"><Icon name="instagram" size={14} /><span>Se publicará sola en Instagram {d.fecha ? `el ${d.fecha}${d.hora ? ` a las ${d.hora}` : ''}` : 'cuando tenga día'}. Lo cambias con «Programar» en la biblioteca o el calendario.</span></div>}
+          <CajaInstagram ig={ig} pieza={pieza} plan={plan} marcado={d.publicar_ig} onMarcar={marcarIg} ocupado={ocupado} onAhora={conIg ? () => guardar(null, { ahora: true }) : null} onConvertir={convertirAJpg} onRepublicar={!nueva && onRepublicar ? () => { cerrar(); onRepublicar(pieza); } : null} />
           <div className="generar-botones">
             {d.formato !== 'Story' && <button type="button" className="btn btn-sec" onClick={() => setGenerandoPortada(true)} disabled={ocupado} title={esFormatoVideo(d.formato) ? 'Con tu sistema de diseño; queda como portada del reel' : 'Con tu sistema de diseño; entra como primera imagen'}><Icon name="sparkle" size={14} />Generar portada</button>}
             <button type="button" className="btn btn-sec" onClick={() => setGenerando('leadmagnet')} disabled={ocupado || nueva} title={nueva ? 'Guarda la pieza primero' : 'JARVIS hace el lead magnet de esta pieza'}><Icon name="target" size={14} />Generar lead magnet</button>
