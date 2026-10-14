@@ -555,15 +555,20 @@ export function createApp({ jarvis, archivos, publicadorIg, asistente, instagram
       }, true));
       app.post('/api/archivos/transcribir', h(async (req) => {
         const url = String(req.body?.url || '');
+        const palabras = req.body?.palabras === true;
         const nombre = path.basename(adjuntos.relDeUrl(url)).replace(/^\d+-[0-9a-f]+_/, '');
-        const t = adjuntos.encargar(`video-${adjuntos.relDeUrl(url)}`, `Transcribiendo «${nombre}»`, async (tarea) => {
-          const r = await adjuntos.transcribirVideo(url, { tarea });
+        const t = adjuntos.encargar(`video-${adjuntos.relDeUrl(url)}${palabras ? '-palabras' : ''}`, `Transcribiendo «${nombre}»`, async (tarea) => {
+          const r = await adjuntos.transcribirVideo(url, { tarea, palabras });
           if (r.nueva) r.nota = notaTranscripcion(nombre, r.texto);
           delete r.nueva;
           return r;
         });
         return resultadoTarea(await adjuntos.esperarTarea(t, Number(req.query.esperar ?? 20_000)));
       }, true));
+      app.post('/api/archivos/subtitulos', h((req) => {
+        const n = (v) => (v == null || v === '' || !Number.isFinite(Number(v)) ? null : Math.max(0, Number(v)));
+        return adjuntos.subtitulosVideo(String(req.body?.url || ''), { desde: n(req.body?.desde) ?? 0, hasta: n(req.body?.hasta) });
+      }));
       app.get('/api/transcripciones', h((req) => {
         const t = adjuntos.tarea(String(req.query.clave || ''));
         if (!t) throw Object.assign(new Error('No hay ninguna transcripción con esa clave (¿se reinició JARVIS?): vuelve a pedirla'), { publico: true });

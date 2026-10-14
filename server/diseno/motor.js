@@ -26,6 +26,10 @@ const enScript = (s) => String(s || '').replace(/<\/script/gi, '<\\/script');
 //   { titulo, formato: 'carrusel'|'story', plantilla, caption,
 //     slides: [{ bg: 'black'|'grey'|…, glow: 'top'|'mid'|null, blocks: [{ html, js }] }] }
 // Cada diapositiva puede traer también html/js directamente en lugar de blocks.
+export const MAX_DURACION = 60; // lo que admite Instagram por vídeo en un carrusel
+// Lo que dura una diapositiva: la suya si la tiene; si no, la del kit
+export const duracionDe = (kit, slide) => slide?.duracion || kit.duracion;
+
 export function normalizarDiseno(d, kit) {
   if (!d || typeof d !== 'object') throw new Error('El diseño debe ser un objeto');
   const formato = FORMATOS[d.formato] ? d.formato : 'carrusel';
@@ -47,7 +51,9 @@ export function normalizarDiseno(d, kit) {
       const js = [s?.js, ...blocks.map((b) => b?.js)].filter((x) => typeof x === 'string').join('\n');
       if (!html.trim()) throw new Error(`La diapositiva ${i + 1} no tiene HTML`);
       if (html.length > 300_000 || js.length > 100_000) throw new Error(`La diapositiva ${i + 1} es demasiado grande`);
-      return { bg: token(s.bg, 'black'), glow: s.glow ? token(s.glow, null) : null, clase: token(s.clase, ''), html, js };
+      // Una diapositiva puede durar más que las demás (p. ej. la de un vídeo con alguien hablando): hasta 60 s
+      const dur = Number(s?.duracion);
+      return { bg: token(s.bg, 'black'), glow: s.glow ? token(s.glow, null) : null, clase: token(s.clase, ''), html, js, duracion: Number.isFinite(dur) && dur > 0 ? Math.round(Math.min(MAX_DURACION, Math.max(2, dur)) * 10) / 10 : null };
     }),
   };
 }
@@ -77,7 +83,20 @@ ${kit.css.map((c) => `<link rel="stylesheet" href="${esc(c)}">`).join('\n')}
 ${estilos.length ? `<style>\n${estilos.join('\n')}\n</style>` : ''}
 <script src="${ORIGEN}/recursos/gsap.min.js"></script>
 <script>window.__errores = []; window.addEventListener('error', function (e) { window.__errores.push(String(e.message || e)); });
-var tl = gsap.timeline({ paused: true }); var O = "power3.out";</script>
+var tl = gsap.timeline({ paused: true }); var O = "power3.out";
+// Subtítulos sincronizados: cada línea [inicio, fin, texto] (segundos desde que empieza el vídeo) sale en su momento
+// dentro de la caja «sel» (el estilo de la caja lo pones tú). inicio: el data-start del vídeo en la diapositiva.
+window.subtitulos = function (sel, lineas, inicio) {
+  var caja = document.querySelector(sel);
+  if (!caja) { window.__errores.push('subtitulos: no existe ' + sel); return; }
+  (lineas || []).forEach(function (l) {
+    var s = document.createElement('span');
+    s.className = 'sub-linea'; s.textContent = l[2]; s.style.display = 'none';
+    caja.appendChild(s);
+    tl.set(s, { display: 'block' }, (inicio || 0) + l[0]);
+    tl.set(s, { display: 'none' }, (inicio || 0) + l[1]);
+  });
+};</script>
 </head><body><div id="lienzo">
 <div class="${clases}" id="${raiz}">
 <div class="bg bg-${s.bg}"></div>
@@ -114,7 +133,7 @@ window.__listo = async function (limite) {
   }));
   vids.forEach(function (v) { if (v.error || v.readyState < 2) problemas.push('No se ha podido cargar el vídeo ' + (v.getAttribute('src') || '')); });
   // Lo que empieza a animarse al final no da tiempo a verlo (los vaivenes que siguen después no importan)
-  var tarde = window.tl ? tl.getChildren(true, true, false).filter(function (t) { return t.startTime() > limite - 0.4; }).map(function (t) { return t.startTime(); }) : [];
+  var tarde = window.tl ? tl.getChildren(true, true, false).filter(function (t) { return t.startTime() > limite - 0.4 && t.duration() > 0; }).map(function (t) { return t.startTime(); }) : [];
   return { problemas: problemas, errores: window.__errores.slice(), tarde: tarde };
 };
 window.__seek = async function (t) {
@@ -124,7 +143,8 @@ window.__seek = async function (t) {
   await Promise.all(vids.map(function (v) {
     if (v.error || !v.duration) return null;
     var inicio = parseFloat(v.dataset.start || '0') || 0;
-    var local = Math.min(Math.max(0, t - inicio), Math.max(0, v.duration - 0.04));
+    var desde = parseFloat(v.dataset.from || '0') || 0;
+    var local = Math.min(desde + Math.max(0, t - inicio), Math.max(0, v.duration - 0.04));
     if (Math.abs(v.currentTime - local) < 0.004) return null;
     return new Promise(function (r) { v.addEventListener('seeked', r, { once: true }); setTimeout(r, 5000); v.currentTime = local; });
   }));
@@ -292,7 +312,16 @@ export function createMotor({ kit: kitApi, archivos = null, lanzar = lanzarNaveg
   // El Chromium de Playwright (el del VPS) no reproduce H.264, que es el MP4 de los móviles y de las grabaciones de
   // pantalla: los vídeos de la biblioteca que usa un diseño se le dan convertidos a WebM (una vez; se guardan aparte).
   const VIDEO_BIBLIOTECA = /\/api\/contenido\/archivos\/(\d{4}-\d{2})\/([^"'\s)?#<>]+\.(?:mp4|m4v|mov|mkv))/gi;
-  const webmDe = (mes, fichero) => (archivos ? path.join(archivos.dir, '.webm', `${mes}_${fichero}.webm`) : null);
+  // .webm2: desde que se puede empezar a mitad de vídeo (data-from) se convierten hasta 15 min, no los 2 primeros
+  const webmDe = (mes, fichero) => (archivos ? path.join(archivos.dir, '.webm2', `${mes}_${fichero}.webm`) : null);
+  // El archivo de un medio de la diapositiva (biblioteca o kit), para sacar su sonido
+  const rutaMedio = (kit, src) => {
+    const m = /\/api\/contenido\/archivos\/([^?#]+)/.exec(String(src || ''));
+    try {
+      if (m) { const abs = archivos?.ruta(decodeURIComponent(m[1])); return abs && existsSync(abs) ? abs : null; }
+      return kitApi.archivo(kit, String(src || '').replace(/^\.\//, '')) || null;
+    } catch { return null; }
+  };
   async function prepararVideos(d) {
     if (!archivos) return;
     const vistos = new Set();
@@ -309,7 +338,7 @@ export function createMotor({ kit: kitApi, archivos = null, lanzar = lanzarNaveg
       log(`Convirtiendo ${fichero} a WebM para el diseño…`);
       const ok = await new Promise((fin) => {
         rutaFfmpeg().then((bin) => {
-          const p = spawn(bin, ['-hide_banner', '-loglevel', 'error', '-y', '-i', origen, '-t', '120', '-vf', "scale='min(1080,iw)':-2", '-c:v', 'libvpx', '-deadline', 'realtime', '-cpu-used', '8', '-b:v', '4M', '-an', tmp], { windowsHide: true });
+          const p = spawn(bin, ['-hide_banner', '-loglevel', 'error', '-y', '-i', origen, '-t', '900', '-vf', "scale='min(1080,iw)':-2", '-c:v', 'libvpx', '-deadline', 'realtime', '-cpu-used', '8', '-b:v', '4M', '-an', tmp], { windowsHide: true });
           p.on('error', () => fin(false));
           p.on('close', (code) => fin(code === 0));
         }).catch(() => fin(false));
@@ -350,7 +379,7 @@ export function createMotor({ kit: kitApi, archivos = null, lanzar = lanzarNaveg
       await ctx.route('**/*', (r) => enrutar(r, kit, html).catch(() => r.abort().catch(() => {})));
       const page = await ctx.newPage();
       await page.goto(`${ORIGEN}/diapositiva.html`, { waitUntil: 'load', timeout: 90_000 });
-      const carga = await page.evaluate((limite) => window.__listo(limite), kit.duracion);
+      const carga = await page.evaluate((limite) => window.__listo(limite), duracionDe(kit, diseno.slides[n - 1]));
       return await fn(page, carga);
     } finally {
       await ctx.close().catch(() => {});
@@ -359,9 +388,9 @@ export function createMotor({ kit: kitApi, archivos = null, lanzar = lanzarNaveg
 
   const zonaDe = (kit, diseno) => (diseno.formato === 'story' ? kit.zonaStory || [250, 300] : null);
 
-  function avisosDe(n, carga, revision, kit) {
+  function avisosDe(n, carga, revision, dur) {
     const lista = [...carga.problemas, ...carga.errores.map((e) => `Error en la animación: ${e}`), ...revision];
-    if (carga.tarde.length) lista.push(`Hay una animación que empieza a los ${Math.min(...carga.tarde).toFixed(1)} s: la diapositiva dura ${kit.duracion} s y casi no se verá`);
+    if (carga.tarde.length) lista.push(`Hay una animación que empieza a los ${Math.min(...carga.tarde).toFixed(1)} s: la diapositiva dura ${dur} s y casi no se verá`);
     return lista.map((texto) => ({ diapositiva: n, texto }));
   }
 
@@ -378,10 +407,10 @@ export function createMotor({ kit: kitApi, archivos = null, lanzar = lanzarNaveg
         for (let n = 1; n <= d.slides.length; n++) {
           if (solo && !solo.includes(n)) { imagenes.push(null); continue; }
           await conDiapositiva(kit, d, n, async (page, carga) => {
-            await page.evaluate((t) => window.__seek(t), kit.duracion);
+            await page.evaluate((t) => window.__seek(t), duracionDe(kit, d.slides[n - 1]));
             const revision = await page.evaluate((z) => window.__revisar(z), zonaDe(kit, d));
             imagenes.push(await page.screenshot({ type: 'jpeg', quality: calidad }));
-            avisos.push(...avisosDe(n, carga, revision, kit));
+            avisos.push(...avisosDe(n, carga, revision, duracionDe(kit, d.slides[n - 1])));
           });
         }
       } finally {
@@ -407,18 +436,24 @@ export function createMotor({ kit: kitApi, archivos = null, lanzar = lanzarNaveg
       try {
         for (const [k, n] of lista.entries()) {
           const nombre = `${String(n).padStart(2, '0')}`;
+          const dur = duracionDe(kit, d.slides[n - 1]);
           await conDiapositiva(kit, d, n, async (page) => {
             if (tipo !== 'mp4') {
-              await page.evaluate((t) => window.__seek(t), kit.duracion);
+              await page.evaluate((t) => window.__seek(t), dur);
               salida.push({ n, nombre: `slide-${nombre}.jpg`, mime: 'image/jpeg', buffer: await page.screenshot({ type: 'jpeg', quality: 92 }) });
               alProgreso({ diapositiva: n, total, avance: (k + 1) / total });
               return;
             }
             const ruta = path.join(tmp, `slide-${nombre}.mp4`);
-            const fotogramas = Math.round(kit.duracion * kit.fps);
+            const fotogramas = Math.round(dur * kit.fps);
             await grabarVideo(page, { ffmpeg, ruta, fps: kit.fps, fotogramas, alFotograma: (f) => {
               if (f % 15 === 0) alProgreso({ diapositiva: n, total, avance: (k + f / fotogramas) / total });
             } });
+            // Los vídeos con data-audio se oyen: su sonido se mezcla en el MP4 de la diapositiva
+            const sonidos = await page.evaluate(() => Array.prototype.slice.call(document.querySelectorAll('video[data-audio]')).map((v) => ({
+              src: v.getAttribute('src'), inicio: parseFloat(v.dataset.start || '0') || 0, desde: parseFloat(v.dataset.from || '0') || 0, volumen: parseFloat(v.dataset.audio) || 1,
+            })));
+            if (sonidos.length) await ponerSonido({ ffmpeg, ruta, dur, sonidos: sonidos.map((x) => ({ ...x, ruta: rutaMedio(kit, x.src) })).filter((x) => x.ruta) });
             salida.push({ n, nombre: `slide-${nombre}.mp4`, mime: 'video/mp4', ruta });
           });
         }
@@ -440,6 +475,35 @@ export function createMotor({ kit: kitApi, archivos = null, lanzar = lanzarNaveg
   }
 
   return { previsualizar, exportar, cerrar, preparar };
+}
+
+// El sonido de los vídeos marcados con data-audio, mezclado en el MP4 ya grabado de la diapositiva: cada uno
+// empieza en su data-start (segundo de la diapositiva) desde su data-from (segundo del vídeo). Los que no tienen
+// audio no suman; si ninguno tiene, el MP4 se queda como estaba.
+export async function ponerSonido({ ffmpeg, ruta, dur, sonidos }) {
+  const correr = (args) => new Promise((ok) => {
+    let err = '';
+    const p = spawn(ffmpeg, args, { windowsHide: true });
+    p.stderr.on('data', (d) => { err = (err + d).slice(-4000); });
+    p.on('error', (e) => ok({ code: 1, err: e.message }));
+    p.on('close', (code) => ok({ code, err }));
+  });
+  const conAudio = [];
+  for (const x of sonidos) if (/Stream #[^\n]*Audio:/.test((await correr(['-hide_banner', '-i', x.ruta])).err)) conAudio.push(x);
+  if (!conAudio.length) return false;
+  const args = ['-y', '-loglevel', 'error', '-i', ruta];
+  for (const x of conAudio) args.push('-ss', String(Math.max(0, x.desde)), '-t', String(Math.max(0.1, dur - x.inicio)), '-i', x.ruta);
+  const filtros = conAudio.map((x, i) => `[${i + 1}:a]aresample=48000,adelay=${Math.round(Math.max(0, x.inicio) * 1000)}:all=1,volume=${Math.min(2, Math.max(0, x.volumen))}[a${i}]`);
+  filtros.push(conAudio.length > 1 ? `${conAudio.map((_, i) => `[a${i}]`).join('')}amix=inputs=${conAudio.length}:normalize=0,apad[a]` : '[a0]apad[a]');
+  const tmp = `${ruta}.sonido.mp4`;
+  args.push('-filter_complex', filtros.join(';'), '-map', '0:v', '-map', '[a]', '-c:v', 'copy', '-c:a', 'aac', '-b:a', '160k', '-t', String(dur), '-movflags', '+faststart', tmp);
+  const r = await correr(args);
+  if (r.code !== 0 || !existsSync(tmp)) {
+    rmSync(tmp, { force: true });
+    throw new Error(`No se ha podido poner el sonido del vídeo: ${r.err.trim().split('\n').pop() || `código ${r.code}`}`);
+  }
+  renameSync(tmp, ruta);
+  return true;
 }
 
 // Fotograma a fotograma: ir al instante, capturar y pasárselo a ffmpeg (H.264, yuv420p, faststart, sin audio)

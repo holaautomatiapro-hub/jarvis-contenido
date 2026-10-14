@@ -65,13 +65,13 @@ export function createAdjuntos({ archivos, vaultPath, env = process.env, ffmpeg 
   // Whisper en este ordenador (el que instala el Laboratorio): gratis, sin internet; más lento que ElevenLabs
   const whisperDisponible = () => Boolean(whisperImpl || python());
   // tarea (opcional): se va apuntando el avance (el script escribe «@progreso 0.42») y se corta si la paran
-  async function whisper(ruta, tarea = null) {
-    if (whisperImpl) return whisperImpl(ruta, tarea);
+  async function whisper(ruta, tarea = null, { palabras = null } = {}) {
+    if (whisperImpl) return whisperImpl(ruta, tarea, { palabras });
     const bin = await ffmpeg().catch(() => null);
     return new Promise((ok, ko) => {
       let out = '', err = '';
       let p;
-      try { p = spawn(python(), [whisperScript, ruta], { windowsHide: true, signal: tarea?.abort.signal, env: { ...process.env, PYTHONIOENCODING: 'utf-8', ...(bin ? { JARVIS_FFMPEG: bin } : {}) } }); } catch (e) { ko(e); return; }
+      try { p = spawn(python(), [whisperScript, ruta], { windowsHide: true, signal: tarea?.abort.signal, env: { ...process.env, PYTHONIOENCODING: 'utf-8', ...(bin ? { JARVIS_FFMPEG: bin } : {}), ...(palabras ? { JARVIS_PALABRAS: palabras } : {}) } }); } catch (e) { ko(e); return; }
       const reloj = setTimeout(() => p.kill('SIGKILL'), 90 * 60_000);
       p.stdout.on('data', (d) => { out += d; });
       p.stderr.on('data', (d) => {
@@ -89,15 +89,18 @@ export function createAdjuntos({ archivos, vaultPath, env = process.env, ffmpeg 
   // sacar, el vídeo tal cual. Primero ElevenLabs (rápido) y, si falla o no hay clave, Whisper (gratis); con
   // JARVIS_TRANSCRIPCION=whisper, al revés. dir: dónde dejar el audio y el texto (se reaprovechan la próxima vez)
   // rapido: solo ElevenLabs (al subir un adjunto no se puede esperar a Whisper)
-  async function transcribir(origen, a, r, dir, { rapido = false, tarea = null } = {}) {
+  // palabras: hace falta además el tiempo de cada palabra (para subtítulos): queda en palabras.json
+  async function transcribir(origen, a, r, dir, { rapido = false, tarea = null, palabras = false } = {}) {
     const guardada = path.join(dir, 'transcripcion.txt');
-    if (existsSync(guardada)) { r.transcripcion = readFileSync(guardada, 'utf8') || null; r.yaEstaba = true; return; }
+    const rutaPalabras = path.join(dir, 'palabras.json');
+    if (existsSync(guardada) && (!palabras || existsSync(rutaPalabras))) { r.transcripcion = readFileSync(guardada, 'utf8') || null; r.yaEstaba = true; return; }
+    const guardarPalabras = (l) => { if (Array.isArray(l) && l.length) writeFileSync(rutaPalabras, JSON.stringify(l)); };
     const motores = [
       sttConfigurado(env) && { de: 'ElevenLabs', fn: (f) => {
         if (statSync(f.ruta).size > MAX_TRANSCRIBIR) throw new Error('el vídeo es demasiado grande');
-        return sttImpl(readFileSync(f.ruta), { nombre: f.nombre, tipo: f.tipo, env, fetchImpl, signal: tarea?.abort.signal });
+        return sttImpl(readFileSync(f.ruta), { nombre: f.nombre, tipo: f.tipo, env, fetchImpl, signal: tarea?.abort.signal, alPalabras: guardarPalabras });
       } },
-      !rapido && whisperDisponible() && { de: 'Whisper', fn: (f) => whisper(f.ruta, tarea) },
+      !rapido && whisperDisponible() && { de: 'Whisper', fn: (f) => whisper(f.ruta, tarea, { palabras: palabras ? rutaPalabras : null }) },
     ].filter(Boolean);
     const conWhisper = rapido && whisperDisponible() && a.url ? ` Para transcribirlo gratis con Whisper (tarda unos minutos): transcribir_video con url ${a.url}` : '';
     if (env.JARVIS_TRANSCRIPCION === 'whisper') motores.reverse();
@@ -170,17 +173,27 @@ export function createAdjuntos({ archivos, vaultPath, env = process.env, ffmpeg 
 
   // Un vídeo de la biblioteca por su url (p. ej. uno adjuntado al chat): /api/contenido/archivos/…
   const relDeUrl = (url) => decodeURIComponent(String(url || '').replace(/^.*\/api\/contenido\/archivos\//, '').split(/[?#]/)[0]);
-  async function transcribirVideo(url, { tarea = null } = {}) {
+  const dirVideo = (rel) => path.join(vistas, 'archivos', path.basename(rel).replace(/\.[^.]+$/, '').replace(/[^\w-]/g, '_'));
+  async function transcribirVideo(url, { tarea = null, palabras = false } = {}) {
     const rel = relDeUrl(url);
     let origen = null;
     try { origen = rel ? archivos.ruta(rel) : null; } catch { origen = null; }
     if (!origen || !existsSync(origen)) throw Object.assign(new Error('No encuentro ese vídeo en la biblioteca: pasa la url tal cual (/api/contenido/archivos/…)'), { publico: true });
-    const dir = path.join(vistas, 'archivos', path.basename(rel).replace(/\.[^.]+$/, '').replace(/[^\w-]/g, '_'));
+    const dir = dirVideo(rel);
     mkdirSync(dir, { recursive: true });
     const r = { transcripcion: null, avisos: [] };
-    await transcribir(origen, { nombre: path.basename(rel), mime: 'video/mp4' }, r, dir, { tarea });
+    await transcribir(origen, { nombre: path.basename(rel), mime: 'video/mp4' }, r, dir, { tarea, palabras });
     if (!r.transcripcion) throw Object.assign(new Error(r.avisos[0] || 'No se ha podido transcribir'), { publico: true });
     return { url, texto: r.transcripcion, ...(r.de ? { con: r.de } : {}), nueva: !r.yaEstaba };
+  }
+
+  // Las líneas de subtítulos de un trozo de un vídeo ya transcrito con palabras (transcribirVideo con palabras)
+  function subtitulosVideo(url, { desde = 0, hasta = null } = {}) {
+    const ruta = path.join(dirVideo(relDeUrl(url)), 'palabras.json');
+    if (!existsSync(ruta)) throw Object.assign(new Error('Ese vídeo aún no está transcrito con los tiempos de cada palabra'), { publico: true });
+    const lineas = lineasSubtitulos(JSON.parse(readFileSync(ruta, 'utf8')), { desde, hasta });
+    if (!lineas.length) throw Object.assign(new Error(`No se dice nada entre el segundo ${desde} y el ${hasta ?? 'final'} del vídeo`), { publico: true });
+    return { url, desde, hasta, lineas, como_usarlas: 'En el js de la diapositiva: subtitulos("#sN-sub", lineas, INICIO) con INICIO = el data-start del vídeo; el vídeo con data-from igual a «desde».' };
   }
 
   // ---------- Transcripciones en segundo plano ----------
@@ -255,7 +268,29 @@ export function createAdjuntos({ archivos, vaultPath, env = process.env, ffmpeg 
     };
   }
 
-  return { preparar, verPieza, transcribirPieza, transcribirVideo, relDeUrl, encargar, esperarTarea, verTarea, tarea, transcribiendo, pararTarea };
+  return { preparar, verPieza, transcribirPieza, transcribirVideo, subtitulosVideo, relDeUrl, encargar, esperarTarea, verTarea, tarea, transcribiendo, pararTarea };
+}
+
+// Palabras con su tiempo ([inicio, fin, palabra], segundos del vídeo) → líneas cortas de subtítulos
+// [inicio, fin, texto] contando desde «desde» (el trozo del vídeo que sale en la diapositiva)
+export function lineasSubtitulos(palabras, { desde = 0, hasta = null, maxPalabras = 5, maxLetras = 32, maxSegundos = 2.6 } = {}) {
+  const fin = hasta ?? Infinity;
+  const r2 = (x) => Math.round(x * 100) / 100;
+  const lineas = [];
+  let l = null;
+  for (const [a, b, w] of palabras) {
+    const txt = String(w || '').trim();
+    if (!txt || b <= desde || a >= fin) continue;
+    const corta = l && (l.n >= maxPalabras || `${l.texto} ${txt}`.length > maxLetras || b - l.ini > maxSegundos || a - l.fin > 0.6 || /[.!?…]$/.test(l.texto));
+    if (!l || corta) { if (l) lineas.push(l); l = { ini: a, fin: b, texto: txt, n: 1 }; } else Object.assign(l, { fin: b, texto: `${l.texto} ${txt}`, n: l.n + 1 });
+  }
+  if (l) lineas.push(l);
+  // Cada línea se queda hasta que empieza la siguiente (como mucho 0,4 s más), para que dé tiempo a leerla
+  return lineas.map((x, i) => {
+    const sig = lineas[i + 1];
+    const hastaLinea = Math.min(fin, sig ? Math.min(sig.ini, x.fin + 0.4) : x.fin + 0.4);
+    return [r2(Math.max(0, x.ini - desde)), r2(hastaLinea - desde), x.texto];
+  });
 }
 
 // El bloque que se añade al mensaje para Claude. La interfaz lo reconoce por «[Adjuntos]» y enseña solo los nombres.

@@ -3,7 +3,9 @@
 Lo usa JARVIS cuando no hay clave de ElevenLabs o falla (p. ej. sin créditos): para el caption de un reel y para
 transcribir entrevistas y vídeos de la biblioteca.
 Uso: python transcribir-audio.py <audio>   → escribe el texto en la salida estándar
+Con JARVIS_PALABRAS=<ruta.json> guarda además cada palabra con su tiempo, [[inicio, fin, "palabra"], …] (subtítulos).
 """
+import json
 import os
 import subprocess
 import sys
@@ -37,13 +39,19 @@ def main():
     if audio is not None and not audio.size:
         sys.exit("El vídeo no tiene audio")
     modelo = WhisperModel(MODELO, revision=REVISION, device="cpu", compute_type="int8")
-    trozos, info = modelo.transcribe(audio if audio is not None else sys.argv[1], language="es", vad_filter=True, beam_size=1)
-    textos = []
+    ruta_palabras = os.environ.get("JARVIS_PALABRAS")
+    trozos, info = modelo.transcribe(audio if audio is not None else sys.argv[1], language="es", vad_filter=True, beam_size=1,
+                                     word_timestamps=bool(ruta_palabras))
+    textos, palabras = [], []
     for t in trozos:
         textos.append(t.text.strip())
+        palabras.extend([round(w.start, 2), round(w.end, 2), w.word.strip()] for w in (t.words or []))
         # Cuánto lleva (lo lee JARVIS para la barra de «Trabajando»)
         if info.duration:
             print(f"@progreso {min(t.end / info.duration, 1):.3f}", file=sys.stderr, flush=True)
+    if ruta_palabras:
+        with open(ruta_palabras, "w", encoding="utf-8") as f:
+            json.dump(palabras, f, ensure_ascii=False)
     print(" ".join(textos).strip())
 
 

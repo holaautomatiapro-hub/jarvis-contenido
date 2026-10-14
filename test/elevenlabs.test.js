@@ -21,6 +21,14 @@ test('ElevenLabs: el 401 dice el motivo de verdad (permiso, créditos o clave ma
   await assert.rejects(sintetizar('hola', { env, fetchImpl: sinPermiso }), /Text to Speech/);
 });
 
+test('ElevenLabs devuelve también el tiempo de cada palabra (para subtítulos)', async () => {
+  const fetchImpl = async () => new Response(JSON.stringify({ text: 'Hola Miguel', words: [{ text: 'Hola', start: 0.1, end: 0.4, type: 'word' }, { text: ' ', start: 0.4, end: 0.5, type: 'spacing' }, { text: 'Miguel', start: 0.5, end: 0.9, type: 'word' }] }), { status: 200 });
+  let palabras;
+  const texto = await transcribir(Buffer.from('x'), { env: { ELEVENLABS_API_KEY: 'k' }, fetchImpl, alPalabras: (l) => { palabras = l; } });
+  assert.equal(texto, 'Hola Miguel');
+  assert.deepEqual(palabras, [[0.1, 0.4, 'Hola'], [0.5, 0.9, 'Miguel']]);
+});
+
 test('las claves nuevas del .env se usan sin reiniciar', () => {
   const dir = mkdtempSync(path.join(os.tmpdir(), 'jarvis-env-'));
   try {
