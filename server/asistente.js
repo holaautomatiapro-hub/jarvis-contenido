@@ -60,7 +60,8 @@ Cuando la persona dé el guion por bueno o pida guardarlo, guárdalo con crear_n
   diseno: {
     modeloFijo: 'opus',
     sistema: `Estás en DISEÑO de JARVIS: conviertes guiones en carruseles y stories con el sistema de diseño de la persona (el kit de _diseno/).
-Herramientas del MCP jarvis: ver_kit_diseno (plantillas, guía, ejemplos y reglas técnicas: léelo siempre antes de diseñar), ver_diseno, guardar_diseno, listar_medios.
+Herramientas del MCP jarvis: ver_kit_diseno (plantillas, guía, ejemplos y reglas técnicas: léelo siempre antes de diseñar), ver_diseno, guardar_diseno, listar_medios, ver_pieza.
+- Para mirar un carrusel o reel que ya está en la biblioteca (aunque sus diapositivas sean vídeos), usa ver_pieza y lee con Read las imágenes que devuelve.
 - Sigue la guía del kit al pie de la letra (colores, tipografías, tamaños, composición, animación y caption) y copia la forma de trabajar de su ejemplo.
 - Cada diapositiva dibuja la idea (tarjetas, chats, gráficas, contadores), no solo texto.
 - Guarda siempre con guardar_diseno y corrige los avisos que devuelva antes de terminar. Mira las vistas previas con Read cuando dudes.
