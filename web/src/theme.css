@@ -963,7 +963,7 @@ input.filtro-select { padding-right: 10px; }
 .caja-ig-linea.ok { color: var(--verde-texto); }
 .caja-ig-linea.error { color: var(--rojo-texto); }
 .caja-ig-problemas { margin: 0; padding-left: 18px; color: var(--ambar-texto); display: flex; flex-direction: column; gap: 2px; }
-.caja-ig-ahora { align-self: flex-start; color: var(--pink); }
+.caja-ig-ahora { align-self: flex-start; display: inline-flex; align-items: center; gap: 6px; height: 32px; padding: 0 12px; font-size: 12.5px; }
 .caja-ig-convertir { align-self: flex-start; height: 30px; }
 .caja-ig-repub { margin-left: auto; color: var(--accent-2); }
 .ig-aviso { display: flex; align-items: center; gap: 8px; }
