@@ -367,7 +367,7 @@ export function buildServer(jarvis, { origen = 'claude', avisar = () => {}, inst
           .filter((a) => !b || `${a.nombre} ${a.pieza}`.toLowerCase().includes(b))
           .slice(0, 80).map(({ url, nombre, mime, pieza, pieza_id }) => ({ url, nombre, tipo: mime.startsWith('video/') ? 'video' : 'foto', pieza, pieza_id }));
       });
-    tool('ver_pieza', 'VER una pieza de la biblioteca (Contenido): sus fotos y, de cada vídeo, cómo queda la diapositiva al final de la animación (y, si los pides, fotogramas para ver cómo se anima). Úsalo para mirar un carrusel o reel ya hecho (también los hechos de vídeos), p. ej. para replicar su diseño. Devuelve rutas de imágenes: léelas con Read.',
+    tool('ver_pieza', 'VER una pieza de la biblioteca (Contenido): sus fotos y, de cada vídeo, cómo queda la diapositiva al final de la animación (y, si los pides, fotogramas para ver cómo se anima). Para lo que se DICE en un vídeo, usa transcribir_pieza. Úsalo para mirar un carrusel o reel ya hecho (también los hechos de vídeos), p. ej. para replicar su diseño. Devuelve rutas de imágenes: léelas con Read.',
       {
         pieza_id: z.number().int().describe('El id de la pieza (búscalo con listar_pipeline o listar_medios)'),
         diapositiva: z.number().int().min(1).optional().describe('Solo esa diapositiva (desde 1). Sin ella, todas'),
@@ -375,6 +375,12 @@ export function buildServer(jarvis, { origen = 'claude', avisar = () => {}, inst
         transcribir: z.boolean().optional().describe('Transcribir lo que se dice en los vídeos (para reels con voz)'),
       },
       ({ pieza_id, ...resto }) => servidor('POST', `/api/piezas/${pieza_id}/ver`, resto));
+    tool('transcribir_pieza', 'TRANSCRIBE lo que se dice en los vídeos de una pieza de la biblioteca (una entrevista, un testimonio, un reel…) con ElevenLabs y lo guarda como nota en 03-Transcripciones. Devuelve el texto. Úsalo siempre que la persona te pida transcribir, leer o usar lo que se dice en un vídeo que ya está en Contenido. Una entrevista larga tarda unos minutos.',
+      {
+        pieza_id: z.number().int().describe('El id de la pieza (búscalo con listar_pipeline o listar_medios)'),
+        diapositiva: z.number().int().min(1).optional().describe('Solo ese archivo de la pieza (desde 1), si tiene varios vídeos'),
+      },
+      ({ pieza_id, diapositiva }) => servidor('POST', `/api/piezas/${pieza_id}/transcribir`, diapositiva ? { diapositiva } : {}), true);
     tool('listar_disenos', 'Diseños hechos o en curso (id, título, formato, plantilla, estado, avisos).', {},
       async () => (await servidor('GET', '/api/disenos')).disenos.map(({ id, titulo, formato, plantilla, estado, diapositivas, avisos, exportado }) => ({ id, titulo, formato, plantilla, estado, diapositivas, avisos: avisos.length, exportado: Boolean(exportado) })));
     tool('ver_diseno', 'Un diseño completo, con sus diapositivas (para cambiarlo y volver a guardarlo).', { id: z.number().int() },

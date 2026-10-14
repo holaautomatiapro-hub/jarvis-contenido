@@ -15,10 +15,11 @@ import { rutaFfmpeg } from '../server/diseno/motor.js';
 import { createApp } from '../server/index.js';
 
 let dir, archivos, adjuntos, ffmpeg, video;
+const stt = [];
 before(async () => {
   dir = mkdtempSync(path.join(os.tmpdir(), 'jarvis-adj-'));
   archivos = createArchivos({ dir: path.join(dir, 'contenido') });
-  adjuntos = createAdjuntos({ archivos, vaultPath: path.join(dir, 'V'), env: { ELEVENLABS_API_KEY: 'x' }, sttImpl: async (buf, { nombre }) => `Hola, soy el vídeo ${nombre} (${buf.length > 0 ? 'con audio' : 'vacío'})` });
+  adjuntos = createAdjuntos({ archivos, vaultPath: path.join(dir, 'V'), env: { ELEVENLABS_API_KEY: 'x' }, sttImpl: async (buf, { nombre }) => { stt.push(nombre); return `Hola, soy el vídeo ${nombre} (${buf.length > 0 ? 'con audio' : 'vacío'})`; } });
   ffmpeg = await rutaFfmpeg();
   video = path.join(dir, 'prueba.mp4');
   const r = spawnSync(ffmpeg, ['-hide_banner', '-loglevel', 'error', '-y', '-f', 'lavfi', '-i', 'testsrc=duration=4:size=320x240:rate=10', '-pix_fmt', 'yuv420p', video]);
@@ -115,6 +116,24 @@ describe('adjuntos del chat', () => {
       const ver = await (await post0(`/api/piezas/${p.id}/ver`, {})).json();
       assert.equal(ver.archivos[0].tipo, 'foto');
       assert.equal((await post0('/api/piezas/99999/ver', {})).status, 400);
+      // Transcribir una pieza: devuelve el texto y lo deja como nota en 03-Transcripciones (una sola vez)
+      assert.match((await (await post0(`/api/piezas/${p.id}/transcribir`, {})).json()).error, /no tiene vídeos/);
+      if (video) {
+        const v = await archivos.guardar(createReadStream(video), { nombre: 'entrevista.mp4', mime: 'video/mp4' });
+        const e = jarvis.crearPieza({ titulo: 'entrevista completa', formato: 'Reel', carpeta: 'Miguel/Youtube', archivos: [v] });
+        const t1 = await (await post0(`/api/piezas/${e.id}/transcribir`, {})).json();
+        assert.match(t1.transcripciones[0].texto, /Hola, soy el vídeo/);
+        assert.match(t1.nota, /03-Transcripciones/);
+        const notas = () => jarvis.vault.list().filter((n) => /03-Transcripciones/.test(n.ruta || n.path || JSON.stringify(n))).length;
+        const antes = notas();
+        assert.equal(antes, 1);
+        const llamadas = stt.length;
+        const t2 = await (await post0(`/api/piezas/${e.id}/transcribir`, {})).json();
+        assert.equal(t2.transcripciones[0].texto, t1.transcripciones[0].texto);
+        assert.equal(stt.length, llamadas, 'la segunda vez no se vuelve a mandar a ElevenLabs');
+        assert.equal(t2.nota, undefined, 'ni se repite la nota');
+        assert.equal(notas(), antes);
+      }
     } finally { server.close(); }
   });
 });

@@ -28,7 +28,7 @@ export async function transcribir(buffer, { nombre = 'reel.mp4', tipo = 'video/m
     method: 'POST',
     headers: { 'xi-api-key': env.ELEVENLABS_API_KEY },
     body: form,
-    signal: AbortSignal.timeout(180000),
+    signal: AbortSignal.timeout(600_000), // una entrevista larga tarda
   });
   if (!r.ok) {
     const detalle = await r.text().catch(() => '');

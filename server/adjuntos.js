@@ -1,6 +1,6 @@
 import path from 'node:path';
 import { spawn } from 'node:child_process';
-import { copyFileSync, existsSync, mkdirSync, readdirSync, readFileSync, statSync } from 'node:fs';
+import { copyFileSync, existsSync, mkdirSync, readdirSync, readFileSync, statSync, writeFileSync } from 'node:fs';
 import { rutaFfmpeg } from './diseno/motor.js';
 import { sttConfigurado, transcribir as transcribirElevenLabs } from './stt.js';
 
@@ -64,6 +64,8 @@ export function createAdjuntos({ archivos, vaultPath, env = process.env, ffmpeg 
   // Se manda solo el audio (mucho más ligero que el vídeo, y así cabe una entrevista larga); si no se puede
   // sacar, el vídeo tal cual. dir: dónde dejar el audio (se reaprovecha la próxima vez)
   async function transcribir(origen, a, r, dir) {
+    const guardada = path.join(dir, 'transcripcion.txt');
+    if (existsSync(guardada)) { r.transcripcion = readFileSync(guardada, 'utf8') || null; r.yaEstaba = true; return; }
     if (!sttConfigurado(env)) { r.avisos.push('Sin clave de ElevenLabs no se transcribe lo que se dice en el vídeo'); return; }
     let fuente = { ruta: origen, nombre: a.nombre, tipo: a.mime };
     const audio = path.join(dir, 'audio.mp3');
@@ -74,6 +76,7 @@ export function createAdjuntos({ archivos, vaultPath, env = process.env, ffmpeg 
     if (existsSync(audio) && statSync(audio).size > 0) fuente = { ruta: audio, nombre: 'audio.mp3', tipo: 'audio/mpeg' };
     if (statSync(fuente.ruta).size > MAX_TRANSCRIBIR) { r.avisos.push('El vídeo es demasiado grande para transcribirlo'); return; }
     try { r.transcripcion = (await sttImpl(readFileSync(fuente.ruta), { nombre: fuente.nombre, tipo: fuente.tipo, env, fetchImpl })) || null; } catch (e) { r.avisos.push(`No se ha podido transcribir: ${e.message}`); }
+    if (r.transcripcion) writeFileSync(guardada, r.transcripcion); // la próxima vez no se vuelve a pagar
   }
 
   // a: lo que devuelve archivos.guardar. Devuelve lo que necesita Claude para tenerlo en cuenta.
@@ -95,6 +98,29 @@ export function createAdjuntos({ archivos, vaultPath, env = process.env, ffmpeg 
     return r;
   }
 
+  // Carpeta de cada archivo de una pieza en .jarvis/vistas (fotogramas, audio y transcripción, para reaprovecharlos)
+  const dirVista = (pieza, num, a) => {
+    const dir = path.join(vistas, String(pieza.id), `${String(num).padStart(2, '0')}-${path.basename(a.path).replace(/\.[^.]+$/, '').replace(/[^\w-]/g, '_')}`);
+    mkdirSync(dir, { recursive: true });
+    return dir;
+  };
+
+  // Lo que se dice en los vídeos de una pieza (una entrevista, un reel…). diapositiva: solo ese archivo (desde 1)
+  async function transcribirPieza(pieza, { diapositiva = null } = {}) {
+    const lista = (pieza.archivos || []).map((a, i) => ({ a, n: i + 1 })).filter((x) => x.a.mime?.startsWith('video/') && (!diapositiva || x.n === diapositiva));
+    if (!lista.length) throw Object.assign(new Error(diapositiva ? `La diapositiva ${diapositiva} no es un vídeo` : 'La pieza no tiene vídeos que transcribir'), { publico: true });
+    const salida = [];
+    for (const { a, n } of lista) {
+      let origen;
+      try { origen = archivos.ruta(a.path); } catch { origen = null; }
+      if (!origen || !existsSync(origen)) { salida.push({ n, nombre: a.nombre, aviso: 'El archivo ya no está en la biblioteca' }); continue; }
+      const r = { n, nombre: a.nombre, transcripcion: null, avisos: [] };
+      await transcribir(origen, a, r, dirVista(pieza, n, a));
+      salida.push({ n, nombre: a.nombre, texto: r.transcripcion, nueva: Boolean(r.transcripcion) && !r.yaEstaba, ...(r.avisos.length ? { aviso: r.avisos.join('; ') } : {}) });
+    }
+    return { pieza: { id: pieza.id, titulo: pieza.titulo, carpeta: pieza.carpeta || null }, transcripciones: salida };
+  }
+
   // Ver una pieza de la biblioteca: sus fotos (copiadas al vault) y, de cada vídeo, cómo queda al final (el
   // último fotograma) y, si se piden, fotogramas repartidos para ver la animación. diapositiva: solo esa (desde 1).
   async function verPieza(pieza, { diapositiva = null, fotogramas: n = null, transcribir: conTexto = false } = {}) {
@@ -109,8 +135,7 @@ export function createAdjuntos({ archivos, vaultPath, env = process.env, ffmpeg 
       let origen;
       try { origen = archivos.ruta(a.path); } catch { origen = null; }
       if (!origen || !existsSync(origen)) { salida.push({ n: num, nombre: a.nombre, aviso: 'El archivo ya no está en la biblioteca' }); continue; }
-      const dir = path.join(vistas, String(pieza.id), `${String(num).padStart(2, '0')}-${path.basename(a.path).replace(/\.[^.]+$/, '').replace(/[^\w-]/g, '_')}`);
-      mkdirSync(dir, { recursive: true });
+      const dir = dirVista(pieza, num, a);
       if (!a.mime?.startsWith('video/')) {
         const copia = path.join(dir, `foto${path.extname(origen) || '.jpg'}`);
         if (!existsSync(copia)) copyFileSync(origen, copia);
@@ -119,7 +144,7 @@ export function createAdjuntos({ archivos, vaultPath, env = process.env, ffmpeg 
       }
       const f = await fotogramas(origen, dir, { n: porVideo, final: true });
       const r = { n: num, nombre: a.nombre, tipo: 'video', url: a.url, duracion: f.duracion ? Math.round(f.duracion * 10) / 10 : null, ver: f.fotos, avisos: f.aviso ? [f.aviso] : [] };
-      if (conTexto) await transcribir(origen, a, r, dir);
+      if (conTexto) { await transcribir(origen, a, r, dir); delete r.yaEstaba; }
       if (!r.avisos.length) delete r.avisos;
       salida.push(r);
     }
@@ -132,7 +157,7 @@ export function createAdjuntos({ archivos, vaultPath, env = process.env, ffmpeg 
     };
   }
 
-  return { preparar, verPieza };
+  return { preparar, verPieza, transcribirPieza };
 }
 
 // El bloque que se añade al mensaje para Claude. La interfaz lo reconoce por «[Adjuntos]» y enseña solo los nombres.
