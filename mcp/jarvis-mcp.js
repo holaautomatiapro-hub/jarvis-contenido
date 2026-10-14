@@ -361,12 +361,20 @@ export function buildServer(jarvis, { origen = 'claude', avisar = () => {}, inst
       ({ tipo, buscar }) => {
         const vistos = new Set();
         const b = (buscar || '').toLowerCase();
-        return jarvis.listarPiezas().flatMap((p) => p.archivos.map((a) => ({ ...a, pieza: p.titulo })))
+        return jarvis.listarPiezas().flatMap((p) => p.archivos.map((a) => ({ ...a, pieza: p.titulo, pieza_id: p.id })))
           .filter((a) => a.url && !vistos.has(a.url) && vistos.add(a.url))
           .filter((a) => !tipo || (tipo === 'video' ? a.mime.startsWith('video/') : a.mime.startsWith('image/')))
           .filter((a) => !b || `${a.nombre} ${a.pieza}`.toLowerCase().includes(b))
-          .slice(0, 80).map(({ url, nombre, mime, pieza }) => ({ url, nombre, tipo: mime.startsWith('video/') ? 'video' : 'foto', pieza }));
+          .slice(0, 80).map(({ url, nombre, mime, pieza, pieza_id }) => ({ url, nombre, tipo: mime.startsWith('video/') ? 'video' : 'foto', pieza, pieza_id }));
       });
+    tool('ver_pieza', 'VER una pieza de la biblioteca (Contenido): sus fotos y, de cada vídeo, cómo queda la diapositiva al final de la animación (y, si los pides, fotogramas para ver cómo se anima). Úsalo para mirar un carrusel o reel ya hecho (también los hechos de vídeos), p. ej. para replicar su diseño. Devuelve rutas de imágenes: léelas con Read.',
+      {
+        pieza_id: z.number().int().describe('El id de la pieza (búscalo con listar_pipeline o listar_medios)'),
+        diapositiva: z.number().int().min(1).optional().describe('Solo esa diapositiva (desde 1). Sin ella, todas'),
+        fotogramas: z.number().int().min(0).max(12).optional().describe('Fotogramas repartidos por cada vídeo, además del final (por defecto 0 si ves todas, 6 si ves una)'),
+        transcribir: z.boolean().optional().describe('Transcribir lo que se dice en los vídeos (para reels con voz)'),
+      },
+      ({ pieza_id, ...resto }) => servidor('POST', `/api/piezas/${pieza_id}/ver`, resto));
     tool('listar_disenos', 'Diseños hechos o en curso (id, título, formato, plantilla, estado, avisos).', {},
       async () => (await servidor('GET', '/api/disenos')).disenos.map(({ id, titulo, formato, plantilla, estado, diapositivas, avisos, exportado }) => ({ id, titulo, formato, plantilla, estado, diapositivas, avisos: avisos.length, exportado: Boolean(exportado) })));
     tool('ver_diseno', 'Un diseño completo, con sus diapositivas (para cambiarlo y volver a guardarlo).', { id: z.number().int() },

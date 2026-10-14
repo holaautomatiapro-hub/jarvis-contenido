@@ -57,6 +57,29 @@ describe('adjuntos del chat', () => {
     assert.match(textoAdjuntos([p]), /- Foto «portada\.jpg»\. Para verla: Read .*foto\.jpg\. Para usarla en un diseño: \/api\/contenido\/archivos\//);
   });
 
+  test('ver una pieza de la biblioteca: foto copiada y, de cada vídeo, cómo queda al final (y su animación si se pide)', async (t) => {
+    if (!video) return t.skip('No hay ffmpeg');
+    const v1 = await archivos.guardar(createReadStream(video), { nombre: 'slide-01.mp4', mime: 'video/mp4' });
+    const v2 = await archivos.guardar(createReadStream(video), { nombre: 'slide-02.mp4', mime: 'video/mp4' });
+    writeFileSync(path.join(dir, 'p.jpg'), Buffer.from([0xff, 0xd8, 0xff, 0xd9]));
+    const f = await archivos.guardar(createReadStream(path.join(dir, 'p.jpg')), { nombre: 'portada.jpg', mime: 'image/jpeg' });
+    const pieza = { id: 131, titulo: 'portada carrusel', formato: 'Carrusel', carpeta: 'Testimonio Alfonso / Storytelling carrusel', archivos: [f, v1, v2] };
+    const r = await adjuntos.verPieza(pieza);
+    assert.equal(r.pieza.diapositivas, 3);
+    assert.deepEqual(r.archivos.map((a) => [a.n, a.tipo]), [[1, 'foto'], [2, 'video'], [3, 'video']]);
+    assert.ok(r.archivos.every((a) => a.ver.every((x) => x.includes(path.join('V', '.jarvis', 'vistas', '131')) && existsSync(x))));
+    assert.deepEqual(r.archivos[1].ver.map((x) => path.basename(x)), ['final.jpg'], 'de toda la pieza, solo cómo queda cada vídeo');
+    assert.equal(r.archivos[1].duracion, 4);
+    assert.match(r.como_verlo, /Read/);
+    // Una diapositiva: su animación (6 repartidos por defecto) y el final
+    const una = await adjuntos.verPieza(pieza, { diapositiva: 3 });
+    assert.equal(una.archivos.length, 1);
+    assert.equal(una.archivos[0].n, 3);
+    assert.ok(una.archivos[0].ver.length >= 4 && una.archivos[0].ver.at(-1).endsWith('final.jpg'), una.archivos[0].ver.join(','));
+    assert.equal((await adjuntos.verPieza(pieza, { diapositiva: 2, transcribir: true })).archivos[0].transcripcion.includes('slide-01.mp4'), true);
+    await assert.rejects(adjuntos.verPieza(pieza, { diapositiva: 9 }), /no tiene la diapositiva 9/);
+  });
+
   test('API: se sube, se prepara y el mensaje a Claude lleva los adjuntos por su id', async () => {
     const preguntas = [];
     const asistente = { preguntar: (b) => { preguntas.push(b); return { id: 1 }; }, cancelar() {}, nuevaSesion() {}, estado: () => ({ ocupado: false, eventos: [] }) };
@@ -71,6 +94,7 @@ describe('adjuntos del chat', () => {
       const a = await r.json();
       assert.equal(r.status, 200, JSON.stringify(a));
       assert.equal(a.tipo, 'foto');
+      const post0 = (ruta, body) => fetch(`${base}${ruta}`, { method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify(body) });
       const post = (body) => fetch(`${base}/api/jarvis/preguntar`, { method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify(body) });
       assert.equal((await post({ texto: '[Diseño #3] usa esta foto en la 2', conversacion: 'diseno', adjuntos: [a.id] })).status, 200);
       assert.match(preguntas[0].texto, /^\[Diseño #3\] usa esta foto en la 2\n\n\[Adjuntos\]\n[\s\S]*Foto «ref\.jpg»/);
@@ -79,6 +103,12 @@ describe('adjuntos del chat', () => {
       assert.equal(caducado.status, 400);
       assert.match((await caducado.json()).error, /caducado/);
       assert.equal((await fetch(`${base}/api/jarvis/adjuntos?nombre=doc.pdf&mime=application/pdf`, { method: 'POST', body: Readable.from([Buffer.from('x')]), duplex: 'half' })).status, 400, 'solo fotos y vídeos');
+      // Ver una pieza por la API (lo que usa la herramienta ver_pieza)
+      const foto = await archivos.guardar(Readable.from([Buffer.from([0xff, 0xd8, 0xff, 0xd9])]), { nombre: 'una.jpg', mime: 'image/jpeg' });
+      const p = jarvis.crearPieza({ titulo: 'Con foto', formato: 'Post', archivos: [foto] });
+      const ver = await (await post0(`/api/piezas/${p.id}/ver`, {})).json();
+      assert.equal(ver.archivos[0].tipo, 'foto');
+      assert.equal((await post0('/api/piezas/99999/ver', {})).status, 400);
     } finally { server.close(); }
   });
 });

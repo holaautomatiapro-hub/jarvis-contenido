@@ -407,7 +407,7 @@ describe('diseños: API, exportar a la biblioteca y Claude', () => {
     const c = new Client({ name: 't', version: '1' });
     await c.connect(b);
     const nombres = (await c.listTools()).tools.map((t) => t.name);
-    for (const n of ['ver_kit_diseno', 'leer_archivo_kit', 'listar_medios', 'listar_disenos', 'ver_diseno', 'crear_diseno', 'guardar_diseno']) assert.ok(nombres.includes(n), n);
+    for (const n of ['ver_kit_diseno', 'leer_archivo_kit', 'listar_medios', 'ver_pieza', 'listar_disenos', 'ver_diseno', 'crear_diseno', 'guardar_diseno']) assert.ok(nombres.includes(n), n);
     const json = async (name, args = {}) => { const r = await c.callTool({ name, arguments: args }); return { error: r.isError, datos: r.isError ? r.content[0].text : JSON.parse(r.content[0].text) }; };
     const k = (await json('ver_kit_diseno')).datos;
     assert.equal(k.nombre, 'Marca de prueba');

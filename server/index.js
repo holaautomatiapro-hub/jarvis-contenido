@@ -517,6 +517,14 @@ export function createApp({ jarvis, archivos, publicadorIg, asistente, instagram
     // Fotos y vídeos adjuntos al chat: se preparan al subirlos (fotogramas y transcripción) y el mensaje los lleva por su id
     const preparados = new Map();
     if (adjuntos && archivos) {
+      // Para que JARVIS «vea» una pieza de la biblioteca (fotos y fotogramas de sus vídeos)
+      app.post('/api/piezas/:id/ver', h(async (req) => {
+        const pieza = jarvis.leerPieza(Number(req.params.id));
+        if (!pieza) throw Object.assign(new Error('Esa pieza no existe'), { publico: true });
+        const b = req.body || {};
+        const entero = (v, max) => (v == null || v === '' ? null : Math.max(0, Math.min(max, Math.round(Number(v)) || 0)));
+        return adjuntos.verPieza(pieza, { diapositiva: entero(b.diapositiva, 99) || null, fotogramas: entero(b.fotogramas, 12), transcribir: b.transcribir === true });
+      }));
       app.post('/api/jarvis/adjuntos', h(async (req) => {
         const a = await archivos.guardar(req, { nombre: String(req.query.nombre || ''), mime: String(req.query.mime || '') });
         const p = await adjuntos.preparar(a);
