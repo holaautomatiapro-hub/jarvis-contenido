@@ -394,6 +394,17 @@ export function buildServer(jarvis, { origen = 'claude', avisar = () => {}, inst
     tool('transcribir_video', 'TRANSCRIBE un vídeo de la biblioteca por su url (p. ej. uno que la persona ha adjuntado al chat y que no se transcribió al subirlo). Igual que transcribir_pieza: ElevenLabs y, si falla, Whisper gratis; lo guarda en 03-Transcripciones.',
       { url: z.string().describe('La url del vídeo, tal cual: /api/contenido/archivos/…') },
       ({ url }) => hastaTranscribir(servidor('POST', '/api/archivos/transcribir', { url })), true);
+    tool('subtitulos_video', 'Líneas de SUBTÍTULOS sincronizadas de un trozo de un vídeo de la biblioteca, para ponerlas en una diapositiva con subtitulos(). Si el vídeo no está transcrito con los tiempos de cada palabra, lo transcribe antes (ElevenLabs o Whisper gratis; puede tardar unos minutos). Devuelve lineas: [inicio, fin, texto] en segundos contando desde «desde».',
+      {
+        url: z.string().describe('La url del vídeo, tal cual: /api/contenido/archivos/…'),
+        desde: z.number().min(0).optional().describe('Segundo del vídeo en que empieza el trozo (el mismo que data-from). Por defecto 0'),
+        hasta: z.number().min(0).optional().describe('Segundo del vídeo en que acaba el trozo. Por defecto, el final'),
+      },
+      async ({ url, desde, hasta }) => {
+        const t = await hastaTranscribir(servidor('POST', '/api/archivos/transcribir', { url, palabras: true }));
+        if (t?.estado === 'haciendo') throw new Error('La transcripción sigue en marcha: vuelve a pedir los subtítulos dentro de un rato');
+        return servidor('POST', '/api/archivos/subtitulos', { url, desde, hasta });
+      });
     tool('listar_disenos', 'Diseños hechos o en curso (id, título, formato, plantilla, estado, avisos).', {},
       async () => (await servidor('GET', '/api/disenos')).disenos.map(({ id, titulo, formato, plantilla, estado, diapositivas, avisos, exportado }) => ({ id, titulo, formato, plantilla, estado, diapositivas, avisos: avisos.length, exportado: Boolean(exportado) })));
     tool('ver_diseno', 'Un diseño completo, con sus diapositivas (para cambiarlo y volver a guardarlo).', { id: z.number().int() },

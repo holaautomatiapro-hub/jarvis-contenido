@@ -10,7 +10,7 @@ import { openDb } from '../server/db.js';
 import { createVault } from '../server/vault.js';
 import { createJarvis } from '../server/jarvis.js';
 import { createArchivos } from '../server/archivos.js';
-import { createAdjuntos, duracionDe, textoAdjuntos } from '../server/adjuntos.js';
+import { createAdjuntos, duracionDe, lineasSubtitulos, textoAdjuntos } from '../server/adjuntos.js';
 import { rutaFfmpeg } from '../server/diseno/motor.js';
 import { createApp } from '../server/index.js';
 
@@ -175,6 +175,34 @@ describe('adjuntos del chat', () => {
       assert.match(r4.data.error, /Has parado/);
       assert.match((await pedir('GET', '/api/transcripciones?clave=nada')).data.error, /vuelve a pedirla/);
     } finally { server.close(); }
+  });
+
+  test('subtítulos: se transcribe con los tiempos de cada palabra y salen líneas cortas de un trozo del vídeo', async (t) => {
+    if (!video) return t.skip('No hay ffmpeg');
+    const palabras = [[94.9, 95.2, 'Bueno,'], [95.6, 95.9, 'antes'], [95.9, 96.3, 'trabajaba'], [96.3, 96.6, 'doce'], [96.6, 97, 'horas.'], [97.3, 97.6, 'Ahora'], [97.6, 98.1, 'tengo'], [98.1, 98.6, 'tiempo'], [130, 131, 'fuera']];
+    const llamadas = [];
+    const whisperImpl = async (ruta, tarea, { palabras: destino }) => { llamadas.push(destino); if (destino) writeFileSync(destino, JSON.stringify(palabras)); return 'Bueno, antes trabajaba doce horas. Ahora tengo tiempo'; };
+    const ad = createAdjuntos({ archivos, vaultPath: path.join(dir, 'S'), env: {}, whisperImpl });
+    const v = await archivos.guardar(createReadStream(video), { nombre: 'clip miguel.mp4', mime: 'video/mp4' });
+    // Transcrito sin palabras: al pedir subtítulos hay que volver a transcribir (con palabras)
+    await ad.transcribirVideo(v.url);
+    assert.throws(() => ad.subtitulosVideo(v.url), /aún no está transcrito con los tiempos/);
+    await ad.transcribirVideo(v.url, { palabras: true });
+    assert.equal(llamadas.length, 2);
+    assert.ok(llamadas[1].endsWith('palabras.json'));
+    const r = ad.subtitulosVideo(v.url, { desde: 95.5, hasta: 99 });
+    assert.deepEqual(r.lineas, [[0.1, 1.8, 'antes trabajaba doce horas.'], [1.8, 3.5, 'Ahora tengo tiempo']]);
+    assert.match(r.como_usarlas, /subtitulos\(/);
+    await ad.transcribirVideo(v.url, { palabras: true });
+    assert.equal(llamadas.length, 2, 'con las palabras ya guardadas no se vuelve a transcribir');
+    assert.throws(() => ad.subtitulosVideo(v.url, { desde: 200 }), /No se dice nada/);
+  });
+
+  test('líneas de subtítulos: cortas, sin pasar de una frase y aguantando hasta la siguiente', () => {
+    const l = lineasSubtitulos([[0, 0.3, 'Uno'], [0.3, 0.6, 'dos'], [0.6, 0.9, 'tres'], [0.9, 1.2, 'cuatro'], [1.2, 1.5, 'cinco'], [1.5, 1.8, 'seis.'], [3, 3.4, 'Siete']]);
+    assert.deepEqual(l.map((x) => x[2]), ['Uno dos tres cuatro cinco', 'seis.', 'Siete']);
+    assert.equal(l[0][1], 1.5, 'se queda hasta que empieza la siguiente');
+    assert.equal(l[1][1], 2.2, 'como mucho 0,4 s más si hay un silencio');
   });
 
   test('API: se sube, se prepara y el mensaje a Claude lleva los adjuntos por su id', async () => {

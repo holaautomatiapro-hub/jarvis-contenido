@@ -17,7 +17,8 @@ export function sttConfigurado(env = process.env) {
   return Boolean(env.ELEVENLABS_API_KEY);
 }
 
-export async function transcribir(buffer, { nombre = 'reel.mp4', tipo = 'video/mp4', env = process.env, fetchImpl = fetch, signal = null } = {}) {
+// alPalabras (opcional): recibe cada palabra con su tiempo, [inicio, fin, palabra] (para subtítulos)
+export async function transcribir(buffer, { nombre = 'reel.mp4', tipo = 'video/mp4', env = process.env, fetchImpl = fetch, signal = null, alPalabras = null } = {}) {
   if (!sttConfigurado(env)) throw new Error('Para transcribir hace falta ELEVENLABS_API_KEY en .env');
   const form = new FormData();
   form.append('model_id', env.ELEVENLABS_STT_MODEL || 'scribe_v1');
@@ -35,5 +36,6 @@ export async function transcribir(buffer, { nombre = 'reel.mp4', tipo = 'video/m
     throw new Error(errorElevenLabs(r.status, detalle, { permiso: 'Speech to Text', que: 'transcripción' }));
   }
   const data = await r.json();
+  if (alPalabras && Array.isArray(data.words)) alPalabras(data.words.filter((w) => w.type === 'word' && Number.isFinite(w.start)).map((w) => [w.start, w.end, String(w.text || '').trim()]));
   return String(data.text || '').trim();
 }

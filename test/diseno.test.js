@@ -407,7 +407,7 @@ describe('diseños: API, exportar a la biblioteca y Claude', () => {
     const c = new Client({ name: 't', version: '1' });
     await c.connect(b);
     const nombres = (await c.listTools()).tools.map((t) => t.name);
-    for (const n of ['ver_kit_diseno', 'leer_archivo_kit', 'listar_medios', 'ver_pieza', 'transcribir_pieza', 'transcribir_video', 'listar_disenos', 'ver_diseno', 'crear_diseno', 'guardar_diseno']) assert.ok(nombres.includes(n), n);
+    for (const n of ['ver_kit_diseno', 'leer_archivo_kit', 'listar_medios', 'ver_pieza', 'transcribir_pieza', 'transcribir_video', 'subtitulos_video', 'listar_disenos', 'ver_diseno', 'crear_diseno', 'guardar_diseno']) assert.ok(nombres.includes(n), n);
     const json = async (name, args = {}) => { const r = await c.callTool({ name, arguments: args }); return { error: r.isError, datos: r.isError ? r.content[0].text : JSON.parse(r.content[0].text) }; };
     const k = (await json('ver_kit_diseno')).datos;
     assert.equal(k.nombre, 'Marca de prueba');
@@ -494,7 +494,37 @@ describe('motor con navegador', () => {
       const d = JSON.parse(readFileSync('diseno/kit-ejemplo/ejemplos/basica.json', 'utf8'));
       const r = await conVideo.previsualizar({ ...d, slides: [{ bg: 'black', html: `<video src="${a.url}" muted playsinline style="width:600px"></video><div class="titular">Con vídeo</div>` }] });
       assert.deepEqual(r.avisos.map((x) => x.texto), [], 'el vídeo carga');
-      assert.ok(existsSync(path.join(archivos.dir, '.webm')), 'se guarda la versión WebM para la próxima vez');
+      assert.ok(existsSync(path.join(archivos.dir, '.webm2')), 'se guarda la versión WebM para la próxima vez');
+    } finally { await conVideo.cerrar(); }
+  });
+
+  test('una diapositiva más larga, con el sonido de un trozo del vídeo y subtítulos sincronizados', async (t) => {
+    if (!hayNavegador) return t.skip('No hay navegador en este equipo');
+    const ffmpeg = await rutaFfmpeg();
+    const origen = path.join(dir, 'entrevista.mp4');
+    // Un vídeo de 8 s con sonido (como la entrevista de un cliente)
+    if (spawnSync(ffmpeg, ['-hide_banner', '-loglevel', 'error', '-y', '-f', 'lavfi', '-i', 'testsrc=duration=8:size=320x568:rate=15', '-f', 'lavfi', '-i', 'sine=frequency=440:duration=8', '-shortest', '-c:v', 'libx264', '-pix_fmt', 'yuv420p', '-c:a', 'aac', origen]).status !== 0) return t.skip('No hay ffmpeg con H.264');
+    const archivos = createArchivos({ dir: path.join(dir, 'contenido-sonido') });
+    const a = await archivos.guardar(createReadStream(origen), { nombre: 'miguel.mp4', mime: 'video/mp4' });
+    const conVideo = createMotor({ kit, archivos, cerrarTrasMs: 10 });
+    try {
+      const d = JSON.parse(readFileSync('diseno/kit-ejemplo/ejemplos/basica.json', 'utf8'));
+      const lineas = [[0.2, 1.4, 'Antes trabajaba doce horas'], [1.5, 2.8, 'y ahora ya no']];
+      const conSonido = { bg: 'black', duracion: 3, html: `<style>#s2-sub .sub-linea { font-size: 48px; color: #fff; }</style><video src="${a.url}" muted playsinline data-start="0" data-from="4" data-audio style="width:600px"></video><div id="s2-sub" style="position:absolute;left:60px;right:60px;bottom:120px"></div>`, js: `subtitulos('#s2-sub', ${JSON.stringify(lineas)}, 0);` };
+      const diseno = { ...d, slides: [d.slides[0], conSonido] };
+      assert.equal(normalizarDiseno(diseno, kit.leer()).slides[1].duracion, 3);
+      assert.equal(normalizarDiseno({ ...diseno, slides: [{ ...conSonido, duracion: 500 }] }, kit.leer()).slides[0].duracion, 60, 'como mucho 60 s');
+      const prev = await conVideo.previsualizar(diseno);
+      assert.deepEqual(prev.avisos.map((x) => x.texto), [], 'sin avisos (los subtítulos no cuentan como animación tardía)');
+      const r = await conVideo.exportar(diseno, 'mp4');
+      try {
+        const info = (n) => spawnSync(ffmpeg, ['-hide_banner', '-i', r.archivos.find((x) => x.n === n).ruta]).stderr.toString();
+        const dur = (txt) => { const m = /Duration: (\d+):(\d+):([\d.]+)/.exec(txt); return Number(m[1]) * 3600 + Number(m[2]) * 60 + Number(m[3]); };
+        assert.ok(Math.abs(dur(info(2)) - 3) < 0.2, `la diapositiva con vídeo dura 3 s (${dur(info(2))})`);
+        assert.match(info(2), /Audio: aac/, 'lleva el sonido del vídeo');
+        assert.ok(Math.abs(dur(info(1)) - kit.leer().duracion) < 0.2, 'las demás duran lo de siempre');
+        assert.doesNotMatch(info(1), /Audio:/, 'y no llevan sonido');
+      } finally { r.limpiar(); }
     } finally { await conVideo.cerrar(); }
   });
 
