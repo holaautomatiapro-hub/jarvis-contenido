@@ -474,6 +474,9 @@ export function createApp({ jarvis, archivos, publicadorIg, asistente, instagram
       for (const c of conversiones?.trabajos() || []) {
         lista.push({ id: `convertir-${c.pieza}`, tipo: 'convertir', titulo: `${c.a === 'video' ? 'Vídeo' : 'Imagen'} de «${c.titulo}»`, detalle: c.deDiseno ? 'Exportando desde su diseño' : c.a === 'video' ? 'Pasando las fotos a vídeo' : 'Sacando un fotograma', progreso: c.progreso, desde: c.inicio, ir: { tab: 'contenido', pieza: c.pieza }, parar: () => conversiones.parar(c.pieza) });
       }
+      for (const t of adjuntos?.transcribiendo?.() || []) {
+        lista.push({ id: `transcribir-${t.clave}`, tipo: 'transcribir', titulo: t.titulo, detalle: t.motor === 'Whisper' ? 'Con Whisper (gratis): tarda unos minutos' : t.motor ? `Con ${t.motor}` : 'Preparando el audio', progreso: t.progreso, desde: t.inicio, ir: { tab: 'notas' }, parar: () => adjuntos.pararTarea(t.clave) });
+      }
       const u = actualizar?.enCurso();
       if (u) lista.push({ id: 'actualizar', tipo: 'actualizar', titulo: 'Actualizando JARVIS', detalle: 'Se reiniciará en medio: es normal que la página se corte un momento', desde: Date.parse(u.inicio) || null, ir: { tab: 'apps' } });
       return lista;
@@ -527,26 +530,45 @@ export function createApp({ jarvis, archivos, publicadorIg, asistente, instagram
         return adjuntos.verPieza(pieza, { diapositiva: entero(b.diapositiva, 99) || null, fotogramas: entero(b.fotogramas, 12), transcribir: b.transcribir === true });
       }));
       // Transcribir los vídeos de una pieza; la transcripción queda además como nota en 03-Transcripciones
+      // Las transcripciones van en segundo plano (una entrevista con Whisper tarda más de lo que aguanta una
+      // petición): se espera un poco y, si no ha acabado, se responde «haciendo» con su clave para ir preguntando
+      const resultadoTarea = (v) => {
+        if (v.estado === 'error') throw Object.assign(new Error(v.error || 'No se ha podido transcribir'), { publico: true });
+        if (v.estado === 'parada') throw Object.assign(new Error('Has parado la transcripción'), { publico: true });
+        return v.estado === 'haciendo' ? { ...v, aviso: 'Sigue transcribiendo: pregunta otra vez con esta clave dentro de un rato' } : v;
+      };
+      const notaTranscripcion = (titulo, contenido) => jarvis.crearNota({ carpeta: '03-Transcripciones', titulo: `Transcripción · ${String(titulo).slice(0, 100)}`, contenido, origen: 'dashboard', tipo: 'transcripcion' })?.nota || null;
       app.post('/api/piezas/:id/transcribir', h(async (req) => {
         const pieza = jarvis.leerPieza(Number(req.params.id));
         if (!pieza) throw Object.assign(new Error('Esa pieza no existe'), { publico: true });
         const d = Number(req.body?.diapositiva) || null;
-        const r = await adjuntos.transcribirPieza(pieza, { diapositiva: d });
-        const conTexto = r.transcripciones.filter((t) => t.texto);
-        if (conTexto.some((t) => t.nueva)) {
-          const contenido = [`Pieza #${pieza.id} · ${pieza.titulo}${pieza.carpeta ? ` · carpeta ${pieza.carpeta}` : ''}`, ...conTexto.map((t) => `${conTexto.length > 1 ? `## ${t.n}. ${t.nombre}\n\n` : ''}${t.texto}`)].join('\n\n');
-          r.nota = jarvis.crearNota({ carpeta: '03-Transcripciones', titulo: `Transcripción · ${String(pieza.titulo).slice(0, 100)}`, contenido, origen: 'dashboard', tipo: 'transcripcion' })?.nota || null;
-        }
-        for (const t of r.transcripciones) delete t.nueva;
-        if (!conTexto.length) throw Object.assign(new Error(r.transcripciones.map((t) => t.aviso).filter(Boolean)[0] || 'No se ha podido transcribir'), { publico: true });
-        return r;
+        if (!(pieza.archivos || []).some((a, i) => a.mime?.startsWith('video/') && (!d || i + 1 === d))) throw Object.assign(new Error(d ? `La diapositiva ${d} no es un vídeo` : 'La pieza no tiene vídeos que transcribir'), { publico: true });
+        const t = adjuntos.encargar(`pieza-${pieza.id}${d ? `-${d}` : ''}`, `Transcribiendo «${pieza.titulo}»`, async (tarea) => {
+          const r = await adjuntos.transcribirPieza(pieza, { diapositiva: d, tarea });
+          const conTexto = r.transcripciones.filter((x) => x.texto);
+          if (!conTexto.length) throw new Error(r.transcripciones.map((x) => x.aviso).filter(Boolean)[0] || 'No se ha podido transcribir');
+          if (conTexto.some((x) => x.nueva)) r.nota = notaTranscripcion(pieza.titulo, [`Pieza #${pieza.id} · ${pieza.titulo}${pieza.carpeta ? ` · carpeta ${pieza.carpeta}` : ''}`, ...conTexto.map((x) => `${conTexto.length > 1 ? `## ${x.n}. ${x.nombre}\n\n` : ''}${x.texto}`)].join('\n\n'));
+          for (const x of r.transcripciones) delete x.nueva;
+          return r;
+        });
+        return resultadoTarea(await adjuntos.esperarTarea(t, Number(req.query.esperar ?? 20_000)));
       }, true));
       app.post('/api/archivos/transcribir', h(async (req) => {
-        const r = await adjuntos.transcribirVideo(String(req.body?.url || ''));
-        if (r.nueva) r.nota = jarvis.crearNota({ carpeta: '03-Transcripciones', titulo: `Transcripción · ${path.basename(decodeURIComponent(r.url)).replace(/^\d+-[0-9a-f]+_/, '').slice(0, 100)}`, contenido: r.texto, origen: 'dashboard', tipo: 'transcripcion' })?.nota || null;
-        delete r.nueva;
-        return r;
+        const url = String(req.body?.url || '');
+        const nombre = path.basename(adjuntos.relDeUrl(url)).replace(/^\d+-[0-9a-f]+_/, '');
+        const t = adjuntos.encargar(`video-${adjuntos.relDeUrl(url)}`, `Transcribiendo «${nombre}»`, async (tarea) => {
+          const r = await adjuntos.transcribirVideo(url, { tarea });
+          if (r.nueva) r.nota = notaTranscripcion(nombre, r.texto);
+          delete r.nueva;
+          return r;
+        });
+        return resultadoTarea(await adjuntos.esperarTarea(t, Number(req.query.esperar ?? 20_000)));
       }, true));
+      app.get('/api/transcripciones', h((req) => {
+        const t = adjuntos.tarea(String(req.query.clave || ''));
+        if (!t) throw Object.assign(new Error('No hay ninguna transcripción con esa clave (¿se reinició JARVIS?): vuelve a pedirla'), { publico: true });
+        return resultadoTarea(adjuntos.verTarea(t));
+      }));
       app.post('/api/jarvis/adjuntos', h(async (req) => {
         const a = await archivos.guardar(req, { nombre: String(req.query.nombre || ''), mime: String(req.query.mime || '') });
         const p = await adjuntos.preparar(a);
@@ -635,7 +657,7 @@ function main() {
   if (process.platform !== 'win32') setTimeout(() => motor.preparar(), 5000).unref();
   disenos = createDisenos({ db, jarvis, kit, motor, archivos, previasDir: path.join(cfg.vaultPath, '.jarvis', 'disenos'), recortarFoto: createRecortador({ archivos, python: () => laboratorio.python() }), asistente, emitir, alCambiar: onChange });
   const recordatorios = createRecordatorios({ db });
-  const adjuntos = createAdjuntos({ archivos, vaultPath: cfg.vaultPath, python: () => laboratorio?.python?.() || null });
+  const adjuntos = createAdjuntos({ archivos, vaultPath: cfg.vaultPath, python: () => laboratorio?.python?.() || null, alCambiar: () => emitir({ type: 'transcripcion' }) });
   const conversiones = createConversiones({ jarvis, archivos, disenos, emitir, alCambiar: onChange });
   const actualizar = createActualizar({ dir: ROOT, dataDir: path.dirname(cfg.dbPath),
     ocupado: () => asistente.estado().ocupado || asistente.estado({ conversacion: 'laboratorio' }).ocupado || disenos?.listar().some((d) => d.estado === 'exportando') });

@@ -419,6 +419,25 @@ describe('diseños: API, exportar a la biblioteca y Claude', () => {
     assert.deepEqual(llamadas.at(-1).slice(0, 2), ['PUT', '/api/disenos/7/datos']);
     assert.equal(llamadas.at(-1)[2].slides.length, 1);
   });
+
+  test('MCP: transcribir espera, preguntando, a que acabe la transcripción en segundo plano', async () => {
+    const llamadas = [];
+    let vueltas = 0;
+    const servidor = async (m, ruta) => {
+      llamadas.push([m, ruta]);
+      if (m === 'POST') return { estado: 'haciendo', clave: 'pieza-170' };
+      vueltas += 1;
+      return vueltas < 3 ? { estado: 'haciendo', clave: 'pieza-170', progreso: vueltas * 30 } : { estado: 'listo', clave: 'pieza-170', transcripciones: [{ n: 1, texto: 'Hola, soy Miguel' }] };
+    };
+    const s = buildServer(jarvis, { diseno: { kit: createKit({ vaultPath: vault }), servidor, cadaMs: 5 } });
+    const [a, b] = InMemoryTransport.createLinkedPair();
+    await s.connect(a);
+    const c = new Client({ name: 't', version: '1' });
+    await c.connect(b);
+    const r = await c.callTool({ name: 'transcribir_pieza', arguments: { pieza_id: 170 } });
+    assert.equal(JSON.parse(r.content[0].text).transcripciones[0].texto, 'Hola, soy Miguel');
+    assert.deepEqual(llamadas.map((l) => l.join(' ')), ['POST /api/piezas/170/transcribir', 'GET /api/transcripciones?clave=pieza-170', 'GET /api/transcripciones?clave=pieza-170', 'GET /api/transcripciones?clave=pieza-170']);
+  });
 });
 
 describe('instalar Chromium cuando falta', () => {

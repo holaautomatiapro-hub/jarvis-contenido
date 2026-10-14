@@ -375,15 +375,25 @@ export function buildServer(jarvis, { origen = 'claude', avisar = () => {}, inst
         transcribir: z.boolean().optional().describe('Transcribir lo que se dice en los vídeos (para reels con voz)'),
       },
       ({ pieza_id, ...resto }) => servidor('POST', `/api/piezas/${pieza_id}/ver`, resto));
+    // La transcripción va en segundo plano en el dashboard: se pregunta cada pocos segundos hasta que acaba
+    const hastaTranscribir = async (primera, { cada = diseno.cadaMs ?? 5000, maxMin = 90 } = {}) => {
+      let r = await primera;
+      const hasta = Date.now() + maxMin * 60_000;
+      while (r?.estado === 'haciendo' && Date.now() < hasta) {
+        await new Promise((ok) => setTimeout(ok, cada));
+        r = await servidor('GET', `/api/transcripciones?clave=${encodeURIComponent(r.clave)}`);
+      }
+      return r;
+    };
     tool('transcribir_pieza', 'TRANSCRIBE lo que se dice en los vídeos de una pieza de la biblioteca (una entrevista, un testimonio, un reel…) y lo guarda como nota en 03-Transcripciones. Devuelve el texto. Usa ElevenLabs y, si falla (sin créditos, sin clave), Whisper en el propio servidor, gratis. Úsalo siempre que la persona te pida transcribir, leer o usar lo que se dice en un vídeo que ya está en Contenido. Una entrevista larga tarda unos minutos (con Whisper, más).',
       {
         pieza_id: z.number().int().describe('El id de la pieza (búscalo con listar_pipeline o listar_medios)'),
         diapositiva: z.number().int().min(1).optional().describe('Solo ese archivo de la pieza (desde 1), si tiene varios vídeos'),
       },
-      ({ pieza_id, diapositiva }) => servidor('POST', `/api/piezas/${pieza_id}/transcribir`, diapositiva ? { diapositiva } : {}, { minutos: 50 }), true);
+      ({ pieza_id, diapositiva }) => hastaTranscribir(servidor('POST', `/api/piezas/${pieza_id}/transcribir`, diapositiva ? { diapositiva } : {})), true);
     tool('transcribir_video', 'TRANSCRIBE un vídeo de la biblioteca por su url (p. ej. uno que la persona ha adjuntado al chat y que no se transcribió al subirlo). Igual que transcribir_pieza: ElevenLabs y, si falla, Whisper gratis; lo guarda en 03-Transcripciones.',
       { url: z.string().describe('La url del vídeo, tal cual: /api/contenido/archivos/…') },
-      ({ url }) => servidor('POST', '/api/archivos/transcribir', { url }, { minutos: 50 }), true);
+      ({ url }) => hastaTranscribir(servidor('POST', '/api/archivos/transcribir', { url })), true);
     tool('listar_disenos', 'Diseños hechos o en curso (id, título, formato, plantilla, estado, avisos).', {},
       async () => (await servidor('GET', '/api/disenos')).disenos.map(({ id, titulo, formato, plantilla, estado, diapositivas, avisos, exportado }) => ({ id, titulo, formato, plantilla, estado, diapositivas, avisos: avisos.length, exportado: Boolean(exportado) })));
     tool('ver_diseno', 'Un diseño completo, con sus diapositivas (para cambiarlo y volver a guardarlo).', { id: z.number().int() },
@@ -499,8 +509,10 @@ async function main() {
     let res;
     try {
       res = await fetch(`http://127.0.0.1:${cfg.port}${ruta}`, { method: metodo, headers: body ? { 'content-type': 'application/json' } : {}, body: body ? JSON.stringify(body) : undefined, signal: AbortSignal.timeout(minutos * 60_000) });
-    } catch {
-      throw new Error('JARVIS no está abierto: el motor de diseño vive en el dashboard');
+    } catch (e) {
+      const codigo = e.cause?.code || e.name;
+      if (codigo === 'ECONNREFUSED') throw new Error('JARVIS no está abierto: el motor de diseño vive en el dashboard');
+      throw new Error(`No he podido hablar con el dashboard de JARVIS (${codigo || e.message}). Vuelve a probar.`);
     }
     const j = await res.json().catch(() => ({}));
     if (!res.ok) throw new Error(j.error || `Error ${res.status}`);
