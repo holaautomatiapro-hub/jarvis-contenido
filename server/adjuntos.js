@@ -2,6 +2,7 @@ import path from 'node:path';
 import { spawn } from 'node:child_process';
 import { copyFileSync, existsSync, mkdirSync, readdirSync, readFileSync, statSync, writeFileSync } from 'node:fs';
 import { rutaFfmpeg } from './diseno/motor.js';
+import { ROOT } from './config.js';
 import { sttConfigurado, transcribir as transcribirElevenLabs } from './stt.js';
 
 // Adjuntos del chat: fotos y vídeos que la persona manda a JARVIS para que los tenga en cuenta (p. ej. al cambiar
@@ -32,7 +33,7 @@ export const duracionDe = (stderr) => {
 };
 const mmss = (s) => `${Math.floor(s / 60)}:${String(Math.round(s % 60)).padStart(2, '0')}`;
 
-export function createAdjuntos({ archivos, vaultPath, env = process.env, ffmpeg = rutaFfmpeg, sttImpl = transcribirElevenLabs, fetchImpl = fetch }) {
+export function createAdjuntos({ archivos, vaultPath, env = process.env, ffmpeg = rutaFfmpeg, sttImpl = transcribirElevenLabs, fetchImpl = fetch, python = () => null, whisperImpl = null, whisperScript = path.join(ROOT, 'laboratorio', 'transcribir-audio.py') }) {
   const base = path.join(vaultPath, '.jarvis', 'adjuntos');
   const vistas = path.join(vaultPath, '.jarvis', 'vistas');
 
@@ -61,12 +62,39 @@ export function createAdjuntos({ archivos, vaultPath, env = process.env, ffmpeg 
     return { fotos, duracion, aviso: fotos.length ? null : 'No he podido sacar fotogramas del vídeo' };
   }
 
-  // Se manda solo el audio (mucho más ligero que el vídeo, y así cabe una entrevista larga); si no se puede
-  // sacar, el vídeo tal cual. dir: dónde dejar el audio (se reaprovecha la próxima vez)
-  async function transcribir(origen, a, r, dir) {
+  // Whisper en este ordenador (el que instala el Laboratorio): gratis, sin internet; más lento que ElevenLabs
+  const whisperDisponible = () => Boolean(whisperImpl || python());
+  function whisper(ruta) {
+    if (whisperImpl) return whisperImpl(ruta);
+    return new Promise((ok, ko) => {
+      let out = '', err = '';
+      let p;
+      try { p = spawn(python(), [whisperScript, ruta], { windowsHide: true, env: { ...process.env, PYTHONIOENCODING: 'utf-8' } }); } catch (e) { ko(e); return; }
+      const reloj = setTimeout(() => p.kill('SIGKILL'), 45 * 60_000);
+      p.stdout.on('data', (d) => { out += d; });
+      p.stderr.on('data', (d) => { err = (err + d).slice(-2000); });
+      p.on('error', (e) => { clearTimeout(reloj); ko(e); });
+      p.on('close', (c) => { clearTimeout(reloj); if (c === 0) ok(out.trim()); else ko(new Error(err.trim().split('\n').pop() || `Whisper ha fallado (código ${c})`)); });
+    });
+  }
+
+  // Se transcribe solo el audio (mucho más ligero que el vídeo, y así cabe una entrevista larga); si no se puede
+  // sacar, el vídeo tal cual. Primero ElevenLabs (rápido) y, si falla o no hay clave, Whisper (gratis); con
+  // JARVIS_TRANSCRIPCION=whisper, al revés. dir: dónde dejar el audio y el texto (se reaprovechan la próxima vez)
+  // rapido: solo ElevenLabs (al subir un adjunto no se puede esperar a Whisper)
+  async function transcribir(origen, a, r, dir, { rapido = false } = {}) {
     const guardada = path.join(dir, 'transcripcion.txt');
     if (existsSync(guardada)) { r.transcripcion = readFileSync(guardada, 'utf8') || null; r.yaEstaba = true; return; }
-    if (!sttConfigurado(env)) { r.avisos.push('Sin clave de ElevenLabs no se transcribe lo que se dice en el vídeo'); return; }
+    const motores = [
+      sttConfigurado(env) && { de: 'ElevenLabs', fn: (f) => {
+        if (statSync(f.ruta).size > MAX_TRANSCRIBIR) throw new Error('el vídeo es demasiado grande');
+        return sttImpl(readFileSync(f.ruta), { nombre: f.nombre, tipo: f.tipo, env, fetchImpl });
+      } },
+      !rapido && whisperDisponible() && { de: 'Whisper', fn: (f) => whisper(f.ruta) },
+    ].filter(Boolean);
+    const conWhisper = rapido && whisperDisponible() && a.url ? ` Para transcribirlo gratis con Whisper (tarda unos minutos): transcribir_video con url ${a.url}` : '';
+    if (env.JARVIS_TRANSCRIPCION === 'whisper') motores.reverse();
+    if (!motores.length) { r.avisos.push(conWhisper ? `Sin clave de ElevenLabs no se transcribe al subirlo.${conWhisper}` : 'No hay con qué transcribir: pon la clave de ElevenLabs (npm run claves) o prepara el Laboratorio en el VPS (trae Whisper, gratis)'); return; }
     let fuente = { ruta: origen, nombre: a.nombre, tipo: a.mime };
     const audio = path.join(dir, 'audio.mp3');
     if (!existsSync(audio)) {
@@ -74,9 +102,16 @@ export function createAdjuntos({ archivos, vaultPath, env = process.env, ffmpeg 
       if (bin) await ejecutar(bin, ['-hide_banner', '-loglevel', 'error', '-y', '-i', origen, '-vn', '-ac', '1', '-ar', '16000', '-b:a', '48k', audio]).catch(() => null);
     }
     if (existsSync(audio) && statSync(audio).size > 0) fuente = { ruta: audio, nombre: 'audio.mp3', tipo: 'audio/mpeg' };
-    if (statSync(fuente.ruta).size > MAX_TRANSCRIBIR) { r.avisos.push('El vídeo es demasiado grande para transcribirlo'); return; }
-    try { r.transcripcion = (await sttImpl(readFileSync(fuente.ruta), { nombre: fuente.nombre, tipo: fuente.tipo, env, fetchImpl })) || null; } catch (e) { r.avisos.push(`No se ha podido transcribir: ${e.message}`); }
-    if (r.transcripcion) writeFileSync(guardada, r.transcripcion); // la próxima vez no se vuelve a pagar
+    const fallos = [];
+    for (const m of motores) {
+      try {
+        r.transcripcion = (await m.fn(fuente)) || null;
+        if (r.transcripcion) { r.de = m.de; break; }
+        fallos.push(`${m.de}: no ha sacado texto (¿el vídeo no tiene voz?)`);
+      } catch (e) { fallos.push(`${m.de}: ${e.message}`); }
+    }
+    if (r.transcripcion) writeFileSync(guardada, r.transcripcion); // la próxima vez no se vuelve a hacer
+    else r.avisos.push(`No se ha podido transcribir. ${fallos.join(' · ')}${conWhisper}`);
   }
 
   // a: lo que devuelve archivos.guardar. Devuelve lo que necesita Claude para tenerlo en cuenta.
@@ -94,7 +129,7 @@ export function createAdjuntos({ archivos, vaultPath, env = process.env, ffmpeg 
     const f = await fotogramas(origen, dir);
     Object.assign(r, { fotogramas: f.fotos, duracion: f.duracion });
     if (f.aviso) r.avisos.push(f.aviso);
-    await transcribir(origen, a, r, dir);
+    await transcribir(origen, a, r, dir, { rapido: true });
     return r;
   }
 
@@ -116,9 +151,23 @@ export function createAdjuntos({ archivos, vaultPath, env = process.env, ffmpeg 
       if (!origen || !existsSync(origen)) { salida.push({ n, nombre: a.nombre, aviso: 'El archivo ya no está en la biblioteca' }); continue; }
       const r = { n, nombre: a.nombre, transcripcion: null, avisos: [] };
       await transcribir(origen, a, r, dirVista(pieza, n, a));
-      salida.push({ n, nombre: a.nombre, texto: r.transcripcion, nueva: Boolean(r.transcripcion) && !r.yaEstaba, ...(r.avisos.length ? { aviso: r.avisos.join('; ') } : {}) });
+      salida.push({ n, nombre: a.nombre, texto: r.transcripcion, ...(r.de ? { con: r.de } : {}), nueva: Boolean(r.transcripcion) && !r.yaEstaba, ...(r.avisos.length ? { aviso: r.avisos.join('; ') } : {}) });
     }
     return { pieza: { id: pieza.id, titulo: pieza.titulo, carpeta: pieza.carpeta || null }, transcripciones: salida };
+  }
+
+  // Un vídeo de la biblioteca por su url (p. ej. uno adjuntado al chat): /api/contenido/archivos/…
+  async function transcribirVideo(url) {
+    const rel = decodeURIComponent(String(url || '').replace(/^.*\/api\/contenido\/archivos\//, '').split(/[?#]/)[0]);
+    let origen = null;
+    try { origen = rel ? archivos.ruta(rel) : null; } catch { origen = null; }
+    if (!origen || !existsSync(origen)) throw Object.assign(new Error('No encuentro ese vídeo en la biblioteca: pasa la url tal cual (/api/contenido/archivos/…)'), { publico: true });
+    const dir = path.join(vistas, 'archivos', path.basename(rel).replace(/\.[^.]+$/, '').replace(/[^\w-]/g, '_'));
+    mkdirSync(dir, { recursive: true });
+    const r = { transcripcion: null, avisos: [] };
+    await transcribir(origen, { nombre: path.basename(rel), mime: 'video/mp4' }, r, dir);
+    if (!r.transcripcion) throw Object.assign(new Error(r.avisos[0] || 'No se ha podido transcribir'), { publico: true });
+    return { url, texto: r.transcripcion, ...(r.de ? { con: r.de } : {}), nueva: !r.yaEstaba };
   }
 
   // Ver una pieza de la biblioteca: sus fotos (copiadas al vault) y, de cada vídeo, cómo queda al final (el
@@ -144,7 +193,7 @@ export function createAdjuntos({ archivos, vaultPath, env = process.env, ffmpeg 
       }
       const f = await fotogramas(origen, dir, { n: porVideo, final: true });
       const r = { n: num, nombre: a.nombre, tipo: 'video', url: a.url, duracion: f.duracion ? Math.round(f.duracion * 10) / 10 : null, ver: f.fotos, avisos: f.aviso ? [f.aviso] : [] };
-      if (conTexto) { await transcribir(origen, a, r, dir); delete r.yaEstaba; }
+      if (conTexto) { await transcribir(origen, a, r, dir); delete r.yaEstaba; delete r.de; }
       if (!r.avisos.length) delete r.avisos;
       salida.push(r);
     }
@@ -157,7 +206,7 @@ export function createAdjuntos({ archivos, vaultPath, env = process.env, ffmpeg 
     };
   }
 
-  return { preparar, verPieza, transcribirPieza };
+  return { preparar, verPieza, transcribirPieza, transcribirVideo };
 }
 
 // El bloque que se añade al mensaje para Claude. La interfaz lo reconoce por «[Adjuntos]» y enseña solo los nombres.
