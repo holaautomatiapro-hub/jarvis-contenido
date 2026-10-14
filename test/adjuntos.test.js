@@ -120,6 +120,63 @@ describe('adjuntos del chat', () => {
     assert.match(sin.transcripciones[0].aviso, /No hay con qué transcribir/);
   });
 
+  test('una transcripción larga va en segundo plano: se pregunta cómo va, sale en «Trabajando» y se puede parar', async (t) => {
+    if (!video) return t.skip('No hay ffmpeg');
+    // Un Whisper de mentira que tarda hasta que se le deja acabar (o lo paran)
+    let acabar;
+    const lento = (ruta, tarea) => new Promise((ok, ko) => {
+      tarea.progreso = 40;
+      acabar = () => ok('la entrevista entera');
+      tarea.abort.signal.addEventListener('abort', () => ko(new Error('Parada')));
+    });
+    const ad = createAdjuntos({ archivos, vaultPath: path.join(dir, 'L'), env: {}, whisperImpl: lento });
+    const db = openDb(':memory:');
+    const jarvis = createJarvis({ db, vault: createVault(path.join(dir, 'L')) });
+    const asistente = { preguntar() {}, cancelar() {}, nuevaSesion() {}, estado: () => ({ ocupado: false, eventos: [] }), enMarcha: () => [] };
+    const server = http.createServer();
+    await new Promise((ok) => server.listen(0, '127.0.0.1', ok));
+    server.on('request', createApp({ jarvis, archivos, asistente, adjuntos: ad, port: server.address().port, status: async () => [] }));
+    const base = `http://127.0.0.1:${server.address().port}`;
+    const pedir = async (metodo, ruta, body) => { const r = await fetch(`${base}${ruta}`, { method: metodo, headers: { 'content-type': 'application/json' }, body: body ? JSON.stringify(body) : undefined }); return { status: r.status, data: await r.json() }; };
+    try {
+      const v = await archivos.guardar(createReadStream(video), { nombre: 'entrevista.mp4', mime: 'video/mp4' });
+      const e = jarvis.crearPieza({ titulo: 'entrevista completa', formato: 'Reel', archivos: [v] });
+      const r1 = (await pedir('POST', `/api/piezas/${e.id}/transcribir?esperar=200`, {})).data;
+      assert.equal(r1.estado, 'haciendo');
+      assert.equal(r1.motor, 'Whisper');
+      assert.match(r1.aviso, /pregunta otra vez/);
+      // Sale en «Trabajando» con su avance y se puede parar
+      let { trabajos } = (await pedir('GET', '/api/trabajos')).data;
+      const tr = trabajos.find((x) => x.tipo === 'transcribir');
+      assert.equal(tr.titulo, 'Transcribiendo «entrevista completa»');
+      assert.match(tr.detalle, /Whisper \(gratis\)/);
+      assert.equal(tr.progreso, 40);
+      assert.equal(tr.parable, true);
+      // Pedirla otra vez no la duplica
+      assert.equal((await pedir('POST', `/api/piezas/${e.id}/transcribir?esperar=50`, {})).data.inicio, r1.inicio);
+      acabar();
+      await new Promise((ok) => setTimeout(ok, 50));
+      const r2 = (await pedir('GET', `/api/transcripciones?clave=${encodeURIComponent(r1.clave)}`)).data;
+      assert.equal(r2.estado, 'listo');
+      assert.equal(r2.transcripciones[0].texto, 'la entrevista entera');
+      assert.equal(r2.transcripciones[0].con, 'Whisper');
+      assert.match(r2.nota, /03-Transcripciones/);
+      ({ trabajos } = (await pedir('GET', '/api/trabajos')).data);
+      assert.ok(!trabajos.some((x) => x.tipo === 'transcribir'), 'ya no está trabajando');
+      // Un vídeo adjunto (por url), parado a medias desde «Trabajando»
+      const adj = await archivos.guardar(createReadStream(video), { nombre: 'video1250624609.mp4', mime: 'video/mp4' });
+      const r3 = (await pedir('POST', '/api/archivos/transcribir?esperar=100', { url: adj.url })).data;
+      assert.equal(r3.estado, 'haciendo');
+      assert.equal(r3.titulo, 'Transcribiendo «video1250624609.mp4»');
+      assert.equal((await pedir('POST', '/api/trabajos/parar', { id: `transcribir-${r3.clave}` })).status, 200);
+      await new Promise((ok) => setTimeout(ok, 50));
+      const r4 = await pedir('GET', `/api/transcripciones?clave=${encodeURIComponent(r3.clave)}`);
+      assert.equal(r4.status, 400);
+      assert.match(r4.data.error, /Has parado/);
+      assert.match((await pedir('GET', '/api/transcripciones?clave=nada')).data.error, /vuelve a pedirla/);
+    } finally { server.close(); }
+  });
+
   test('API: se sube, se prepara y el mensaje a Claude lleva los adjuntos por su id', async () => {
     const preguntas = [];
     const asistente = { preguntar: (b) => { preguntas.push(b); return { id: 1 }; }, cancelar() {}, nuevaSesion() {}, estado: () => ({ ocupado: false, eventos: [] }) };

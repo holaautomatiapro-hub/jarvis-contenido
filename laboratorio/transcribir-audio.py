@@ -37,8 +37,14 @@ def main():
     if audio is not None and not audio.size:
         sys.exit("El vídeo no tiene audio")
     modelo = WhisperModel(MODELO, revision=REVISION, device="cpu", compute_type="int8")
-    trozos, _ = modelo.transcribe(audio if audio is not None else sys.argv[1], language="es", vad_filter=True, beam_size=1)
-    print(" ".join(t.text.strip() for t in trozos).strip())
+    trozos, info = modelo.transcribe(audio if audio is not None else sys.argv[1], language="es", vad_filter=True, beam_size=1)
+    textos = []
+    for t in trozos:
+        textos.append(t.text.strip())
+        # Cuánto lleva (lo lee JARVIS para la barra de «Trabajando»)
+        if info.duration:
+            print(f"@progreso {min(t.end / info.duration, 1):.3f}", file=sys.stderr, flush=True)
+    print(" ".join(textos).strip())
 
 
 if __name__ == "__main__":

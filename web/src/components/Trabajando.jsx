@@ -39,6 +39,7 @@ export default function Trabajando({ onTab }) {
   }, [lista.length, recargar]);
   useMensajes('jarvis', (e) => { if (['pregunta', 'fin', 'error'].includes(e.tipo)) recargar(); });
   useMensajes('diseno', () => recargar());
+  useMensajes('transcripcion', () => recargar());
   useMensajes('portada', (e) => setHechos((h) => [{ id: `portada-${e.diseno}`, titulo: `Portada de «${e.titulo}»`, detalle: e.comoPortada ? 'Puesta como portada del vídeo' : 'Añadida como primera imagen', ir: { tab: 'contenido', pieza: e.pieza }, en: Date.now() }, ...h.filter((x) => x.id !== `portada-${e.diseno}`)].slice(0, 8)));
   // Cerrar al pulsar fuera
   useEffect(() => {
