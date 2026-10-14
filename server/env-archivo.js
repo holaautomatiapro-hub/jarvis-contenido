@@ -1,4 +1,4 @@
-import { existsSync, readFileSync, writeFileSync, copyFileSync } from 'node:fs';
+import { existsSync, readFileSync, writeFileSync, copyFileSync, watchFile, unwatchFile } from 'node:fs';
 import path from 'node:path';
 import { ROOT } from './config.js';
 
@@ -52,4 +52,19 @@ export function asegurarEnv(ruta = ENV_PATH, ejemplo = ENV_EJEMPLO) {
 export function guardarEnv(cambios, ruta = ENV_PATH) {
   const actual = existsSync(ruta) ? readFileSync(ruta, 'utf8') : '';
   writeFileSync(ruta, actualizarEnv(actual, cambios), 'utf8');
+}
+
+// Si cambia el .env (p. ej. con  npm run claves ), las claves nuevas se usan sin reiniciar JARVIS: se copian a
+// process.env, que es el objeto que leen todas las integraciones. Devuelve una función para dejar de vigilar.
+export function vigilarEnv(ruta = ENV_PATH, { env = process.env, cada = 3000, alCambiar = () => {} } = {}) {
+  const aplicar = () => {
+    let texto;
+    try { texto = readFileSync(ruta, 'utf8'); } catch { return []; }
+    const cambiadas = Object.entries(leerEnv(texto)).filter(([k, v]) => env[k] !== v).map(([k, v]) => { env[k] = v; return k; });
+    if (cambiadas.length) alCambiar(cambiadas);
+    return cambiadas;
+  };
+  const f = (actual, antes) => { if (actual.mtimeMs !== antes.mtimeMs) aplicar(); };
+  watchFile(ruta, { interval: cada, persistent: false }, f);
+  return Object.assign(() => unwatchFile(ruta, f), { aplicar });
 }

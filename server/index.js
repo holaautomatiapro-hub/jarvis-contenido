@@ -38,6 +38,7 @@ import { createAdjuntos, textoAdjuntos } from './adjuntos.js';
 import { createPreferencias, AMBITOS } from './preferencias.js';
 import { createActualizar } from './actualizar.js';
 import { createConversiones } from './convertir.js';
+import { ENV_PATH, vigilarEnv } from './env-archivo.js';
 
 dotenv.config({ path: path.join(ROOT, '.env'), quiet: true });
 
@@ -572,6 +573,7 @@ export function createApp({ jarvis, archivos, publicadorIg, asistente, instagram
 
 function main() {
   const cfg = getConfig();
+  vigilarEnv(ENV_PATH, { alCambiar: (claves) => console.log(`[JARVIS] Claves actualizadas desde .env: ${claves.join(', ')}`) });
   const { nuevo } = ensureVault(cfg.vaultPath, cfg.templateDir, cfg.mcpScript);
   const db = openDb(cfg.dbPath);
   const jarvis = createJarvis({ db, vault: createVault(cfg.vaultPath) });
