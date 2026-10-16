@@ -4,6 +4,7 @@ import { planDePublicacion, instanteDe, NOMBRE_TIPO_IG } from '../../web/src/lib
 import { RED_DE_TIPO_IG } from '../publicar.js';
 import { markdownANegrita } from '../../web/src/lib/negrita.js';
 import { row, rows } from '../db.js';
+import { prepararVideoIg } from './video-ig.js';
 
 // Publica en Instagram, con la API oficial, las piezas que TÚ marcas en el dashboard
 // («Publicar sola en Instagram» o «Publicar ahora»). Nada más puede activarlo: ni Hermes ni Claude Code.
@@ -19,7 +20,7 @@ export class PublicarError extends Error {}
 
 const MINUTO = 60000;
 
-export function createPublicadorIg({ db, jarvis, instagram, almacen, archivos, fetchImpl = fetch, alCambiar = () => {}, ahora = () => new Date(), dormir = (ms) => new Promise((ok) => setTimeout(ok, ms)), esperaMax = 10 * MINUTO, cadaCuanto = 5000, log = console }) {
+export function createPublicadorIg({ db, jarvis, instagram, almacen, archivos, fetchImpl = fetch, alCambiar = () => {}, ahora = () => new Date(), dormir = (ms) => new Promise((ok) => setTimeout(ok, ms)), esperaMax = 10 * MINUTO, cadaCuanto = 5000, log = console, prepararVideo = prepararVideoIg }) {
   const q = {
     get: db.prepare('SELECT * FROM piezas WHERE id = ?'),
     pendientes: db.prepare("SELECT * FROM piezas WHERE publicar_ig = 1 AND (ig_estado IS NULL OR ig_estado = 'procesando') ORDER BY fecha, hora, id"),
@@ -119,8 +120,12 @@ export function createPublicadorIg({ db, jarvis, instagram, almacen, archivos, f
         const video = /^video\//.test(a.mime || '');
         if (/^https?:\/\//.test(a.url || '')) { st.subidos.push({ url: a.url, video }); continue; }
         const nombre = String(a.path || a.nombre || 'archivo').split('/').pop();
-        const s = await almacen.subir(archivos.ruta(a.path), { destino: `${p.id}-${Date.now()}-${i}-${nombre}`, mime: a.mime });
-        st.subidos.push({ ...s, video });
+        // Los vídeos, antes, como los quiere Instagram (H.264 + audio AAC): si no, los rechaza al procesarlos
+        const v = video ? await prepararVideo(archivos.ruta(a.path)) : { ruta: archivos.ruta(a.path), limpiar: () => {} };
+        try {
+          const s = await almacen.subir(v.ruta, { destino: `${p.id}-${Date.now()}-${i}-${video ? nombre.replace(/\.[^.]+$/, '.mp4') : nombre}`, mime: video ? 'video/mp4' : a.mime });
+          st.subidos.push({ ...s, video });
+        } finally { v.limpiar(); }
       }
       guardar();
     }

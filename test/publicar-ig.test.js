@@ -41,7 +41,7 @@ describe('reglas de publicación', () => {
 });
 
 // Meta y Supabase de mentira
-function entorno({ procesando = 0, fallarPublicar = false } = {}) {
+function entorno({ procesando = 0, fallarPublicar = false, prepararVideo } = {}) {
   const db = openDb(':memory:');
   const jarvis = createJarvis({ db, vault: createVault(path.join(dir, 'V')) });
   const archivos = createArchivos({ dir: path.join(dir, 'arch') });
@@ -69,7 +69,7 @@ function entorno({ procesando = 0, fallarPublicar = false } = {}) {
   const instagram = { estado: () => ({ conectadoMeta: true, username: 'micuenta' }), conexion: () => ({ token: 'tok', igUserId: 'ig1' }) };
   const almacen = createAlmacen({ env: { CRM_SUPABASE_URL: 'https://abc.supabase.co', CRM_SUPABASE_ANON_KEY: 'eyJ'.padEnd(40, 'x') }, fetchImpl });
   let reloj = new Date('2026-10-20T17:00:00');
-  const pub = createPublicadorIg({ db, jarvis, instagram, almacen, archivos, fetchImpl, ahora: () => reloj, dormir: async () => {}, esperaMax: 0, log: { warn: () => {} } });
+  const pub = createPublicadorIg({ db, jarvis, instagram, almacen, archivos, fetchImpl, ahora: () => reloj, dormir: async () => {}, esperaMax: 0, log: { warn: () => {} }, ...(prepararVideo ? { prepararVideo } : {}) });
   return { db, jarvis, pub, llamadas, mover: (d) => { reloj = new Date(d); } };
 }
 
@@ -93,6 +93,20 @@ describe('publicador', () => {
     assert.equal(f.ig_permalink, 'https://instagram.com/p/xyz');
     assert.ok(llamadas.some((l) => l.supabase === 'DELETE'), 'borra el archivo del bucket después');
     assert.throws(() => pub.marcar(p.id, true), /ya está publicada/);
+  });
+
+  test('los vídeos se preparan para Instagram (H.264 + audio) antes de subirlos; las fotos no', async () => {
+    const preparados = [];
+    let limpiados = 0;
+    const prepararVideo = async (ruta) => { preparados.push(path.basename(ruta)); return { ruta, limpiar: () => { limpiados += 1; }, cambiado: true }; };
+    const { jarvis, pub, llamadas } = entorno({ prepararVideo });
+    const p = jarvis.crearPieza({ titulo: 'Carrusel mixto', formato: 'Carrusel', archivos: [jpg(), mp4()] });
+    pub.publicarAhora(p.id);
+    await new Promise((ok) => setTimeout(ok, 30));
+    assert.deepEqual(preparados, ['1700000000000-abcdef_reel.mp4']);
+    assert.equal(limpiados, 1, 'el temporal se borra después de subirlo');
+    assert.equal(llamadas.filter((l) => l.supabase === 'POST').length, 2);
+    assert.equal(jarvis.listarPiezas().find((x) => x.id === p.id).ig_estado, 'publicado');
   });
 
   test('un reel espera a que Instagram procese el vídeo, aunque haga falta otra vuelta', async () => {
