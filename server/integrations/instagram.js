@@ -227,7 +227,7 @@ export function createInstagram({ db, vault, env = process.env, fetchImpl = fetc
         const ins = await insightsMedia(g, m);
         q.upsert.run({
           id: m.id, tipo: m.media_type, formato: formatoDe(m), caption: m.caption || null, permalink: m.permalink || null,
-          miniatura: m.thumbnail_url || (m.media_type === 'IMAGE' ? m.media_url : null) || null,
+          miniatura: m.thumbnail_url || (m.media_type === 'VIDEO' ? null : m.media_url) || null, // en un carrusel, su primera imagen
           media_url: m.media_type === 'VIDEO' ? m.media_url || null : null,
           fecha: m.timestamp, likes: m.like_count ?? null, comentarios: m.comments_count ?? null, ...ins,
           gancho: primeraFrase(m.caption), extra: null,

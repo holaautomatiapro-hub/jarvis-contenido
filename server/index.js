@@ -192,6 +192,11 @@ export function createApp({ jarvis, archivos, publicadorIg, asistente, instagram
     // Una publicación: detalle, slides (imágenes del carrusel), transcripción del reel y replicarla con tu estilo
     app.get('/api/competencia/publicaciones/:id', h((req) => competencia.detalle(req.params.id)));
     app.post('/api/competencia/publicaciones/:id/slides', h(async (req) => ({ slides: (await competencia.descargarSlides(req.params.id)).map((f) => path.basename(f)) })));
+    app.get('/api/competencia/publicaciones/:id/miniatura', async (req, res) => {
+      const f = await competencia.miniatura(req.params.id).catch(() => null);
+      if (!f) return res.status(404).end();
+      res.set('Cache-Control', 'private, max-age=604800').sendFile(f);
+    });
     app.get('/api/competencia/publicaciones/:id/slides/:fichero', (req, res) => {
       const f = competencia.rutaSlide(req.params.id, req.params.fichero);
       if (!f) return res.status(404).end();

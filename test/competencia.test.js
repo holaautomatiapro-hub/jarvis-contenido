@@ -1,6 +1,6 @@
 import { test, describe, before, after } from 'node:test';
 import assert from 'node:assert/strict';
-import { mkdtempSync, rmSync } from 'node:fs';
+import { existsSync, mkdtempSync, rmSync } from 'node:fs';
 import os from 'node:os';
 import path from 'node:path';
 import { openDb, ajustes } from '../server/db.js';
@@ -193,6 +193,20 @@ describe('mejores publicaciones, slides, transcripción y replicar', () => {
     const r = c2.resumen();
     assert.equal(r.publicaciones.find((m) => m.id === 'k1').slides, 2);
     assert.equal(r.publicaciones[0].transcripcion, undefined, 'la lista va sin textos largos');
+  });
+
+  test('los carruseles tienen miniatura (su primera imagen) y se guarda para que no caduque', async () => {
+    assert.equal(db2.prepare('SELECT miniatura FROM comp_media WHERE id = ?').get('k1').miniatura, 'https://cdn/k1-1.jpg', 'la de su primera diapositiva');
+    const r = c2.resumen();
+    assert.equal(r.publicaciones.find((m) => m.id === 'k1').miniatura, '/api/competencia/publicaciones/k1/miniatura');
+    assert.equal(r.publicaciones.find((m) => m.id === 'k2').miniatura, '/api/competencia/publicaciones/k2/miniatura');
+    const f = await c2.miniatura('k1');
+    assert.ok(f && existsSync(f));
+    db2.prepare("UPDATE comp_media SET miniatura = 'https://cdn/caducado.jpg' WHERE id = 'k1'").run();
+    assert.equal(await c2.miniatura('k1'), f, 'la guardada sigue sirviendo aunque el enlace de Instagram caduque');
+    db2.prepare("UPDATE comp_media SET miniatura = 'https://cdn/caducado.jpg' WHERE id = 'k2'").run();
+    assert.equal(await c2.miniatura('k2'), null, 'caducada y sin guardar: nada (hasta la próxima sincronización)');
+    db2.prepare("UPDATE comp_media SET miniatura = 'https://cdn/k2.jpg' WHERE id = 'k2'").run();
   });
 
   test('slides del carrusel al vault (de un vídeo, su miniatura) y transcripción del reel a 04-Competencia', async () => {

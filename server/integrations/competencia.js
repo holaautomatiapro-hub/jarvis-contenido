@@ -106,7 +106,7 @@ export function createCompetencia({ db, instagram, vault, env = process.env, fet
   function guardarMedia(m, username) {
     q.upMedia.run({
       id: m.id, username, formato: formatoDe(m), caption: m.caption || null, permalink: m.permalink || null,
-      miniatura: m.thumbnail_url || (m.media_type === 'IMAGE' ? m.media_url : null) || null,
+      miniatura: m.thumbnail_url || (m.media_type === 'VIDEO' ? null : primeraImagen(m)) || null,
       fecha: m.timestamp, likes: m.like_count ?? null, comentarios: m.comments_count ?? null, gancho: primeraFrase(m.caption),
       media_url: m.media_url || null, vistas: m.view_count ?? null,
       hijos: m.children?.data?.length ? JSON.stringify(m.children.data.map((h) => ({ tipo: h.media_type, url: h.media_url || null, miniatura: h.thumbnail_url || null }))) : null,
@@ -220,11 +220,8 @@ export function createCompetencia({ db, instagram, vault, env = process.env, fet
   // Las últimas traídas por enlace
   const traidas = () => rows(q.traidas).map((m) => {
     const interacciones = (m.likes || 0) + (m.comentarios || 0);
-    const slide = slidesGuardados(m.id)[0];
     return {
-      ...ligera({ ...m, interacciones, engagement: m.autor_seguidores ? Math.round((interacciones / m.autor_seguidores) * 1000) / 10 : null }),
-      // Las miniaturas de Instagram caducan: si ya se bajaron sus slides, la primera
-      miniatura: slide ? `/api/competencia/publicaciones/${encodeURIComponent(m.id)}/slides/${path.basename(slide)}` : m.miniatura,
+      ...ligera(conMiniatura({ ...m, interacciones, engagement: m.autor_seguidores ? Math.round((interacciones / m.autor_seguidores) * 1000) / 10 : null })),
       traida: m.por_enlace,
     };
   });
@@ -282,13 +279,45 @@ export function createCompetencia({ db, instagram, vault, env = process.env, fet
     const activos = perfiles.filter((p) => p.activo && p.ultima_sync && !p.error);
     const r = calcular(activos, rows(q.media));
     return {
-      ...base, demo: false, ...r, publicaciones: r.publicaciones.map(ligera),
+      ...base, demo: false, ...r, publicaciones: r.publicaciones.map((m) => ligera(conMiniatura(m))),
+      mejoresGanchos: r.mejoresGanchos.map(conMiniatura),
       analisis: ultimo ? { ...JSON.parse(ultimo.datos), fecha: ultimo.ts, perfiles: JSON.parse(ultimo.perfiles), nota: ultimo.nota } : null,
     };
   }
 
   // ---------- Una publicación: detalle, slides, transcripción ----------
   const dirSlides = (id) => path.join(vault.base, '.jarvis', 'competencia', String(id).replace(/[^\w-]/g, '_'));
+  // Miniaturas: Instagram no da una propia para los carruseles (se usa su primera imagen) y sus enlaces caducan a
+  // los pocos días, así que la primera vez que se ve se guarda aquí y se sirve desde JARVIS
+  const dirMiniaturas = path.join(vault.base, '.jarvis', 'competencia', '_miniaturas');
+  const rutaMiniatura = (id) => path.join(dirMiniaturas, `${String(id).replace(/[^\w-]/g, '_')}.jpg`);
+  function fuenteMiniatura(m) {
+    if (m.miniatura) return m.miniatura;
+    let hijos = [];
+    try { hijos = typeof m.hijos === 'string' ? JSON.parse(m.hijos) : m.hijos || []; } catch { /* sin hijos */ }
+    if (hijos[0]) return (hijos[0].tipo === 'VIDEO' ? hijos[0].miniatura : hijos[0].url) || null;
+    return m.formato === 'Reels' ? null : m.media_url || null;
+  }
+  // Lo que ve el dashboard: la primera slide ya descargada, la miniatura guardada o el enlace para guardarla
+  function conMiniatura(m) {
+    if (String(m.id).startsWith('demo-')) return m;
+    const slide = slidesGuardados(m.id)[0];
+    if (slide) return { ...m, miniatura: `/api/competencia/publicaciones/${encodeURIComponent(m.id)}/slides/${path.basename(slide)}` };
+    return { ...m, miniatura: existsSync(rutaMiniatura(m.id)) || fuenteMiniatura(m) ? `/api/competencia/publicaciones/${encodeURIComponent(m.id)}/miniatura` : null };
+  }
+  async function miniatura(id) {
+    const f = rutaMiniatura(id);
+    if (existsSync(f)) return f;
+    const m = row(q.unaMedia, String(id));
+    const url = m && fuenteMiniatura(m);
+    if (!url) return null;
+    let r;
+    try { r = await fetchImpl(url, { signal: AbortSignal.timeout(20000) }); } catch { return null; }
+    if (!r.ok || !/^image\//.test(r.headers.get('content-type') || 'image/')) return null; // caducada: hasta la próxima sincronización
+    mkdirSync(dirMiniaturas, { recursive: true });
+    writeFileSync(f, Buffer.from(await r.arrayBuffer()));
+    return f;
+  }
   const rutaVault = (abs) => path.relative(vault.base, abs).split(path.sep).join('/');
   function leer(id) {
     if (String(id).startsWith('demo-')) throw publico('Es una publicación de ejemplo: sincroniza a tus competidores reales para verla en detalle');
@@ -303,7 +332,7 @@ export function createCompetencia({ db, instagram, vault, env = process.env, fet
     return readdirSync(dir).filter((f) => /^\d+\.jpg$/.test(f)).sort().map((f) => path.join(dir, f));
   };
   function detalle(id) {
-    const m = leer(id);
+    const m = conMiniatura(leer(id));
     return { ...m, slides: slidesGuardados(m.id).map((f) => path.basename(f)), puedeTranscribir: m.formato === 'Reels' && Boolean(m.media_url) && sttConfigurado(env), stt: sttConfigurado(env) };
   }
 
@@ -383,7 +412,14 @@ export function createCompetencia({ db, instagram, vault, env = process.env, fet
     }));
   }
 
-  return { anadir, quitar, activar, sincronizar, porEnlace, traidas, guardarAnalisis, datosParaAnalisis, resumen, detalle, descargarSlides, rutaSlide, transcribir, paraReplicar, mejores, estaSincronizando: () => sincronizando };
+  return { anadir, quitar, activar, sincronizar, porEnlace, traidas, guardarAnalisis, datosParaAnalisis, resumen, detalle, descargarSlides, rutaSlide, miniatura, transcribir, paraReplicar, mejores, estaSincronizando: () => sincronizando };
+}
+
+// La primera imagen de una publicación (en un carrusel, la de su primera diapositiva; si es un vídeo, su portada)
+function primeraImagen(m) {
+  const h = m.children?.data?.[0];
+  if (h) return (h.media_type === 'VIDEO' ? h.thumbnail_url : h.media_url) || m.media_url || null;
+  return m.media_url || null;
 }
 
 // Cálculos que no necesitan IA (función pura)
