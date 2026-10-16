@@ -521,9 +521,12 @@ describe('motor con navegador', () => {
         const info = (n) => spawnSync(ffmpeg, ['-hide_banner', '-i', r.archivos.find((x) => x.n === n).ruta]).stderr.toString();
         const dur = (txt) => { const m = /Duration: (\d+):(\d+):([\d.]+)/.exec(txt); return Number(m[1]) * 3600 + Number(m[2]) * 60 + Number(m[3]); };
         assert.ok(Math.abs(dur(info(2)) - 3) < 0.2, `la diapositiva con vídeo dura 3 s (${dur(info(2))})`);
+        const volumen = (n) => Number(/max_volume: (-?[\d.inf]+) dB/.exec(spawnSync(ffmpeg, ['-hide_banner', '-i', r.archivos.find((x) => x.n === n).ruta, '-af', 'volumedetect', '-f', 'null', '-']).stderr.toString())?.[1]);
         assert.match(info(2), /Audio: aac/, 'lleva el sonido del vídeo');
+        assert.ok(volumen(2) > -30, `y se oye (${volumen(2)} dB)`);
         assert.ok(Math.abs(dur(info(1)) - kit.leer().duracion) < 0.2, 'las demás duran lo de siempre');
-        assert.doesNotMatch(info(1), /Audio:/, 'y no llevan sonido');
+        assert.match(info(1), /Audio: aac/, 'y llevan una pista de audio (Instagram la exige en los carruseles)…');
+        assert.ok(!(volumen(1) > -80), `…en silencio (${volumen(1)} dB)`);
       } finally { r.limpiar(); }
     } finally { await conVideo.cerrar(); }
   });

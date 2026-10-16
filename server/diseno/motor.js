@@ -506,10 +506,12 @@ export async function ponerSonido({ ffmpeg, ruta, dur, sonidos }) {
   return true;
 }
 
-// Fotograma a fotograma: ir al instante, capturar y pasárselo a ffmpeg (H.264, yuv420p, faststart, sin audio)
+// Fotograma a fotograma: ir al instante, capturar y pasárselo a ffmpeg (H.264, yuv420p, faststart, audio en silencio)
 async function grabarVideo(page, { ffmpeg, ruta, fps, fotogramas, alFotograma }) {
+  // Con una pista de audio en silencio: Instagram rechaza los vídeos de carrusel que no llevan audio
   const proc = spawn(ffmpeg, ['-y', '-loglevel', 'error', '-f', 'image2pipe', '-c:v', 'mjpeg', '-framerate', String(fps), '-i', '-',
-    '-c:v', 'libx264', '-preset', 'medium', '-crf', '18', '-pix_fmt', 'yuv420p', '-r', String(fps), '-movflags', '+faststart', '-an', ruta],
+    '-f', 'lavfi', '-t', String(fotogramas / fps), '-i', 'anullsrc=r=48000:cl=stereo', '-map', '0:v', '-map', '1:a',
+    '-c:v', 'libx264', '-preset', 'medium', '-crf', '18', '-pix_fmt', 'yuv420p', '-r', String(fps), '-c:a', 'aac', '-b:a', '128k', '-movflags', '+faststart', ruta],
   { stdio: ['pipe', 'ignore', 'pipe'], windowsHide: true });
   let errores = '';
   proc.stderr.on('data', (b) => { errores += b; });
