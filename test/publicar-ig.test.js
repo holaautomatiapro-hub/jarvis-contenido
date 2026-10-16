@@ -41,7 +41,8 @@ describe('reglas de publicación', () => {
 });
 
 // Meta y Supabase de mentira
-function entorno({ procesando = 0, fallarPublicar = false, prepararVideo } = {}) {
+// prepararVideo: aquí no se pasa ffmpeg a los vídeos de mentira (lo de verdad se prueba en video-ig.test.js)
+function entorno({ procesando = 0, fallarPublicar = false, prepararVideo = async (ruta) => ({ ruta, limpiar() {}, cambiado: false }) } = {}) {
   const db = openDb(':memory:');
   const jarvis = createJarvis({ db, vault: createVault(path.join(dir, 'V')) });
   const archivos = createArchivos({ dir: path.join(dir, 'arch') });
@@ -69,7 +70,7 @@ function entorno({ procesando = 0, fallarPublicar = false, prepararVideo } = {})
   const instagram = { estado: () => ({ conectadoMeta: true, username: 'micuenta' }), conexion: () => ({ token: 'tok', igUserId: 'ig1' }) };
   const almacen = createAlmacen({ env: { CRM_SUPABASE_URL: 'https://abc.supabase.co', CRM_SUPABASE_ANON_KEY: 'eyJ'.padEnd(40, 'x') }, fetchImpl });
   let reloj = new Date('2026-10-20T17:00:00');
-  const pub = createPublicadorIg({ db, jarvis, instagram, almacen, archivos, fetchImpl, ahora: () => reloj, dormir: async () => {}, esperaMax: 0, log: { warn: () => {} }, ...(prepararVideo ? { prepararVideo } : {}) });
+  const pub = createPublicadorIg({ db, jarvis, instagram, almacen, archivos, fetchImpl, ahora: () => reloj, dormir: async () => {}, esperaMax: 0, log: { warn: () => {} }, prepararVideo });
   return { db, jarvis, pub, llamadas, mover: (d) => { reloj = new Date(d); } };
 }
 
@@ -102,7 +103,8 @@ describe('publicador', () => {
     const { jarvis, pub, llamadas } = entorno({ prepararVideo });
     const p = jarvis.crearPieza({ titulo: 'Carrusel mixto', formato: 'Carrusel', archivos: [jpg(), mp4()] });
     pub.publicarAhora(p.id);
-    await new Promise((ok) => setTimeout(ok, 30));
+    const estado = () => jarvis.listarPiezas().find((x) => x.id === p.id).ig_estado;
+    for (let i = 0; i < 100 && estado() !== 'publicado'; i++) await new Promise((ok) => setTimeout(ok, 20));
     assert.deepEqual(preparados, ['1700000000000-abcdef_reel.mp4']);
     assert.equal(limpiados, 1, 'el temporal se borra después de subirlo');
     assert.equal(llamadas.filter((l) => l.supabase === 'POST').length, 2);
