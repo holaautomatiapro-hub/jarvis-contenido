@@ -83,6 +83,67 @@ describe('guardar como idea una referencia de la competencia', () => {
   });
 });
 
+describe('la ficha de una idea de la competencia y «Replicar» en ella', () => {
+  test('se ve el post, el caption y la transcripción; replicar escribe el guion en la misma pieza', async () => {
+    const { jarvis, limpiar } = nuevo();
+    try {
+      const slides = [path.join(jarvis.vault.base, '04-Competencia', 's1.jpg')];
+      const m = { id: 'm9', username: 'rival', formato: 'Carrusel', hijos: [{}, {}], fecha: '2026-10-01', permalink: 'https://www.instagram.com/p/DdT0v/', caption: 'Si te preguntas si nos hemos vuelto locos', likes: 165, slides: ['01.jpg', '02.jpg'] };
+      const competencia = { detalle: () => m, idPorEnlace: (u) => (u === m.permalink ? 'm9' : null), descargarSlides: async () => slides };
+      const preguntas = [];
+      let ocupado = false;
+      const asistente = { preguntar: (b) => { preguntas.push(b); ocupado = true; return { id: 4 }; }, estado: () => ({ ocupado, ocupadoAqui: ocupado }) };
+      const kit = { estado: () => ({ plantillas: [{ id: 'educativo', nombre: 'Educativo', formatos: ['carrusel'] }, { id: 'story-x', nombre: 'Story', formatos: ['story'] }] }) };
+      const ref = createReferencias({ jarvis, competencia, asistente, kit, vaultPath: jarvis.vault.base });
+      const { pieza } = await ref.guardarComoIdea({ fuente: 'competencia', id: 'm9' });
+      jarvis.vault.append(pieza.nota, '\n## Texto de los slides\n\n**Slide 1:** ADS RESEARCH\n');
+      const r = ref.referenciaDePieza(pieza.id);
+      assert.equal(r.fuente, 'competencia');
+      assert.equal(r.enlace, m.permalink);
+      assert.equal(r.caption, m.caption);
+      assert.equal(r.textoSlides, '**Slide 1:** ADS RESEARCH');
+      assert.deepEqual(r.imagenes, ['/api/competencia/publicaciones/m9/slides/01.jpg', '/api/competencia/publicaciones/m9/slides/02.jpg']);
+      assert.equal(r.puedeDisenar, true);
+      assert.deepEqual(r.plantillas.map((x) => x.id), ['educativo'], 'solo las de carrusel');
+
+      await assert.rejects(ref.replicarEnPieza(pieza.id, { modo: 'completo', plantilla: 'no-existe' }), /no está en tu kit/);
+      const x = await ref.replicarEnPieza(pieza.id, { modo: 'completo', plantilla: 'educativo', indicaciones: 'Para entrenadores', cta: { tipo: 'otro', texto: 'Comenta RESEARCH' } });
+      const t = preguntas[0].texto;
+      assert.equal(preguntas[0].conversacion, 'replicar');
+      assert.equal(preguntas[0].modelo, 'opus', 'diseñar va con el modelo grande');
+      assert.ok(t.includes(x.ruta) && t.includes(pieza.nota) && t.includes(slides[0]));
+      assert.match(t, /plantilla «Educativo» \(id educativo\)/);
+      assert.match(t, /pieza_id \d+/);
+      assert.match(t, /usa este: «Comenta RESEARCH»/);
+      assert.match(t, /Para entrenadores/);
+      assert.match(t, /mover_pieza \(id \d+\)/);
+      assert.match(t, /No crees otras piezas/);
+      assert.equal(ref.referenciaDePieza(pieza.id).replicando, true);
+      await assert.rejects(ref.replicarEnPieza(pieza.id, { modo: 'guion' }), /terminando otra petición/);
+      ocupado = false;
+      await ref.replicarEnPieza(pieza.id, { modo: 'guion' });
+      assert.doesNotMatch(preguntas[1].texto, /crear_diseno/, 'solo el guion: sin diseño');
+      assert.match(preguntas[1].texto, /el mismo tipo de CTA que la referencia/);
+      assert.equal(preguntas[1].modelo, undefined);
+    } finally { limpiar(); }
+  });
+
+  test('de un reel no se puede replicar completo', async () => {
+    const { jarvis, limpiar } = nuevo();
+    try {
+      const competencia = { detalle: () => ({ id: 'r1', username: 'rival', formato: 'Reels', permalink: 'https://www.instagram.com/reel/x/', caption: 'Hola', transcripcion: 'Lo que dice' }), idPorEnlace: () => 'r1' };
+      const asistente = { preguntar: () => ({ id: 1 }), estado: () => ({ ocupado: false }) };
+      const ref = createReferencias({ jarvis, competencia, asistente, vaultPath: jarvis.vault.base });
+      const { pieza } = await ref.guardarComoIdea({ fuente: 'competencia', id: 'r1' });
+      const r = ref.referenciaDePieza(pieza.id);
+      assert.equal(r.transcripcion, 'Lo que dice');
+      assert.equal(r.esVideo, true);
+      assert.equal(r.puedeDisenar, false);
+      await assert.rejects(ref.replicarEnPieza(pieza.id, { modo: 'completo' }), /posts y carruseles/);
+    } finally { limpiar(); }
+  });
+});
+
 describe('el guion de una pieza', () => {
   test('el de Replicar se ve y se edita; sin guion se crea su nota en 02-Guiones', () => {
     const { jarvis, limpiar } = nuevo();

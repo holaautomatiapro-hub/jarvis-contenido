@@ -553,7 +553,23 @@ export function createApp({ jarvis, archivos, publicadorIg, asistente, instagram
   app.post('/api/notas/restaurar', h((req) => jarvis.restaurarNota(req.body?.papelera, req.body?.ruta), true));
   app.post('/api/ideas', h((req) => jarvis.capturarIdea(req.body || {}), true));
   // «Guardar como idea» una publicación o un anuncio de la competencia (con su transcripción si se pide)
-  const referencias = createReferencias({ jarvis, competencia, ads, adjuntos, asistente, vaultPath: jarvis.vault.base });
+  const referencias = createReferencias({ jarvis, competencia, ads, adjuntos, asistente, kit, vaultPath: jarvis.vault.base });
+  // La ficha de una idea guardada de la competencia (la publicación, su caption y su transcripción) y «Replicar» en ella
+  app.get('/api/piezas/:id/referencia', h((req) => referencias.referenciaDePieza(req.params.id)));
+  app.post('/api/piezas/:id/replicar', h(async (req) => {
+    const b = req.body || {};
+    try {
+      return await referencias.replicarEnPieza(req.params.id, { modo: b.modo, indicaciones: String(b.indicaciones || '').trim(), plantilla: b.plantilla || null, cta: b.cta || null });
+    } catch (e) { if (e.ocupado) throw new OcupadoError(e.message); throw e; }
+  }, true));
+  // El vídeo de un reel de la competencia: el que se bajó al transcribirlo o, si no, el enlace de Instagram
+  app.get('/api/competencia/publicaciones/:id/video', (req, res) => {
+    const f = referencias.rutaVideoCompetencia(req.params.id);
+    if (existsSync(f)) return res.set('Cache-Control', 'private, max-age=604800').sendFile(f);
+    let m = null;
+    try { m = competencia?.detalle(req.params.id); } catch { /* ya no está */ }
+    return m?.media_url ? res.redirect(m.media_url) : res.status(404).end();
+  });
   app.post('/api/ideas/referencia', h((req) => referencias.guardarComoIdea({ fuente: req.body?.fuente, id: String(req.body?.id || ''), conTranscripcion: req.body?.conTranscripcion === true }), true));
   // El guion de una pieza (su nota de 02-Guiones): verlo y cambiarlo a mano desde la ficha, o pedírselo a JARVIS
   let guionEnMarcha = null; // { pieza, peticion }

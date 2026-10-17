@@ -5,7 +5,7 @@ import { api } from '../../lib/api.js';
 // El guion de la pieza (su nota de 02-Guiones): el que dejó «Replicar» o el que escribas aquí, a mano o con JARVIS.
 // Si la pieza sale de una idea guardada (con su transcripción o el texto de sus slides), se ve encima como referencia.
 // Quien lo usa llama a ref.guardar() al guardar la ficha.
-const CajaGuion = forwardRef(function CajaGuion({ pieza }, ref) {
+const CajaGuion = forwardRef(function CajaGuion({ pieza, sinReferencia = false }, ref) {
   const [g, setG] = useState(null); // { ruta, texto, modificado, referencia, escribiendo }
   const [texto, setTexto] = useState('');
   const [error, setError] = useState('');
@@ -61,7 +61,7 @@ const CajaGuion = forwardRef(function CajaGuion({ pieza }, ref) {
   const vacio = !texto.trim();
   return (
     <div className="caja-guion">
-      {g.referencia && (
+      {g.referencia && !sinReferencia && (
         <details className="guion-ref">
           <summary><Icon name="bulb" size={13} />La idea de la que sale{/## Transcripción|## Texto de los slides/.test(g.referencia.texto) ? ' (con la transcripción)' : ''}</summary>
           <div className="guion-ref-txt">{g.referencia.texto || 'Vacía'}</div>

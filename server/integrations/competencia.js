@@ -72,6 +72,7 @@ export function createCompetencia({ db, instagram, vault, env = process.env, fet
     porCodigo: db.prepare("SELECT id, username, transcripcion, por_enlace >= datetime('now','localtime','-12 hours') AS reciente FROM comp_media WHERE permalink LIKE '%/' || ? || '/%' OR permalink LIKE '%/' || ?"),
     traida: db.prepare("UPDATE comp_media SET por_enlace = datetime('now','localtime'), autor_seguidores = COALESCE(?, autor_seguidores) WHERE id = ?"),
     traidas: db.prepare('SELECT * FROM comp_media WHERE por_enlace IS NOT NULL ORDER BY por_enlace DESC LIMIT 12'),
+    porPermalink: db.prepare('SELECT id FROM comp_media WHERE permalink = ? ORDER BY fecha DESC LIMIT 1'),
     transcrita: db.prepare('UPDATE comp_media SET transcripcion = ?, nota = ? WHERE id = ?'),
     insAnalisis: db.prepare('INSERT INTO comp_analisis (perfiles, datos, nota) VALUES (?, ?, ?)'),
     ultimoAnalisis: db.prepare('SELECT * FROM comp_analisis ORDER BY id DESC LIMIT 1'),
@@ -391,6 +392,9 @@ export function createCompetencia({ db, instagram, vault, env = process.env, fet
     return { transcripcion: texto, nota };
   }
 
+  // La publicación de un enlace ya guardado (el de una idea): su id, o null
+  const idPorEnlace = (url) => (url ? row(q.porPermalink, String(url))?.id ?? null : null);
+
   // La transcripción hecha fuera (con Whisper si no hay ElevenLabs), p. ej. al guardar el reel como idea
   function guardarTranscripcion(id, texto, nota = null) {
     q.transcrita.run(texto, nota, leer(id).id);
@@ -418,7 +422,7 @@ export function createCompetencia({ db, instagram, vault, env = process.env, fet
     }));
   }
 
-  return { anadir, quitar, activar, sincronizar, porEnlace, traidas, guardarAnalisis, datosParaAnalisis, resumen, detalle, descargarSlides, rutaSlide, miniatura, transcribir, guardarTranscripcion, paraReplicar, mejores, estaSincronizando: () => sincronizando };
+  return { anadir, quitar, activar, sincronizar, porEnlace, traidas, guardarAnalisis, datosParaAnalisis, resumen, detalle, descargarSlides, rutaSlide, miniatura, transcribir, guardarTranscripcion, idPorEnlace, paraReplicar, mejores, estaSincronizando: () => sincronizando };
 }
 
 // La primera imagen de una publicación (en un carrusel, la de su primera diapositiva; si es un vídeo, su portada)

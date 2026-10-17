@@ -119,3 +119,20 @@ Cómo hacerlo:
 3. Guárdalo con editar_nota en «${ruta}» (léela antes con leer_nota): deja el frontmatter y el título (# …) tal cual y pon debajo el guion completo. No le cambies el título a la nota, no crees notas ni piezas y no toques el caption.
 4. Responde en una o dos líneas qué has escrito o cambiado.`;
 }
+
+// «Replicar» desde la ficha de una idea guardada de la competencia: el guion va en la nota de guion de ESA pieza
+// (no se crean otras) y, en completo, Claude la diseña con el kit (la plantilla elegida o la que encaje) y la exporta.
+export function promptReplicarEnPieza(p, { ruta, referencia, enlace, imagenes = [], completo = false, plantilla = null, cta = null, indicaciones = '' }) {
+  const formato = FORMATOS_REPLICA[p.formato] || 'el mismo formato que la referencia';
+  return `Quiero replicar CON MI ESTILO una referencia de otra cuenta que guardé como idea: es mi pieza #${p.id} «${p.titulo}»${p.formato ? ` (${p.formato})` : ''}.
+${referencia ? `La referencia está en la nota «${referencia}»: léela con leer_nota (enlace, señales, caption y la transcripción o el texto de los slides).` : `La referencia es ${enlace}.`}
+${imagenes.length ? `Imágenes originales (míralas con Read, en orden): ${imagenes.join(', ')}\n` : ''}${indicaciones ? `Indicaciones (mandan sobre todo lo demás): ${String(indicaciones).slice(0, 1500)}\n` : ''}CTA: ${cta ? `usa este: «${String(cta).slice(0, 300)}»` : 'el mismo tipo de CTA que la referencia (la misma acción que pide), adaptado a mi oferta'}.
+
+Cómo hacerlo:
+1. Entiende primero por qué funciona: en 3-5 líneas, su gancho, su estructura (cuántos slides o bloques y qué hace cada uno) y su CTA.
+2. Lee _voz.md y CLAUDE.md y escribe MI versión: misma estructura y mismo tipo de gancho, pero todo escrito de nuevo con mi voz, mis ejemplos y mi oferta. Nunca frases literales suyas. Si hay una skill adecuada en .claude/skills, síguela. Formato: ${formato}.
+3. Guarda el guion con editar_nota en «${ruta}» (léela antes con leer_nota): deja el frontmatter y el título (# …) tal cual y pon debajo el guion completo; al final, «Inspirado en: ${enlace}». No le cambies el título a la nota.
+4. Con mover_pieza (id ${p.id}) pon en la pieza el caption, el gancho, el cta y el objetivo (atraer, nutrir o convertir), y pásala a la fase "guion" (mira ver_pipeline). No crees otras piezas.
+${completo ? `5. Diseña la pieza con MI sistema de diseño: ver_kit_diseno; ${plantilla ? `usa la plantilla «${plantilla.nombre}» (id ${plantilla.id})` : 'elige la plantilla que mejor encaje'} y lee con leer_archivo_kit su guía y su ejemplo; crear_diseno (formato carrusel${p.formato === 'Post' ? ', una sola diapositiva' : ''}, esa plantilla y pieza_id ${p.id}); guardar_diseno con las diapositivas y el caption; corrige los avisos y mira las vistas previas con Read. Después exportar_diseno (jpg): las imágenes quedan en esta pieza. Al acabar, pasa la pieza a la fase de editado o creado que haya después de "guion".
+6.` : '5.'} No publiques nada. Responde en 2-3 líneas: por qué funciona la referencia y qué has hecho.`;
+}

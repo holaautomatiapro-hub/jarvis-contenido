@@ -35,33 +35,6 @@ function CuentaPublicitaria({ estado, recargar, setAviso }) {
   );
 }
 
-function Proponer({ pub, objetivos, max, onCerrar, onHecho }) {
-  const [f, setF] = useState({ objetivo: 'interaccion', presupuestoDia: 10, dias: 7, edadMin: 25, edadMax: 55 });
-  const [error, setError] = useState('');
-  const set = (k) => (e) => setF((x) => ({ ...x, [k]: e.target.type === 'number' ? Number(e.target.value) : e.target.value }));
-  const enviar = async (e) => {
-    e.preventDefault();
-    try { await api('/api/ads/borradores', { method: 'POST', body: { ...f, publicacionId: pub.id } }); onHecho(); onCerrar(); } catch (err) { setError(err.message); }
-  };
-  return (
-    <div className="modal-fondo" onMouseDown={(e) => e.target === e.currentTarget && onCerrar()}>
-      <form className="panel modal" onSubmit={enviar} role="dialog" aria-modal="true" aria-label="Proponer campaña">
-        <div className="panel-head"><span className="label">Proponer campaña</span><button type="button" className="icon-btn" onClick={onCerrar} aria-label="Cerrar">✕</button></div>
-        <p className="ayuda" style={{ marginTop: 0 }}>Impulsar: “{pub.gancho}”</p>
-        <div className="form-grid">
-          <label>Objetivo<select className="campo" value={f.objetivo} onChange={set('objetivo')}>{objetivos.map((o) => <option key={o.id} value={o.id}>{o.etiqueta}</option>)}</select></label>
-          <label>€ al día<input className="campo" type="number" min="1" max={max} step="1" value={f.presupuestoDia} onChange={set('presupuestoDia')} /></label>
-          <label>Días<input className="campo" type="number" min="1" max="30" value={f.dias} onChange={set('dias')} /></label>
-          <label>Edad<span className="fila" style={{ margin: 0 }}><input className="campo" type="number" min="18" max="65" value={f.edadMin} onChange={set('edadMin')} aria-label="Edad mínima" /><input className="campo" type="number" min="18" max="65" value={f.edadMax} onChange={set('edadMax')} aria-label="Edad máxima" /></span></label>
-        </div>
-        <div className="aviso" style={{ marginTop: 12 }}>Gasto máximo: <b>{euro(f.presupuestoDia * f.dias)}</b>. Se guarda como borrador; nada se crea en Meta hasta que confirmes, y se creará en pausa.</div>
-        {error && <div className="aviso-error">{error}</div>}
-        <div className="modal-pie"><span /><button className="btn">Guardar borrador</button></div>
-      </form>
-    </div>
-  );
-}
-
 function Borrador({ b, moneda, recargar, setAviso }) {
   const [creando, setCreando] = useState(false);
   const d = b.datos;
@@ -101,7 +74,6 @@ export default function Ads() {
   const [dias, setDias] = useState(30);
   const [data, recargar] = useRecurso(`/api/ads?dias=${dias}`, null);
   const [aviso, setAviso] = useState(null);
-  const [proponer, setProponer] = useState(null);
   if (!data) return <section className="panel soon"><div className="t-dim">Cargando Meta Ads…</div></section>;
 
   const { estado, rendimiento: r } = data;
@@ -144,7 +116,7 @@ export default function Ads() {
       {!estado.conectado && <div className="aviso">Para ver tus campañas y crear nuevas, conecta primero Instagram con Facebook (pestaña Instagram) y elige aquí tu cuenta publicitaria. Guía: docs/META-ADS.md</div>}
       {estado.conectado && !estado.cuenta && <div className="aviso">Elige tu cuenta publicitaria arriba para ver gasto, CTR y CPC reales.</div>}
 
-      <div className="ads-grid">
+      <div className={`ads-grid${pendientes.length ? '' : ' sin-propuestas'}`}>
         <ChatJarvis
           conversacion="ads"
           titulo="Asistente de Meta Ads"
@@ -194,36 +166,16 @@ export default function Ads() {
           </div>
         </div>
 
-        <div className="col">
-          {pendientes.length > 0 && (
+        {pendientes.length > 0 && (
+          <div className="col">
             <div className="panel panel-pad">
               <div className="panel-head"><span className="label">Campañas propuestas</span><span className="ayuda">Se crean en pausa al confirmar</span></div>
               {pendientes.map((b) => <Borrador key={b.id} b={b} moneda={moneda} recargar={recargar} setAviso={setAviso} />)}
             </div>
-          )}
-
-          <div className="panel panel-pad">
-            <div className="panel-head">
-              <div><span className="label">Contenido orgánico para impulsar</span>{data.demoRecomendados && <div className="ayuda">Ejemplo: conecta Instagram para ver los tuyos</div>}</div>
-            </div>
-            {data.recomendados.map((p) => (
-              <div key={p.id} className="idea-card">
-                <span className="miniatura" style={p.miniatura ? { backgroundImage: `url("${p.miniatura}")` } : { background: 'color-mix(in srgb, #3987e5 30%, var(--panel-2))' }}>{!p.miniatura && <Icon name="play" size={12} />}</span>
-                <div className="idea-txt">
-                  <div className="idea-tags"><span className="tag" style={{ background: 'color-mix(in srgb, var(--accent) 15%, transparent)', color: 'var(--accent-texto)' }}>{p.formato}</span><small>{num(p.alcance)} alcance · {num(p.guardados)} guardados</small></div>
-                  <b>{p.gancho}</b>
-                  <span className="idea-porque">{p.motivo}</span>
-                  <button className="link-btn" disabled={data.demoRecomendados || !estado.cuenta} onClick={() => setProponer(p)}>{data.demoRecomendados ? 'Ejemplo' : !estado.cuenta ? 'Elige antes la cuenta publicitaria' : '+ Proponer campaña'}</button>
-                </div>
-              </div>
-            ))}
-            {!data.recomendados.length && <div className="vacio">Sin publicaciones con datos suficientes todavía.</div>}
           </div>
-
-        </div>
+        )}
       </div>
       <AnunciosCompetencia conectado={estado.conectado} />
-      {proponer && <Proponer pub={proponer} objetivos={data.objetivos} max={estado.maxPresupuestoDia} onCerrar={() => setProponer(null)} onHecho={recargar} />}
     </section>
   );
 }

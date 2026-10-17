@@ -2,6 +2,7 @@ import path from 'node:path';
 import { createWriteStream, existsSync, mkdirSync } from 'node:fs';
 import { Readable } from 'node:stream';
 import { pipeline } from 'node:stream/promises';
+import { promptReplicarEnPieza } from './replicar.js';
 
 // «Guardar como idea» desde una publicación o un anuncio de la competencia: una idea en 01-Ideas con la referencia
 // (enlace, señales y caption) y, si se pide, lo que se dice en el vídeo o el texto de los slides. La transcripción
@@ -14,7 +15,9 @@ const recortar = (t, n) => { const s = String(t || '').replace(/\s+/g, ' ').trim
 const fecha = (f) => String(f || '').slice(0, 10);
 const linea = (o) => Object.entries(o).filter(([, v]) => v != null && v !== '').map(([k, v]) => `${k}: ${v}`).join(' · ');
 
-export function createReferencias({ jarvis, competencia, ads, adjuntos, asistente, vaultPath, fetchImpl = fetch }) {
+export function createReferencias({ jarvis, competencia, ads, adjuntos, asistente, kit = null, vaultPath, fetchImpl = fetch }) {
+  // Donde se guarda el vídeo de un reel de la competencia al transcribirlo (para verlo después en la ficha)
+  const rutaVideoCompetencia = (id) => path.join(vaultPath, '.jarvis', 'competencia', 'videos', String(id).replace(/[^\w-]/g, '_'), 'video.mp4');
   // Lo que hay que saber de cada fuente: el título de la idea, su nota y cómo sacar el vídeo o las imágenes
   function dePublicacion(id) {
     const m = competencia.detalle(id);
@@ -31,8 +34,8 @@ export function createReferencias({ jarvis, competencia, ads, adjuntos, asistent
       // El vídeo del reel, bajado al vault (Instagram no siempre lo da)
       rutaVideo: async () => {
         if (!m.media_url) throw publico('Instagram no da el vídeo de este reel (pasa con algunos reels con música con derechos): súbelo desde el detalle para transcribirlo');
-        const dir = path.join(vaultPath, '.jarvis', 'competencia', 'videos', String(m.id).replace(/[^\w-]/g, '_'));
-        const f = path.join(dir, 'video.mp4');
+        const f = rutaVideoCompetencia(m.id);
+        const dir = path.dirname(f);
         if (!existsSync(f)) {
           mkdirSync(dir, { recursive: true });
           const r = await fetchImpl(m.media_url, { signal: AbortSignal.timeout(180000) });
@@ -131,5 +134,79 @@ Después lee la nota «${nota}» con leer_nota y guárdala con editar_nota añad
     }
   }
 
-  return { guardarComoIdea };
+  // ---------- La ficha de una idea guardada de la competencia ----------
+  // De qué publicación o anuncio sale (por su enlace), con su caption, su transcripción y sus medios
+  const seccion = (md, titulo) => {
+    const m = new RegExp(`^## ${titulo}\\s*\\n([\\s\\S]*?)(?=^## |(?![\\s\\S]))`, 'm').exec(md || '');
+    return m ? m[1].trim() || null : null;
+  };
+  function origenDe(p) {
+    const ref = String(p.origen_ref || '');
+    const anuncio = /facebook\.com\/ads\/library\/\?id=(\d+)/.exec(ref)?.[1];
+    if (anuncio && ads) { try { return { fuente: 'anuncio', id: anuncio, detalle: ads.anuncioCompetencia(anuncio) }; } catch { /* ya no está */ } }
+    if (competencia) {
+      const id = ref.startsWith('competencia:') ? ref.slice(12) : competencia.idPorEnlace(ref);
+      if (id) { try { return { fuente: 'competencia', id: String(id), detalle: competencia.detalle(id) }; } catch { /* ya no está */ } }
+    }
+    return null;
+  }
+  const esReferencia = (p) => p?.origen === 'competencia' && Boolean(p.origen_ref);
+  function referenciaDePieza(id) {
+    const p = jarvis.leerPieza(id);
+    if (!esReferencia(p)) throw publico('Esta pieza no sale de una publicación guardada como idea');
+    const o = origenDe(p);
+    const nota = p.nota && jarvis.vault.existe(p.nota) ? jarvis.vault.read(p.nota).contenido : '';
+    const d = o?.detalle || {};
+    const video = o?.fuente === 'anuncio' ? d.video || null
+      : o?.fuente === 'competencia' && d.formato === 'Reels' && (existsSync(rutaVideoCompetencia(o.id)) || d.media_url) ? `/api/competencia/publicaciones/${encodeURIComponent(o.id)}/video` : null;
+    const imagenes = o?.fuente === 'anuncio' ? d.imagenes || []
+      : o?.fuente === 'competencia' ? (d.slides || []).map((f) => `/api/competencia/publicaciones/${encodeURIComponent(o.id)}/slides/${f}`) : [];
+    const formato = p.formato || (o?.fuente === 'competencia' && d.formato === 'Reels' ? 'Reel' : null);
+    return {
+      pieza: p, fuente: o?.fuente || null, fuenteId: o?.id || null, enlace: p.origen_ref, nota: p.nota || null,
+      cuenta: o?.fuente === 'anuncio' ? d.pagina : d.username ? `@${d.username}` : null, fecha: (o?.fuente === 'anuncio' ? d.inicio : d.fecha) || null,
+      caption: o?.fuente === 'anuncio' ? (d.cuerpos?.length ? d.cuerpos.join('\n\n---\n\n') : d.cuerpo) || seccion(nota, 'Texto del anuncio[^\\n]*') : d.caption || seccion(nota, 'Caption'),
+      transcripcion: d.transcripcion || seccion(nota, 'Transcripción'),
+      textoSlides: seccion(nota, 'Texto de los slides'),
+      senales: (nota.split('\n').find((l, i, ls) => i > 0 && ls[i - 1].startsWith('**Referencia:**')) || '').trim() || null,
+      video, imagenes, esVideo: o?.fuente === 'anuncio' ? Boolean(d.video) : d.formato === 'Reels',
+      puedeDisenar: ['Carrusel', 'Post'].includes(formato) || (o?.fuente === 'competencia' && d.formato !== 'Reels') || (o?.fuente === 'anuncio' && !d.video && d.imagenes?.length > 0),
+      replicando: replicandoPieza(p.id),
+      // Las plantillas del kit que sirven para carrusel (para «Completo»)
+      plantillas: (kit?.estado?.().plantillas || []).filter((x) => !x.formatos?.length || x.formatos.includes('carrusel')).map(({ id: pid, nombre, descripcion }) => ({ id: pid, nombre, descripcion })),
+    };
+  }
+
+  // «Replicar» desde la ficha: el guion (y, en completo, el diseño con tu kit) va en esta misma pieza
+  let enMarcha = null; // { pieza, peticion }
+  const replicandoPieza = (id) => Boolean(asistente && enMarcha?.pieza === Number(id) && asistente.estado({ conversacion: 'replicar' }).ocupadoAqui);
+  async function replicarEnPieza(id, { modo = 'guion', indicaciones = '', plantilla = null, cta = null } = {}) {
+    if (!asistente) throw publico('JARVIS (Claude Code) no está disponible');
+    if (asistente.estado({ conversacion: 'replicar' }).ocupado) throw Object.assign(publico('JARVIS está terminando otra petición. Espera un momento.'), { ocupado: true });
+    const r = referenciaDePieza(id);
+    const completo = modo === 'completo';
+    if (completo && !r.puedeDisenar) throw publico('El diseño con tu kit es para posts y carruseles; de un reel se replica el guion');
+    let plantillaOk = null;
+    if (completo && plantilla) {
+      const lista = kit?.estado?.().plantillas || [];
+      plantillaOk = lista.find((x) => x.id === plantilla) || null;
+      if (!plantillaOk) throw publico('Esa plantilla no está en tu kit de diseño');
+    }
+    // Las imágenes originales, para que Claude las mire (del vault)
+    let imagenes = [];
+    try {
+      if (r.fuente === 'competencia' && !r.esVideo) imagenes = await competencia.descargarSlides(r.fuenteId);
+      if (r.fuente === 'anuncio') imagenes = ads.paraAdaptar(r.fuenteId).imagenes;
+    } catch { /* se replica con el texto */ }
+    const ruta = jarvis.notaGuion(r.pieza.id);
+    const texto = promptReplicarEnPieza(jarvis.leerPieza(r.pieza.id), {
+      ruta, referencia: r.nota, enlace: r.enlace, imagenes, completo, plantilla: plantillaOk, indicaciones,
+      cta: cta?.tipo === 'otro' && String(cta.texto || '').trim() ? String(cta.texto).trim() : null,
+    });
+    const p = asistente.preguntar({ conversacion: 'replicar', texto, modelo: completo ? 'opus' : undefined });
+    enMarcha = { pieza: r.pieza.id, peticion: p?.id ?? null };
+    return { ok: true, peticion: p?.id ?? null, ruta };
+  }
+
+  return { guardarComoIdea, referenciaDePieza, replicarEnPieza, rutaVideoCompetencia, esReferencia };
 }
