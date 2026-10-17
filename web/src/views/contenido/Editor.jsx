@@ -9,6 +9,7 @@ import { diaLargo, hoyIso, sumarDias } from '../../lib/fechas.js';
 import { NOMBRE_TIPO_IG, planDePublicacion } from '../../lib/planIg.js';
 import { CampoLeadMagnet, OBJETIVOS, OpcionesCarpetas, useFases, MAX_CAPTION, Miniatura, Modal, TIPOS, borrarArchivo, esMedio, esStory, esVideo, subirArchivo, tamanoLegible, tipoDe } from './comun.jsx';
 import { GenerarLeadMagnet, OtraVersion } from './Generar.jsx';
+import CajaGuion from './Guion.jsx';
 
 // Caption con IA: JARVIS lo escribe con tu voz a partir de lo que tenga la pieza (título, guion, lead magnet…)
 const crearCaption = async (datos) => {
@@ -133,6 +134,7 @@ export function EditorContenido({ pieza, carpetas, ig, onClose, onGuardado, onVi
   const [sobre, setSobre] = useState(false);
   const input = useRef(null);
   const titulo = useRef(null);
+  const guion = useRef(null);
   const ocupado = subiendo > 0 || guardando;
   const cambia = (k) => (e) => setD((x) => ({ ...x, [k]: e?.target ? e.target.value : e }));
   useEffect(() => { if (nueva) titulo.current?.focus(); }, [nueva]);
@@ -211,6 +213,7 @@ export function EditorContenido({ pieza, carpetas, ig, onClose, onGuardado, onVi
     const body = { ...d, pilar: d.pilar.trim() || null, objetivo: d.objetivo || null, gancho: d.gancho.trim() || null, cta: d.cta.trim() || null, ...(nueva && pieza.padre_id ? { padre_id: pieza.padre_id } : {}), ...(nueva && pieza.origen_ref ? { origen_ref: pieza.origen_ref } : {}), carpeta: d.carpeta || null, fecha: d.fecha || null, hora: d.hora || null, archivos, portada: esFormatoVideo(d.formato) ? portada : null, publicar_ig: ahora ? false : conIg ? d.publicar_ig : false, leadmagnet_url: d.leadmagnet ? d.leadmagnet_url.trim() || null : null };
     if (!conIg) delete body.publicar_ig;
     try {
+      await guion.current?.guardar();
       const r = nueva ? await api('/api/piezas', { method: 'POST', body }) : await api(`/api/piezas/${pieza.id}`, { method: 'PATCH', body });
       subidos.current.clear();
       for (const a of quitados) borrarArchivo(a);
@@ -276,6 +279,8 @@ export function EditorContenido({ pieza, carpetas, ig, onClose, onGuardado, onVi
               </button>
             ))}
           </div>
+          <label className="campo-et">Guion</label>
+          {nueva ? <div className="ayuda">Guarda la pieza y vuelve a abrirla para escribir su guion (a mano o con IA).</div> : <CajaGuion ref={guion} pieza={pieza} />}
           <label className="campo-et">Caption <span className={`contador${largo ? ' pasado' : ''}`}>{d.caption.length} / {MAX_CAPTION}</span></label>
           <CampoCaption rows={7} value={d.caption} onChange={cambia('caption')} placeholder="El texto que acompaña a la publicación…" onIA={() => crearCaption({ ...d, nota: pieza.nota, archivos })} />
           <CampoLeadMagnet activo={d.leadmagnet} url={d.leadmagnet_url} onCambio={(c) => setD((x) => ({ ...x, ...c }))} />

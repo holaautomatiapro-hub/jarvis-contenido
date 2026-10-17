@@ -30,7 +30,8 @@ import { createKit } from './diseno/kit.js';
 import { createMotor, fotogramaDeVideo } from './diseno/motor.js';
 import { createDisenos } from './diseno/disenos.js';
 import { createRecordatorios } from './recordatorios.js';
-import { promptAdaptarAnuncio, promptReplicarCompetencia, promptReplicarPropia, normalizarFormatos, seDisena } from './replicar.js';
+import { promptAdaptarAnuncio, promptReplicarCompetencia, promptReplicarPropia, promptGuionPieza, normalizarFormatos, seDisena } from './replicar.js';
+import { createReferencias } from './referencias.js';
 import { createLaboratorio, carpetaPorDefecto } from './laboratorio.js';
 import { promptCaption, limpiarCaption, createContextoCaption } from './caption.js';
 import { createRecortador } from './recortar.js';
@@ -551,6 +552,25 @@ export function createApp({ jarvis, archivos, publicadorIg, asistente, instagram
   app.delete('/api/notas', h((req) => jarvis.borrarNota(String(req.query.ruta || '')), true));
   app.post('/api/notas/restaurar', h((req) => jarvis.restaurarNota(req.body?.papelera, req.body?.ruta), true));
   app.post('/api/ideas', h((req) => jarvis.capturarIdea(req.body || {}), true));
+  // «Guardar como idea» una publicación o un anuncio de la competencia (con su transcripción si se pide)
+  const referencias = createReferencias({ jarvis, competencia, ads, adjuntos, asistente, vaultPath: jarvis.vault.base });
+  app.post('/api/ideas/referencia', h((req) => referencias.guardarComoIdea({ fuente: req.body?.fuente, id: String(req.body?.id || ''), conTranscripcion: req.body?.conTranscripcion === true }), true));
+  // El guion de una pieza (su nota de 02-Guiones): verlo y cambiarlo a mano desde la ficha, o pedírselo a JARVIS
+  let guionEnMarcha = null; // { pieza, peticion }
+  const escribiendoGuion = (id) => Boolean(asistente && guionEnMarcha?.pieza === Number(id) && asistente.estado({ conversacion: 'guiones' }).ocupadoAqui);
+  app.get('/api/piezas/:id/guion', h((req) => ({ ...jarvis.guionDePieza(req.params.id), escribiendo: escribiendoGuion(req.params.id) })));
+  app.put('/api/piezas/:id/guion', h((req) => jarvis.guardarGuion(req.params.id, { texto: req.body?.texto, modificado: req.body?.modificado || null }), true));
+  app.post('/api/piezas/:id/guion/ia', h((req) => {
+    if (!asistente) throw Object.assign(new Error('JARVIS (Claude Code) no está disponible'), { publico: true });
+    if (asistente.estado({ conversacion: 'guiones' }).ocupado) throw new OcupadoError('JARVIS está terminando otra petición. Espera un momento.');
+    const p = jarvis.leerPieza(req.params.id);
+    const antes = jarvis.guionDePieza(p.id);
+    const ruta = jarvis.notaGuion(p.id);
+    const texto = promptGuionPieza(jarvis.leerPieza(p.id), { ruta, vacio: !antes.texto.trim(), referencia: antes.referencia?.ruta || null, indicaciones: String(req.body?.indicaciones || '').trim() });
+    const r = asistente.preguntar({ conversacion: 'guiones', texto });
+    guionEnMarcha = { pieza: p.id, peticion: r.id };
+    return { ok: true, peticion: r.id, ruta };
+  }, true));
 
   // JARVIS (Claude Code + JEV). La respuesta llega en directo por el WebSocket.
   if (asistente) {

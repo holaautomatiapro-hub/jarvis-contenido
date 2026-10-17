@@ -1604,3 +1604,23 @@ button.anun-chip { padding: 5px 12px; cursor: pointer; }
 .anun-bloque > .btn { justify-self: start; }
 .anun-select .campo { padding-right: 30px; min-width: 190px; }
 @media (max-width: 760px) { .anun-sin-medio { aspect-ratio: auto; padding: 24px 16px; } }
+
+/* Guardar como idea (competencia y anuncios) */
+.guardar-idea { display: flex; flex-direction: column; gap: 6px; margin-top: 12px; }
+.guardar-idea > .btn { align-self: flex-start; }
+.guardar-idea-opciones { display: flex; flex-direction: column; gap: 7px; padding: 10px 12px; border: 1px solid var(--border-soft); border-radius: 10px; background: var(--panel-2); font-size: 13px; }
+.guardar-idea-opciones label { display: flex; align-items: center; gap: 7px; cursor: pointer; }
+.guardar-idea-opciones small { color: var(--muted); }
+.guardar-idea-botones { display: flex; align-items: center; gap: 10px; margin-top: 2px; }
+.guardar-idea.hecho { padding: 9px 12px; border-radius: 10px; background: color-mix(in srgb, var(--green) 12%, transparent); font-size: 13px; }
+.guardar-idea.hecho > span { display: inline-flex; align-items: center; gap: 6px; font-weight: 600; }
+
+/* El guion en la ficha de la pieza */
+.caja-guion { display: flex; flex-direction: column; gap: 8px; }
+.caja-guion textarea { font-family: inherit; line-height: 1.5; resize: vertical; }
+.guion-ref { border: 1px solid var(--border-soft); border-radius: 10px; padding: 8px 11px; background: var(--panel-2); font-size: 12.5px; }
+.guion-ref summary { cursor: pointer; display: flex; align-items: center; gap: 6px; font-weight: 600; color: var(--text-2); }
+.guion-ref-txt { white-space: pre-wrap; max-height: 260px; overflow: auto; margin: 8px 0 4px; line-height: 1.5; }
+.guion-ia { display: flex; gap: 8px; align-items: center; flex-wrap: wrap; }
+.guion-ia .campo { flex: 1 1 260px; }
+.guion-acciones { display: flex; gap: 10px; align-items: center; flex-wrap: wrap; }

@@ -1,6 +1,7 @@
 import { useEffect, useMemo, useRef, useState } from 'react';
 import Icon from '../components/Icon.jsx';
 import Replicar, { FORMATO_DE_IG } from '../components/Replicar.jsx';
+import GuardarIdea from '../components/GuardarIdea.jsx';
 import { Modal } from './contenido/comun.jsx';
 import { api } from '../lib/api.js';
 import { fechaCorta, num, numLargo } from '../lib/formato.js';
@@ -137,6 +138,7 @@ export function Detalle({ id, demo, auto = false, onClose }) {
               </>
             )}
             {d.formato !== 'Reels' && d.slides?.length > 0 && <div className="ayuda">Al replicarlo, JARVIS lee cada slide (títulos y textos).</div>}
+            {!demo && <GuardarIdea key={d.id} fuente="competencia" id={d.id} que={d.formato === 'Reels' ? 'video' : 'slides'} />}
           </div>
         </div>
       )}

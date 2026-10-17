@@ -263,6 +263,8 @@ export function openDb(file) {
   ]) migrar(sql);
   // Cómo se unió la pieza con su publicación de Instagram: jarvis, enlace, caption, fecha, manual o ninguna (soltada a mano)
   migrar('ALTER TABLE piezas ADD COLUMN ig_vinculo TEXT');
+  // La nota de 02-Guiones con el guion de la pieza (cuando su "nota" es otra: la idea de la que sale)
+  migrar('ALTER TABLE piezas ADD COLUMN guion_nota TEXT');
   db.exec('CREATE INDEX IF NOT EXISTS piezas_padre ON piezas(padre_id); CREATE INDEX IF NOT EXISTS piezas_origen_ref ON piezas(origen_ref);');
   // Windsor: todas las métricas de cada publicación (JSON) e historias
   migrar('ALTER TABLE ig_media ADD COLUMN extra TEXT');
