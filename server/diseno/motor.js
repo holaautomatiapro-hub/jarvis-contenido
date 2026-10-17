@@ -264,6 +264,17 @@ export async function rutaFfmpeg() {
   return 'ffmpeg';
 }
 
+// Un fotograma (al segundo 1) de un vídeo, local o de internet, como JPG
+export async function fotogramaDeVideo(origen, destino, { ejecutar = spawn } = {}) {
+  const ff = await rutaFfmpeg();
+  await new Promise((ok, mal) => {
+    const p = ejecutar(ff, ['-v', 'error', '-y', '-ss', '1', '-i', origen, '-frames:v', '1', '-vf', 'scale=720:-2', '-q:v', '3', destino], { stdio: 'ignore' });
+    const t = setTimeout(() => p.kill('SIGKILL'), 60_000);
+    p.on('error', (e) => { clearTimeout(t); mal(e); });
+    p.on('close', (c) => { clearTimeout(t); if (c === 0) ok(); else mal(new Error(`ffmpeg ${c}`)); });
+  });
+}
+
 // Sirve un archivo admitiendo Range (los vídeos lo necesitan para poder ir a un instante)
 function servirArchivo(route, abs) {
   const ext = path.extname(abs).slice(1).toLowerCase();
@@ -280,13 +291,17 @@ function servirArchivo(route, abs) {
   return route.fulfill({ status: 206, contentType, headers: { 'accept-ranges': 'bytes', 'content-range': `bytes ${inicio}-${inicio + largo - 1}/${tam}` }, body });
 }
 
+const NAVEGADOR_UA = 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/126.0 Safari/537.36';
+
 export function createMotor({ kit: kitApi, archivos = null, lanzar = lanzarNavegador, cerrarTrasMs = 120_000, log = () => {} }) {
   let navegador = null;
   let temporizador = null;
   let cola = Promise.resolve();
+  let enUso = 0; // trabajos con el navegador abierto: mientras haya alguno no se cierra
 
+  const usando = (fn) => async () => { enUso += 1; try { return await fn(); } finally { enUso -= 1; } };
   const enCola = (fn) => {
-    const r = cola.then(fn, fn);
+    const r = cola.then(usando(fn), usando(fn));
     cola = r.catch(() => {});
     return r;
   };
@@ -305,7 +320,10 @@ export function createMotor({ kit: kitApi, archivos = null, lanzar = lanzarNaveg
   }
   function soltarNavegador() {
     clearTimeout(temporizador);
-    temporizador = setTimeout(() => { const n = navegador; navegador = null; n?.close().catch(() => {}); }, cerrarTrasMs);
+    temporizador = setTimeout(() => {
+      if (enUso > 0) return soltarNavegador();
+      const n = navegador; navegador = null; n?.close().catch(() => {});
+    }, cerrarTrasMs);
     temporizador.unref?.();
   }
 
@@ -474,7 +492,45 @@ export function createMotor({ kit: kitApi, archivos = null, lanzar = lanzarNaveg
     await n?.close().catch(() => {});
   }
 
-  return { previsualizar, exportar, cerrar, preparar };
+  // Abre una página de fuera (la vista previa de un anuncio de la Biblioteca) y saca los vídeos y las imágenes que
+  // carga. Va por libre, sin esperar a la cola de los diseños: solo mira, no dibuja nada.
+  async function mediosDePagina(url, { esperaMs = 8000 } = {}) {
+    enUso += 1;
+    try {
+      const nav = await obtenerNavegador();
+      const ctx = await nav.newContext({ viewport: { width: 600, height: 1000 }, locale: 'es-ES', userAgent: NAVEGADOR_UA, serviceWorkers: 'block' });
+      try {
+        const page = await ctx.newPage();
+        const red = new Set();
+        page.on('response', (r) => {
+          const tipo = r.headers()['content-type'] || '';
+          if (/^video\//.test(tipo) || /\.mp4(\?|$)/.test(new URL(r.url()).pathname)) red.add(r.url().replace(/&bytestart=\d+&byteend=\d+/, ''));
+        });
+        await page.goto(url, { waitUntil: 'domcontentloaded', timeout: 45_000 });
+        await page.waitForLoadState('networkidle', { timeout: esperaMs }).catch(() => {});
+        // Algunos vídeos no dicen su enlace hasta que se les da al play
+        await page.evaluate(() => Promise.all([...document.querySelectorAll('video')].map((v) => v.play?.()?.catch(() => {})))).catch(() => {});
+        await page.waitForTimeout(1500);
+        const dom = await page.evaluate(() => ({
+          videos: [...document.querySelectorAll('video')].flatMap((v) => [v.currentSrc, v.src, ...[...v.querySelectorAll('source')].map((s) => s.src)]),
+          portadas: [...document.querySelectorAll('video')].map((v) => v.poster),
+          imagenes: [...document.images].filter((i) => Math.max(i.naturalWidth, i.width) >= 200).map((i) => i.currentSrc || i.src),
+          html: document.documentElement.outerHTML,
+          titulo: document.title,
+          texto: (document.body?.innerText || '').slice(0, 400),
+        }));
+        const https = (l) => [...new Set(l.filter((u) => /^https:\/\//.test(u || '')))];
+        return { ...dom, videos: https([...dom.videos, ...red]), imagenes: https([...dom.portadas, ...dom.imagenes]) };
+      } finally {
+        await ctx.close().catch(() => {});
+      }
+    } finally {
+      enUso -= 1;
+      soltarNavegador();
+    }
+  }
+
+  return { previsualizar, exportar, cerrar, preparar, mediosDePagina };
 }
 
 // El sonido de los vídeos marcados con data-audio, mezclado en el MP4 ya grabado de la diapositiva: cada uno

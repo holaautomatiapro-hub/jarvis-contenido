@@ -78,11 +78,14 @@ function Buscador({ onSeguido }) {
 }
 
 function Tarjeta({ a, onAbrir }) {
+  // La imagen se saca de Meta la primera vez que se ve la tarjeta: puede tardar unos segundos o no salir
+  const [sinImagen, setSinImagen] = useState(false);
+  const imagen = a.miniatura && !sinImagen;
   return (
     <button type="button" className="anun-tarjeta" onClick={() => onAbrir(a)}>
-      <span className="anun-tarjeta-img" style={a.miniatura ? { backgroundImage: `url("${a.miniatura}")` } : null}>
-        {!a.miniatura && <Icon name={a.video ? 'play' : 'ads'} size={20} />}
-        {a.video && a.miniatura && <span className="anun-play"><Icon name="play" size={14} /></span>}
+      <span className="anun-tarjeta-img">
+        {imagen ? <img src={a.miniatura} alt="" loading="lazy" onError={() => setSinImagen(true)} /> : <Icon name={a.video ? 'play' : 'ads'} size={20} />}
+        {a.video && imagen && <span className="anun-play"><Icon name="play" size={14} /></span>}
         <span className="anun-dias">{a.diasActivo} días activo</span>
       </span>
       <span className="anun-tarjeta-txt">
@@ -107,6 +110,13 @@ function Detalle({ id, onClose }) {
   const input = useRef(null);
   const cargar = () => api(`/api/ads/anuncios/${encodeURIComponent(id)}`).then(setA).catch((e) => setError(e.message));
   useEffect(() => { cargar(); }, [id]);
+  // Al abrir un anuncio que aún no tiene su vídeo o sus imágenes en JARVIS, se traen solos
+  const traido = useRef(false);
+  useEffect(() => {
+    if (!a || traido.current || a.video || a.imagenes?.length) return;
+    traido.current = true;
+    medios();
+  }, [a]);
   // La transcripción va en segundo plano: se pregunta cómo va hasta que acaba
   useEffect(() => {
     if (!tarea?.clave) return undefined;
@@ -120,11 +130,11 @@ function Detalle({ id, onClose }) {
   }, [tarea?.clave]);
   useMensajes('transcripcion', () => tarea && cargar());
 
-  const medios = async () => {
+  async function medios() {
     setCargando('medios'); setError('');
     try { setA(await api(`/api/ads/anuncios/${encodeURIComponent(id)}/medios`, { method: 'POST' })); } catch (e) { setError(e.message); }
     setCargando('');
-  };
+  }
   const transcribir = async () => {
     setCargando('transcribir'); setError('');
     try {
