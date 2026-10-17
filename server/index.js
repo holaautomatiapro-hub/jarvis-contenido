@@ -30,7 +30,7 @@ import { createKit } from './diseno/kit.js';
 import { createMotor } from './diseno/motor.js';
 import { createDisenos } from './diseno/disenos.js';
 import { createRecordatorios } from './recordatorios.js';
-import { promptReplicarCompetencia, promptReplicarPropia, normalizarFormatos, seDisena } from './replicar.js';
+import { promptAdaptarAnuncio, promptReplicarCompetencia, promptReplicarPropia, normalizarFormatos, seDisena } from './replicar.js';
 import { createLaboratorio, carpetaPorDefecto } from './laboratorio.js';
 import { promptCaption, limpiarCaption, createContextoCaption } from './caption.js';
 import { createRecortador } from './recortar.js';
@@ -229,6 +229,32 @@ export function createApp({ jarvis, archivos, publicadorIg, asistente, instagram
     app.post('/api/ads/actualizar', h((req) => { fallo = null; return ads.rendimiento({ dias: Number(req.body?.dias) || 30, forzar: true }); }, true));
     app.post('/api/ads/biblioteca/sincronizar', h(() => { if (!ads.estado().conectado) { const e = new Error('Conecta primero Instagram con Facebook (pestaña Instagram)'); e.publico = true; throw e; } enFondo(ads.sincronizarBiblioteca()); return { ok: true }; }));
     app.post('/api/ads/competidores/:usuario/pagina', h((req) => ads.paginaCompetidor(req.params.usuario, req.body?.pagina), true));
+    // Anuncios de la competencia: buscar anunciantes, seguirlos y ver sus anuncios activos
+    app.post('/api/ads/anunciantes/buscar', h((req) => ads.buscarAnunciante(req.body?.texto)));
+    app.post('/api/ads/anunciantes', h((req) => ads.seguirAnunciante(req.body || {}), true));
+    app.post('/api/ads/anunciantes/sincronizar', h(() => ads.sincronizarAnunciantes(), true));
+    app.post('/api/ads/anunciantes/:id/sincronizar', h((req) => ads.sincronizarAnunciante(req.params.id), true));
+    app.delete('/api/ads/anunciantes/:id', h((req) => ads.dejarAnunciante(req.params.id), true));
+    app.get('/api/ads/anuncios', h((req) => ads.anunciosCompetencia({ pagina: req.query.pagina || null, orden: String(req.query.orden || 'tiempo'), minDias: Number(req.query.minDias) || 0 })));
+    app.get('/api/ads/anuncios/:id', h((req) => ads.anuncioCompetencia(req.params.id)));
+    app.post('/api/ads/anuncios/:id/medios', h((req) => ads.mediosAnuncio(req.params.id), true));
+    app.post('/api/ads/anuncios/:id/video', h((req) => ads.subirVideoAnuncio(req.params.id, req), true));
+    // «Adaptar a mi estilo»: Claude escribe tu versión en los formatos que elijas y la deja en el pipeline
+    app.post('/api/ads/anuncios/:id/adaptar', h(async (req) => {
+      if (!asistente) throw Object.assign(new Error('JARVIS (Claude Code) no está disponible'), { publico: true });
+      if (asistente.estado().ocupado) throw new OcupadoError('JARVIS está terminando otra petición. Espera un momento.');
+      const { formatos, indicaciones, disenar } = req.body || {};
+      normalizarFormatos(formatos);
+      const { a, imagenes } = ads.paraAdaptar(req.params.id);
+      const texto = promptAdaptarAnuncio(a, { formatos, indicaciones, disenar, imagenes });
+      const r = asistente.preguntar({ conversacion: 'replicar', texto, modelo: modeloReplicar(formatos, disenar) });
+      return { ok: true, peticion: r.id, transcrita: Boolean(a.transcripcion), slides: imagenes.length };
+    }));
+    app.get('/api/ads/anuncios/:id/medio/:fichero', (req, res) => {
+      const f = ads.rutaMedioAnuncio(req.params.id, req.params.fichero);
+      if (!f) return res.status(404).end();
+      res.set('Cache-Control', 'private, max-age=604800').sendFile(f);
+    });
     app.post('/api/ads/borradores', h((req) => ads.proponer(req.body || {}, 'dashboard'), true));
     // Única puerta para crear en Meta: un clic de la persona en el dashboard. Siempre en pausa.
     app.post('/api/ads/borradores/:id/confirmar', h((req) => ads.confirmar(req.params.id), true));
@@ -574,6 +600,25 @@ export function createApp({ jarvis, archivos, publicadorIg, asistente, instagram
         const n = (v) => (v == null || v === '' || !Number.isFinite(Number(v)) ? null : Math.max(0, Number(v)));
         return adjuntos.subtitulosVideo(String(req.body?.url || ''), { desde: n(req.body?.desde) ?? 0, hasta: n(req.body?.hasta) });
       }));
+      // Lo que se dice en un anuncio de la competencia (su vídeo, que se descarga antes si hace falta)
+      if (ads) {
+        app.post('/api/ads/anuncios/:id/transcribir', h(async (req) => {
+          let a = ads.anuncioCompetencia(req.params.id);
+          if (!a.video) a = await ads.mediosAnuncio(a.id);
+          if (!a.video) throw Object.assign(new Error('Este anuncio no tiene vídeo (es de imagen): su texto ya lo tienes en el caption'), { publico: true });
+          const { video } = ads.paraAdaptar(a.id);
+          const t = adjuntos.encargar(`anuncio-${a.id}`, `Transcribiendo anuncio de ${a.pagina}`, async (tarea) => {
+            const r = await adjuntos.transcribirRuta(video, { dir: ads.dirAnuncio(a.id), nombre: `anuncio-${a.id}.mp4`, tarea });
+            let nota = ads.anuncioCompetencia(a.id).nota;
+            if (r.nueva || !nota) {
+              nota = jarvis.crearNota({ carpeta: '04-Competencia', titulo: `Anuncio ${String(a.pagina || '').slice(0, 60)} · ${a.id}`, contenido: [`${a.verEnBiblioteca}`, a.cuerpo ? `Texto del anuncio:\n\n${a.cuerpo}` : '', `Lo que se dice:\n\n${r.texto}`].filter(Boolean).join('\n\n'), origen: 'dashboard', tipo: 'transcripcion' })?.nota || null;
+            }
+            ads.guardarTranscripcionAnuncio(a.id, r.texto, nota);
+            return { transcripcion: r.texto, con: r.con || null, nota };
+          });
+          return resultadoTarea(await adjuntos.esperarTarea(t, Number(req.query.esperar ?? 20_000)));
+        }, true));
+      }
       app.get('/api/transcripciones', h((req) => {
         const t = adjuntos.tarea(String(req.query.clave || ''));
         if (!t) throw Object.assign(new Error('No hay ninguna transcripción con esa clave (¿se reinició JARVIS?): vuelve a pedirla'), { publico: true });
@@ -654,7 +699,7 @@ function main() {
   }, emitir: (e) => { emitir(e); if (e.tipo === 'fin') onChange(); disenos?.alEventoClaude(e); } });
   const instagram = createInstagram({ db, vault: jarvis.vault, alCambiar: onChange });
   const competencia = createCompetencia({ db, instagram, vault: jarvis.vault, alCambiar: onChange });
-  const ads = createAds({ db, instagram, alCambiar: onChange });
+  const ads = createAds({ db, instagram, alCambiar: onChange, mediosDir: path.join(cfg.vaultPath, '.jarvis', 'anuncios') });
   const publicar = createPublicar({ db, jarvis, vault: jarvis.vault, alCambiar: onChange });
   const resultados = createResultados({ db, jarvis, vault: jarvis.vault, alCambiar: onChange });
   const jobs = createJobs({ instagram, competencia, ads, asistente, resultados, skills: createSkills(cfg.vaultPath), vault: jarvis.vault, ajustesDb: ajustes(db) });

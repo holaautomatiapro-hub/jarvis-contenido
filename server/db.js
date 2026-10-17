@@ -141,6 +141,15 @@ CREATE TABLE IF NOT EXISTS ads_biblioteca (
   actualizado TEXT NOT NULL DEFAULT (datetime('now','localtime'))
 );
 
+-- Anunciantes que sigues en la Biblioteca de anuncios (Meta Ads → Anuncios de la competencia)
+CREATE TABLE IF NOT EXISTS ads_anunciantes (
+  pagina_id TEXT PRIMARY KEY,
+  nombre TEXT,
+  anadido TEXT NOT NULL DEFAULT (datetime('now','localtime')),
+  ultima_sync TEXT,
+  error TEXT
+);
+
 CREATE TABLE IF NOT EXISTS ads_borradores (
   id INTEGER PRIMARY KEY,
   ts TEXT NOT NULL DEFAULT (datetime('now','localtime')),
@@ -186,6 +195,15 @@ export function openDb(file) {
   // Migraciones de columnas añadidas después (se ignoran si ya existen)
   const migrar = (sql) => { try { db.exec(sql); return true; } catch { return false; /* ya existe */ } };
   migrar('ALTER TABLE comp_perfiles ADD COLUMN fb_pagina TEXT');
+  // Anuncios de la competencia: todo su texto, cuándo se vio activo por última vez, su vídeo/imágenes y su transcripción
+  for (const sql of [
+    'ALTER TABLE ads_biblioteca ADD COLUMN cuerpos TEXT',
+    'ALTER TABLE ads_biblioteca ADD COLUMN descripcion TEXT',
+    'ALTER TABLE ads_biblioteca ADD COLUMN visto TEXT',
+    'ALTER TABLE ads_biblioteca ADD COLUMN medios TEXT',
+    'ALTER TABLE ads_biblioteca ADD COLUMN transcripcion TEXT',
+    'ALTER TABLE ads_biblioteca ADD COLUMN nota TEXT',
+  ]) migrar(sql);
   // Competencia: vídeo y slides de cada publicación, visualizaciones (si Instagram las da) y transcripción
   for (const sql of [
     'ALTER TABLE comp_media ADD COLUMN media_url TEXT',

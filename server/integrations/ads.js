@@ -1,3 +1,7 @@
+import path from 'node:path';
+import { createWriteStream, existsSync, mkdirSync, readdirSync, rmSync, writeFileSync } from 'node:fs';
+import { Readable } from 'node:stream';
+import { pipeline } from 'node:stream/promises';
 import { ajustes, row, rows } from '../db.js';
 import { createGraph, MetaError } from './meta.js';
 import { demoAds } from './ads-demo.js';
@@ -26,7 +30,24 @@ export function soloEnPausa(params) {
   return params;
 }
 
-export function createAds({ db, instagram, env = process.env, fetchImpl = fetch, alCambiar = () => {} }) {
+// Campos de la Biblioteca de anuncios que se piden de cada anuncio
+const CAMPOS_ANUNCIO = 'id,page_id,page_name,ad_creative_bodies,ad_creative_link_titles,ad_creative_link_descriptions,ad_delivery_start_time,ad_delivery_stop_time,ad_snapshot_url,publisher_platforms,eu_total_reach';
+const MAX_ANUNCIANTES = 30;
+const sinTildes = (t) => String(t || '').normalize('NFD').replace(/[\u0300-\u036f]/g, '').toLowerCase();
+
+// El vídeo y las imágenes de un anuncio salen de su vista previa (ad_snapshot_url): la Biblioteca no da el enlace
+// directo. Se buscan en su HTML (los datos van en JSON dentro de la página o en etiquetas <video>/<img>).
+export function mediosDeSnapshot(html) {
+  const limpiar = (u) => String(u).replace(/\\\//g, '/').replace(/\\u0025/g, '%').replace(/\\u0026/g, '&').replace(/&amp;/g, '&');
+  const todos = (re) => [...String(html).matchAll(re)].map((m) => limpiar(m[1])).filter((u) => /^https:\/\//.test(u));
+  const unicos = (l) => [...new Set(l)];
+  const videos = unicos([...todos(/"video_hd_url":"([^"]+)"/g), ...todos(/"video_sd_url":"([^"]+)"/g), ...todos(/<video[^>]*\ssrc="([^"]+)"/g), ...todos(/<source[^>]*\ssrc="([^"]+)"/g)]);
+  const imagenes = unicos([...todos(/"original_image_url":"([^"]+)"/g), ...todos(/"resized_image_url":"([^"]+)"/g), ...todos(/"video_preview_image_url":"([^"]+)"/g),
+    ...todos(/<img[^>]*\ssrc="(https:\/\/[^"]*(?:scontent|fbcdn)[^"]*)"/g)]);
+  return { videos, imagenes };
+}
+
+export function createAds({ db, instagram, env = process.env, fetchImpl = fetch, alCambiar = () => {}, mediosDir = null }) {
   const aj = ajustes(db);
   const borrarCache = () => { aj.borrar('ads_cache'); for (const d of PERIODOS_CACHE) aj.borrar(`ads_cache_${d}`); };
   const q = {
@@ -34,6 +55,19 @@ export function createAds({ db, instagram, env = process.env, fetchImpl = fetch,
       VALUES (@id, @competidor, @pagina_id, @pagina, @cuerpo, @titulo, @inicio, @fin, @snapshot, @plataformas, @alcance_ue)
       ON CONFLICT(id) DO UPDATE SET fin = excluded.fin, alcance_ue = excluded.alcance_ue, actualizado = datetime('now','localtime')`),
     lib: db.prepare('SELECT * FROM ads_biblioteca ORDER BY inicio ASC'),
+    upAnuncio: db.prepare(`INSERT INTO ads_biblioteca (id, competidor, pagina_id, pagina, cuerpo, cuerpos, titulo, descripcion, inicio, fin, snapshot, plataformas, alcance_ue, visto)
+      VALUES (@id, @competidor, @pagina_id, @pagina, @cuerpo, @cuerpos, @titulo, @descripcion, @inicio, @fin, @snapshot, @plataformas, @alcance_ue, @visto)
+      ON CONFLICT(id) DO UPDATE SET fin = excluded.fin, alcance_ue = excluded.alcance_ue, snapshot = excluded.snapshot, cuerpos = excluded.cuerpos,
+        descripcion = excluded.descripcion, visto = excluded.visto, pagina = excluded.pagina, actualizado = datetime('now','localtime')`),
+    anuncio: db.prepare('SELECT * FROM ads_biblioteca WHERE id = ?'),
+    anunciante: db.prepare('SELECT * FROM ads_anunciantes WHERE pagina_id = ?'),
+    anunciantes: db.prepare('SELECT a.*, (SELECT COUNT(*) FROM ads_biblioteca b WHERE b.pagina_id = a.pagina_id AND b.fin IS NULL AND b.visto >= a.ultima_sync) AS activos FROM ads_anunciantes a ORDER BY a.nombre COLLATE NOCASE'),
+    insAnunciante: db.prepare('INSERT INTO ads_anunciantes (pagina_id, nombre) VALUES (?, ?) ON CONFLICT(pagina_id) DO UPDATE SET nombre = excluded.nombre'),
+    delAnunciante: db.prepare('DELETE FROM ads_anunciantes WHERE pagina_id = ?'),
+    delAnunciosDe: db.prepare("DELETE FROM ads_biblioteca WHERE pagina_id = ? AND competidor = 'anunciante'"),
+    syncAnunciante: db.prepare('UPDATE ads_anunciantes SET ultima_sync = ?, error = ?, nombre = COALESCE(?, nombre) WHERE pagina_id = ?'),
+    setMedios: db.prepare('UPDATE ads_biblioteca SET medios = ? WHERE id = ?'),
+    setTranscripcion: db.prepare('UPDATE ads_biblioteca SET transcripcion = ?, nota = ? WHERE id = ?'),
     perfiles: db.prepare('SELECT username, nombre, fb_pagina FROM comp_perfiles WHERE activo = 1'),
     setPagina: db.prepare('UPDATE comp_perfiles SET fb_pagina = ? WHERE username = ?'),
     insBorrador: db.prepare('INSERT INTO ads_borradores (datos, origen) VALUES (?, ?)'),
@@ -154,6 +188,12 @@ export function createAds({ db, instagram, env = process.env, fetchImpl = fetch,
         res.errores.push({ competidor: p.username, error: msg });
       }
     }
+    // Y los anunciantes que sigues en «Anuncios de la competencia»
+    try {
+      const r2 = await sincronizarAnunciantes();
+      res.anuncios += r2.anuncios;
+      res.errores.push(...r2.errores.map((x) => ({ competidor: x.anunciante, error: x.error })));
+    } catch (e) { if (e instanceof MetaError && e.caducado) throw e; }
     aj.guardar('ads_lib_sync', { fin: new Date().toISOString(), errores: res.errores });
     alCambiar();
     return res;
@@ -166,6 +206,206 @@ export function createAds({ db, instagram, env = process.env, fetchImpl = fetch,
       activo: !a.fin || new Date(a.fin).getTime() > hoy,
       diasActivo: a.inicio ? Math.max(1, Math.round(((a.fin ? Math.min(new Date(a.fin).getTime(), hoy) : hoy) - new Date(a.inicio).getTime()) / DIA)) : null,
     })).sort((a, b) => (b.activo - a.activo) || ((b.diasActivo || 0) - (a.diasActivo || 0)));
+  }
+
+  // ---------- Anuncios de la competencia (buscador) ----------
+  // La Biblioteca busca por página de Facebook: se busca por texto, se agrupan los anuncios por su página y la
+  // persona elige cuál es. Con el ID de la página (o un enlace de la Biblioteca con view_all_page_id) va directo.
+  const errorBiblioteca = (e) => (e instanceof MetaError && (e.codigo === 10 || e.codigo === 200 || /identity|identidad/i.test(e.message))
+    ? publico('La Biblioteca de anuncios necesita que verifiques tu identidad en Meta (facebook.com/ID) y aceptes las condiciones en facebook.com/ads/library/api.')
+    : e);
+  const pais = () => env.ADS_PAIS || 'ES';
+
+  async function buscarAnunciante(texto) {
+    const t = String(texto || '').trim();
+    if (t.length < 2) throw publico('Escribe el nombre de la cuenta, su @usuario o el enlace de su página o de la Biblioteca de anuncios');
+    const g = graph();
+    const id = /view_all_page_id=(\d+)/.exec(t)?.[1] || (/^\d{6,}$/.test(t) ? t : null);
+    const params = { ad_reached_countries: [pais()], ad_active_status: 'ACTIVE', ad_type: 'ALL', fields: 'page_id,page_name', limit: 100 };
+    let anuncios;
+    try {
+      anuncios = (await g.get('ads_archive', id ? { ...params, search_page_ids: [id] } : { ...params, search_terms: t.replace(/^@/, '').replace(/^https?:\/\/(www\.)?(facebook|instagram)\.com\//, '').replace(/[/?#].*$/, '').replace(/[._]/g, ' ') })).data || [];
+    } catch (e) { throw errorBiblioteca(e); }
+    const paginas = new Map();
+    for (const a of anuncios) {
+      if (!a.page_id) continue;
+      const p = paginas.get(a.page_id) || { pagina_id: a.page_id, nombre: a.page_name || a.page_id, anuncios: 0 };
+      p.anuncios += 1;
+      paginas.set(a.page_id, p);
+    }
+    const buscado = sinTildes(t.replace(/^@/, '')).replace(/[._]/g, ' ');
+    const seguidos = new Set(rows(q.anunciantes).map((x) => x.pagina_id));
+    const lista = [...paginas.values()]
+      .map((p) => ({ ...p, coincide: sinTildes(p.nombre).includes(buscado) || buscado.includes(sinTildes(p.nombre)), siguiendo: seguidos.has(p.pagina_id) }))
+      .sort((a, b) => (b.coincide - a.coincide) || (b.anuncios - a.anuncios))
+      .slice(0, 8);
+    if (id && !lista.length) lista.push({ pagina_id: id, nombre: `Página ${id}`, anuncios: 0, coincide: true, siguiendo: seguidos.has(id) });
+    return { candidatos: lista };
+  }
+
+  async function seguirAnunciante({ pagina_id: id, nombre } = {}) {
+    if (!/^\d{3,}$/.test(String(id || ''))) throw publico('Elige una página de la lista');
+    if (!row(q.anunciante, String(id)) && rows(q.anunciantes).length >= MAX_ANUNCIANTES) throw publico(`Como mucho ${MAX_ANUNCIANTES} anunciantes a la vez: quita alguno`);
+    q.insAnunciante.run(String(id), String(nombre || '').slice(0, 120) || null);
+    alCambiar();
+    return sincronizarAnunciante(String(id));
+  }
+  function dejarAnunciante(id) {
+    q.delAnunciante.run(String(id));
+    q.delAnunciosDe.run(String(id));
+    if (mediosDir) for (const f of existsSync(mediosDir) ? readdirSync(mediosDir) : []) if (!row(q.anuncio, f)) rmSync(path.join(mediosDir, f), { recursive: true, force: true });
+    alCambiar();
+    return { ok: true };
+  }
+
+  // Todos sus anuncios activos ahora (los que ya no salen se dan por terminados)
+  async function sincronizarAnunciante(id) {
+    const ahora = new Date().toISOString();
+    let anuncios;
+    try {
+      anuncios = await graph().todo('ads_archive', { search_page_ids: [id], ad_reached_countries: [pais()], ad_active_status: 'ACTIVE', ad_type: 'ALL', fields: CAMPOS_ANUNCIO, limit: 100 }, 300);
+    } catch (e) {
+      const err = errorBiblioteca(e);
+      q.syncAnunciante.run(ahora, err.message, null, id);
+      alCambiar();
+      throw err;
+    }
+    for (const a of anuncios) {
+      const cuerpos = (a.ad_creative_bodies || []).filter(Boolean);
+      q.upAnuncio.run({
+        id: a.id, competidor: 'anunciante', pagina_id: a.page_id || id, pagina: a.page_name || null,
+        cuerpo: cuerpos[0] || null, cuerpos: cuerpos.length > 1 ? JSON.stringify(cuerpos) : null,
+        titulo: a.ad_creative_link_titles?.[0] || null, descripcion: a.ad_creative_link_descriptions?.[0] || null,
+        inicio: a.ad_delivery_start_time || null, fin: a.ad_delivery_stop_time || null, snapshot: a.ad_snapshot_url || null,
+        plataformas: (a.publisher_platforms || []).join(', ') || null, alcance_ue: a.eu_total_reach ?? null, visto: ahora,
+      });
+    }
+    q.syncAnunciante.run(ahora, null, anuncios[0]?.page_name || null, id);
+    alCambiar();
+    return { pagina_id: id, anuncios: anuncios.length };
+  }
+  async function sincronizarAnunciantes() {
+    const res = { anuncios: 0, errores: [] };
+    for (const a of rows(q.anunciantes)) {
+      try { res.anuncios += (await sincronizarAnunciante(a.pagina_id)).anuncios; } catch (e) {
+        if (e instanceof MetaError && e.caducado) throw e;
+        res.errores.push({ anunciante: a.nombre, error: e.message });
+      }
+    }
+    return res;
+  }
+
+  const verEnBiblioteca = (id) => `https://www.facebook.com/ads/library/?id=${encodeURIComponent(id)}`;
+  const mediosDe = (a) => { try { return a.medios ? JSON.parse(a.medios) : null; } catch { return null; } };
+  const urlMedio = (id, f) => `/api/ads/anuncios/${encodeURIComponent(id)}/medio/${encodeURIComponent(f)}`;
+  const vistaAnuncio = (a, variantes = 1) => {
+    const hoy = Date.now();
+    const sigue = !a.fin || new Date(a.fin).getTime() > hoy;
+    const m = mediosDe(a);
+    return {
+      id: a.id, pagina: a.pagina, pagina_id: a.pagina_id, cuerpo: a.cuerpo, titulo: a.titulo, descripcion: a.descripcion, inicio: a.inicio,
+      activo: sigue, diasActivo: a.inicio ? Math.max(1, Math.round(((sigue ? hoy : new Date(a.fin).getTime()) - new Date(a.inicio).getTime()) / DIA)) : null,
+      alcance_ue: a.alcance_ue, plataformas: a.plataformas, variantes, transcrita: Boolean(a.transcripcion),
+      video: m?.video ? urlMedio(a.id, m.video) : null, imagenes: (m?.imagenes || []).map((f) => urlMedio(a.id, f)),
+      miniatura: m?.portada ? urlMedio(a.id, m.portada) : m?.imagenes?.[0] ? urlMedio(a.id, m.imagenes[0]) : null,
+      verEnBiblioteca: verEnBiblioteca(a.id),
+    };
+  };
+
+  // orden: 'tiempo' (más días activo: lo que les funciona), 'recientes', 'alcance' (alcance en la UE) o 'variantes'
+  // (el mismo texto en varios anuncios: lo están escalando). minDias: solo los que llevan al menos esos días.
+  function anunciosCompetencia({ pagina = null, orden = 'tiempo', minDias = 0, limite = 200 } = {}) {
+    const seguidos = new Map(rows(q.anunciantes).map((a) => [a.pagina_id, a]));
+    const todos = rows(q.lib).filter((a) => a.competidor === 'anunciante' ? seguidos.has(a.pagina_id) : true);
+    // Los que no salieron en la última búsqueda de su anunciante ya no están activos
+    const vivos = todos.filter((a) => {
+      const s = seguidos.get(a.pagina_id);
+      return a.competidor !== 'anunciante' || !s?.ultima_sync || !a.visto || a.visto >= s.ultima_sync;
+    });
+    const clave = (a) => `${a.pagina_id}|${sinTildes(a.cuerpo).replace(/\s+/g, ' ').slice(0, 160)}`;
+    const variantes = new Map();
+    for (const a of vivos) if (a.cuerpo) variantes.set(clave(a), (variantes.get(clave(a)) || 0) + 1);
+    let lista = vivos.map((a) => vistaAnuncio(a, a.cuerpo ? variantes.get(clave(a)) : 1)).filter((a) => a.activo);
+    if (pagina) lista = lista.filter((a) => a.pagina_id === String(pagina));
+    if (minDias > 0) lista = lista.filter((a) => (a.diasActivo || 0) >= minDias);
+    const k = { tiempo: (a) => a.diasActivo || 0, recientes: (a) => new Date(a.inicio || 0).getTime(), alcance: (a) => a.alcance_ue || 0, variantes: (a) => a.variantes }[orden] || ((a) => a.diasActivo || 0);
+    lista.sort((a, b) => (k(b) - k(a)) || ((b.diasActivo || 0) - (a.diasActivo || 0)));
+    return { anunciantes: rows(q.anunciantes), anuncios: lista.slice(0, limite), total: lista.length };
+  }
+
+  function anuncioCompetencia(id) {
+    const a = row(q.anuncio, String(id));
+    if (!a) throw publico('Ese anuncio ya no está: vuelve a buscar');
+    let cuerpos = [];
+    try { cuerpos = a.cuerpos ? JSON.parse(a.cuerpos) : []; } catch { /* solo el principal */ }
+    return { ...vistaAnuncio(a), cuerpos: cuerpos.length ? cuerpos : [a.cuerpo].filter(Boolean), transcripcion: a.transcripcion || null, nota: a.nota || null };
+  }
+
+  // ---------- Vídeo e imágenes de un anuncio (se guardan en el vault para verlos, transcribirlos y adaptarlos) ----------
+  const dirAnuncio = (id) => path.join(mediosDir, String(id).replace(/[^\w-]/g, '_'));
+  async function bajar(url, destino) {
+    const r = await fetchImpl(url, { signal: AbortSignal.timeout(180000) });
+    if (!r.ok || !r.body) throw new Error(`descarga ${r.status}`);
+    await pipeline(Readable.fromWeb(r.body), createWriteStream(destino));
+  }
+  async function mediosAnuncio(id) {
+    if (!mediosDir) throw publico('Aquí no se pueden guardar los vídeos de los anuncios');
+    const a = row(q.anuncio, String(id));
+    if (!a) throw publico('Ese anuncio ya no está: vuelve a buscar');
+    const ya = mediosDe(a);
+    if (ya && (ya.video || ya.imagenes?.length) && [ya.video, ...(ya.imagenes || [])].filter(Boolean).every((f) => existsSync(path.join(dirAnuncio(a.id), f)))) return anuncioCompetencia(a.id);
+    if (!a.snapshot) throw publico('Meta no da la vista previa de este anuncio: ábrelo en la Biblioteca de anuncios');
+    const url = new URL(a.snapshot);
+    if (!url.searchParams.has('access_token') && tokenUsuario()) url.searchParams.set('access_token', tokenUsuario());
+    let html;
+    try {
+      const r = await fetchImpl(url, { headers: { 'user-agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/126 Safari/537.36', 'accept-language': 'es-ES,es;q=0.9' }, signal: AbortSignal.timeout(30000) });
+      html = await r.text();
+    } catch { throw publico('No he podido abrir la vista previa del anuncio en Meta. Vuelve a probar en un rato.'); }
+    const { videos, imagenes } = mediosDeSnapshot(html);
+    if (!videos.length && !imagenes.length) throw publico('No he podido sacar el vídeo ni las imágenes de este anuncio. Ábrelo en la Biblioteca de anuncios o sube tú el vídeo.');
+    const dir = dirAnuncio(a.id);
+    mkdirSync(dir, { recursive: true });
+    const medios = { video: null, imagenes: [], portada: null };
+    for (const v of videos) { try { await bajar(v, path.join(dir, 'video.mp4')); medios.video = 'video.mp4'; break; } catch { /* el siguiente */ } }
+    for (const [i, im] of imagenes.slice(0, 10).entries()) {
+      const f = `${String(i + 1).padStart(2, '0')}.jpg`;
+      try { await bajar(im, path.join(dir, f)); medios.imagenes.push(f); } catch { /* sigue con las demás */ }
+    }
+    // En un anuncio de vídeo, la primera imagen suele ser su portada
+    if (medios.video && medios.imagenes.length) { medios.portada = medios.imagenes[0]; medios.imagenes = medios.imagenes.slice(1); }
+    if (!medios.video && !medios.imagenes.length) throw publico('Meta no deja descargar el vídeo de este anuncio. Ábrelo en la Biblioteca de anuncios o sube tú el vídeo.');
+    q.setMedios.run(JSON.stringify(medios), a.id);
+    alCambiar();
+    return anuncioCompetencia(a.id);
+  }
+  // Si no se puede sacar, la persona sube el vídeo (lo descarga de la Biblioteca)
+  async function subirVideoAnuncio(id, stream) {
+    if (!mediosDir) throw publico('Aquí no se pueden guardar los vídeos de los anuncios');
+    const a = row(q.anuncio, String(id));
+    if (!a) throw publico('Ese anuncio ya no está: vuelve a buscar');
+    const dir = dirAnuncio(a.id);
+    mkdirSync(dir, { recursive: true });
+    await pipeline(stream, createWriteStream(path.join(dir, 'video.mp4')));
+    q.setMedios.run(JSON.stringify({ ...(mediosDe(a) || { imagenes: [] }), video: 'video.mp4' }), a.id);
+    alCambiar();
+    return anuncioCompetencia(a.id);
+  }
+  function rutaMedioAnuncio(id, fichero) {
+    if (!mediosDir || !/^(video\.mp4|\d{2}\.jpg)$/.test(String(fichero))) return null;
+    const f = path.join(dirAnuncio(id), fichero);
+    return existsSync(f) ? f : null;
+  }
+  function guardarTranscripcionAnuncio(id, texto, nota = null) {
+    q.setTranscripcion.run(texto, nota, String(id));
+    alCambiar();
+  }
+  // Lo que necesita «Adaptar a mi estilo»: el anuncio con su texto, su transcripción y sus imágenes en el vault
+  function paraAdaptar(id) {
+    const a = anuncioCompetencia(id);
+    const m = mediosDe(row(q.anuncio, String(id)));
+    const imagenes = (m?.imagenes || []).map((f) => path.join(dirAnuncio(id), f)).filter((f) => existsSync(f));
+    return { a, imagenes, video: m?.video ? path.join(dirAnuncio(id), m.video) : null };
   }
 
   // ---------- Qué contenido orgánico impulsar ----------
@@ -296,5 +536,9 @@ export function createAds({ db, instagram, env = process.env, fetchImpl = fetch,
     };
   }
 
-  return { estado, cuentas, elegirCuenta, rendimiento, paginaCompetidor, sincronizarBiblioteca, biblioteca, recomendarImpulso, proponer, descartar, confirmar, leerBorrador, resumen };
+  return {
+    estado, cuentas, elegirCuenta, rendimiento, paginaCompetidor, sincronizarBiblioteca, biblioteca, recomendarImpulso, proponer, descartar, confirmar, leerBorrador, resumen,
+    buscarAnunciante, seguirAnunciante, dejarAnunciante, sincronizarAnunciante, sincronizarAnunciantes, anunciosCompetencia, anuncioCompetencia,
+    mediosAnuncio, subirVideoAnuncio, rutaMedioAnuncio, guardarTranscripcionAnuncio, paraAdaptar, dirAnuncio: (id) => (mediosDir ? dirAnuncio(id) : null),
+  };
 }

@@ -82,3 +82,23 @@ Después haz MI versión: mantén lo que la hace funcionar (su estructura: el mi
 
 ${pasosComunes(l, indicaciones, disenar)}`;
 }
+
+// Un anuncio de la competencia (Biblioteca de anuncios de Meta). imagenes: rutas del vault con las del anuncio.
+export function promptAdaptarAnuncio(a, { formatos, indicaciones, imagenes = [], disenar = false } = {}) {
+  const l = normalizarFormatos(formatos);
+  const metricas = lineaMetricas({
+    'días activo': a.diasActivo, 'variantes con el mismo texto': a.variantes > 1 ? a.variantes : null,
+    'alcance en la UE': a.alcance_ue, plataformas: a.plataformas,
+  });
+  const textos = (a.cuerpos?.length ? a.cuerpos : [a.cuerpo]).filter(Boolean);
+  return `Quiero adaptar A MI ESTILO un anuncio de mi competencia que está funcionando: ${a.pagina}, activo desde el ${String(a.inicio || '').slice(0, 10)} (${a.verEnBiblioteca}).
+Señales de que funciona: ${metricas || 'sin datos'} (lleva mucho tiempo activo o lo están duplicando = les da resultado).
+Texto del anuncio${textos.length > 1 ? ` (${textos.length} versiones)` : ''}:
+${textos.map((t) => `"""\n${String(t).slice(0, 2500)}\n"""`).join('\n') || '(sin texto)'}
+${a.titulo ? `Titular: ${a.titulo}\n` : ''}${a.descripcion ? `Descripción: ${a.descripcion}\n` : ''}${a.transcripcion ? `Lo que se dice en el vídeo:\n"""\n${String(a.transcripcion).slice(0, 8000)}\n"""\n` : ''}${imagenes.length ? `Imágenes del anuncio (míralas con Read, en orden): ${imagenes.join(', ')}\n` : ''}
+Paso previo: entiende el anuncio. Resume en 3-5 líneas su estructura (gancho, problema, prueba, oferta, CTA), a quién le habla y por qué crees que funciona. Guarda esa referencia con crear_nota en 04-Competencia (título «Anuncio ${a.pagina}: <tema>»), con el enlace, las señales, el texto${a.transcripcion ? ', la transcripción' : ''}.
+
+Después haz MI versión: mantén lo que lo hace funcionar (estructura, tipo de gancho, ángulo, CTA), pero escríbelo todo de nuevo con mi voz, mis ejemplos y mi oferta (lee CLAUDE.md). Nunca frases literales suyas. Si es para anuncio, que el gancho funcione sin sonido y el texto principal quepa en 125 caracteres antes del «ver más». En cada guion indica al final «Inspirado en: ${a.verEnBiblioteca}».
+
+${pasosComunes(l, indicaciones, disenar)}`;
+}
