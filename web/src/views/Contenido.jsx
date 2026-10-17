@@ -7,6 +7,7 @@ import { OBJETIVOS, TIPOS, tipoDe, useFases } from './contenido/comun.jsx';
 import { BancoIdeas, Calendario, Lista, Pipeline } from './contenido/Vistas.jsx';
 import { Biblioteca } from './contenido/Biblioteca.jsx';
 import { EditorContenido, ProgramarContenido, Visor } from './contenido/Editor.jsx';
+import { FichaReferencia, esReferencia } from './contenido/FichaReferencia.jsx';
 
 const VISTAS = [
   { id: 'calendario', label: 'Calendario', icon: 'calendar' },
@@ -158,7 +159,8 @@ export default function Contenido({ onCaptura }) {
       {vista === 'ideas' && <BancoIdeas piezas={piezas} onAbrir={setEditando} onMover={mover} onNuevaIdea={() => onCaptura('idea')} />}
       {vista === 'pipeline' && <Pipeline piezas={piezas} onAbrir={setEditando} onMover={mover} onNuevaIdea={() => onCaptura('idea')} />}
 
-      {editando && <EditorContenido key={editando.id || `nuevo-${editando.padre_id || ''}`} pieza={editando} carpetas={carpetas} ig={data?.instagram} piezas={piezas} pilares={data?.pilares || []} onAbrir={setEditando} onDerivada={setEditando} onClose={() => setEditando(null)} onGuardado={recargar} onVisor={abrirVisor} onRepublicar={republicar} />}
+      {editando && esReferencia(editando) && !editando.comoPieza && <FichaReferencia key={`ref-${editando.id}`} pieza={editando} onClose={() => { setEditando(null); recargar(); }} onGuardado={recargar} onEditar={() => setEditando({ ...editando, comoPieza: true })} />}
+      {editando && (!esReferencia(editando) || editando.comoPieza) && <EditorContenido key={editando.id || `nuevo-${editando.padre_id || ''}`} pieza={editando} carpetas={carpetas} ig={data?.instagram} piezas={piezas} pilares={data?.pilares || []} onAbrir={setEditando} onDerivada={setEditando} onClose={() => setEditando(null)} onGuardado={recargar} onVisor={abrirVisor} onRepublicar={republicar} />}
       {programando && <ProgramarContenido pieza={programando.p} fecha={programando.f} ig={data?.instagram} onClose={() => setProgramando(null)} onGuardado={recargar} />}
       {visor && <Visor archivos={visor.archivos} inicio={visor.inicio} onClose={() => setVisor(null)} />}
     </section>
