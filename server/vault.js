@@ -54,6 +54,8 @@ export function createVault(root) {
     return out.sort((a, b) => b.modificado.localeCompare(a.modificado));
   }
 
+  const existe = (relPath) => { try { return Boolean(relPath) && existsSync(resolve(relPath)); } catch { return false; } };
+
   function read(relPath) {
     const abs = resolve(relPath);
     if (!existsSync(abs)) throw new VaultError('La nota no existe');
@@ -162,7 +164,7 @@ export function createVault(root) {
     return res.sort((a, b) => b.puntuacion - a.puntuacion).slice(0, limit);
   }
 
-  return { base, nombre: path.basename(base), list, read, create, write, append, guardar, renombrar, borrar, restaurar, search, resolve };
+  return { base, nombre: path.basename(base), list, read, existe, create, write, append, guardar, renombrar, borrar, restaurar, search, resolve };
 }
 
 // Copia la plantilla la primera vez (sin pisar nada) y deja configurado el MCP para Claude Code.

@@ -391,6 +391,12 @@ export function createCompetencia({ db, instagram, vault, env = process.env, fet
     return { transcripcion: texto, nota };
   }
 
+  // La transcripción hecha fuera (con Whisper si no hay ElevenLabs), p. ej. al guardar el reel como idea
+  function guardarTranscripcion(id, texto, nota = null) {
+    q.transcrita.run(texto, nota, leer(id).id);
+    alCambiar();
+  }
+
   // Lo que necesita Claude para replicarla: la publicación, su transcripción (si se puede) y sus slides
   async function paraReplicar(id) {
     let m = leer(id);
@@ -412,7 +418,7 @@ export function createCompetencia({ db, instagram, vault, env = process.env, fet
     }));
   }
 
-  return { anadir, quitar, activar, sincronizar, porEnlace, traidas, guardarAnalisis, datosParaAnalisis, resumen, detalle, descargarSlides, rutaSlide, miniatura, transcribir, paraReplicar, mejores, estaSincronizando: () => sincronizando };
+  return { anadir, quitar, activar, sincronizar, porEnlace, traidas, guardarAnalisis, datosParaAnalisis, resumen, detalle, descargarSlides, rutaSlide, miniatura, transcribir, guardarTranscripcion, paraReplicar, mejores, estaSincronizando: () => sincronizando };
 }
 
 // La primera imagen de una publicación (en un carrusel, la de su primera diapositiva; si es un vídeo, su portada)

@@ -102,3 +102,20 @@ Después haz MI versión: mantén lo que lo hace funcionar (estructura, tipo de 
 
 ${pasosComunes(l, indicaciones, disenar)}`;
 }
+
+// El guion de una pieza desde su ficha: escribirlo de cero o cambiarlo, con la idea de la que sale como base.
+// Claude lo guarda en la nota del guion (ya creada) para que la ficha lo vea al terminar.
+export function promptGuionPieza(p, { ruta, vacio, referencia = null, indicaciones = '' }) {
+  const formato = FORMATOS_REPLICA[p.formato] || 'el formato de la pieza';
+  const datos = [p.formato && `formato: ${p.formato}`, p.objetivo && `objetivo: ${p.objetivo}`, p.pilar && `pilar: ${p.pilar}`, p.gancho && `gancho pensado: ${p.gancho}`, p.cta && `CTA: ${p.cta}`].filter(Boolean).join(' · ');
+  return `${vacio ? 'Escribe el guion' : 'Cambia el guion'} de mi pieza «${p.titulo}» (#${p.id}${datos ? ` · ${datos}` : ''}).
+${vacio ? `Su nota de guion está vacía: «${ruta}».` : `El guion actual está en la nota «${ruta}»: léelo con leer_nota.`}
+${referencia ? `Sale de esta idea o referencia (con su caption, su transcripción o el texto de sus slides): léela con leer_nota en «${referencia}» y úsala como base. Si es de otra cuenta, adapta lo que la hace funcionar (estructura, gancho, CTA) pero escríbelo todo de nuevo con mi voz: nunca frases literales suyas.\n` : ''}${p.caption ? `Caption actual:\n"""\n${String(p.caption).slice(0, 2000)}\n"""\n` : ''}
+${indicaciones ? `Lo que quiero (manda sobre todo lo demás): ${String(indicaciones).slice(0, 1500)}` : vacio ? 'Escríbelo completo y listo para grabar o diseñar.' : 'Mejóralo: gancho más fuerte, más claro y más con mi voz, sin cambiar la idea.'}
+
+Cómo hacerlo:
+1. Lee _voz.md y escribe con MI voz. Si hay una skill adecuada en .claude/skills (guion-reel-30s, guion-reel-60s, ganchos-reel, carrusel-educativo…), síguela.
+2. Formato del guion: ${formato}.${vacio ? '' : ' Si te pido un cambio concreto, cambia solo eso y deja el resto igual.'}
+3. Guárdalo con editar_nota en «${ruta}» (léela antes con leer_nota): deja el frontmatter y el título (# …) tal cual y pon debajo el guion completo. No le cambies el título a la nota, no crees notas ni piezas y no toques el caption.
+4. Responde en una o dos líneas qué has escrito o cambiado.`;
+}

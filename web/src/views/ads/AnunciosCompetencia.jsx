@@ -1,5 +1,6 @@
 import { useEffect, useRef, useState } from 'react';
 import Icon from '../../components/Icon.jsx';
+import GuardarIdea from '../../components/GuardarIdea.jsx';
 import Replicar from '../../components/Replicar.jsx';
 import { api, useMensajes, useRecurso } from '../../lib/api.js';
 import { hace, num } from '../../lib/formato.js';
@@ -200,6 +201,7 @@ function Detalle({ id, onClose }) {
           </div>
 
           {error && <div className="aviso error">{error}</div>}
+          <GuardarIdea fuente="anuncio" id={a.id} que={a.video ? 'video' : a.imagenes?.length ? 'slides' : null} />
           <button type="button" className="btn anun-adaptar" onClick={() => setAdaptando(true)}><Icon name="sparkle" size={15} />Adaptar a mi estilo</button>
           <small className="ayuda">JARVIS entiende por qué funciona y escribe tu versión con tu voz y tu oferta; la deja en Contenido → Pipeline.{!a.transcripcion && a.video ? ' Transcríbelo antes para que use también lo que se dice.' : ''}</small>
         </div>

@@ -26,6 +26,8 @@ export function createJarvis({ db, vault }) {
   const q = {
     insActividad: db.prepare('INSERT INTO actividad (tipo, texto, origen) VALUES (?, ?, ?)'),
     getPieza: db.prepare('SELECT * FROM piezas WHERE id = ?'),
+    porOrigenRef: db.prepare('SELECT * FROM piezas WHERE origen_ref = ? ORDER BY id DESC LIMIT 1'),
+    setGuion: db.prepare('UPDATE piezas SET guion_nota = ?, nota = COALESCE(nota, ?), actualizado = datetime(\'now\',\'localtime\') WHERE id = ?'),
     piezas: db.prepare('SELECT * FROM piezas ORDER BY orden DESC, id DESC'),
     piezasEstado: db.prepare('SELECT * FROM piezas WHERE estado = ? ORDER BY orden DESC, id DESC'),
     maxOrden: db.prepare('SELECT COALESCE(MAX(orden), 0) AS m FROM piezas WHERE estado = ?'),
@@ -55,6 +57,55 @@ export function createJarvis({ db, vault }) {
     const pieza = crearPieza({ titulo, estado: 'idea', formato, pilar, objetivo, nota, origen, registrarActividad: false });
     registrar(origen === 'hermes' ? 'Hermes' : 'Idea', `Nueva idea${origen === 'hermes' ? ' vía Telegram' : ''}: ${titulo}`, origen);
     return { pieza, nota };
+  }
+
+  // Una idea con su referencia ya escrita (una publicación o un anuncio de la competencia): título y nota propios.
+  // Si ya se guardó esa referencia (mismo enlace), se devuelve la que hay en vez de duplicarla.
+  function guardarIdea({ titulo: t, contenido = '', origen = 'dashboard', formato = null, origen_ref = null }) {
+    const titulo = texto(t, 'titulo', 110).replace(/[\n\r]+/g, ' ');
+    const ya = origen_ref ? row(q.porOrigenRef, String(origen_ref)) : null;
+    if (ya?.nota && vault.existe(ya.nota)) return { pieza: pieza(ya), nota: ya.nota, ya: true };
+    const nota = vault.create('01-Ideas', titulo, frontmatter({ tipo: 'idea', creado: ahora(), origen, formato, referencia: origen_ref }) + `# ${titulo}\n\n${contenido}\n`);
+    const p = crearPieza({ titulo, estado: 'idea', formato, nota, origen, origen_ref, registrarActividad: false });
+    registrar('Idea', `Nueva idea: ${titulo}`, origen);
+    return { pieza: p, nota };
+  }
+
+  // ---------- El guion de una pieza ----------
+  // Es una nota de 02-Guiones: la de «Replicar» (su "nota") o la que se escribe desde la ficha (guion_nota).
+  // En la ficha se edita el cuerpo; la cabecera (frontmatter y título) se conserva.
+  const partirNota = (contenido) => {
+    const m = /^(---\r?\n[\s\S]*?\r?\n---\r?\n)?\s*(# [^\n]*\n)?\n*/.exec(contenido);
+    return { cabecera: (m[1] || '') + (m[2] ? `${m[2]}\n` : ''), cuerpo: contenido.slice(m[0].length) };
+  };
+  const rutaGuion = (p) => [p.guion_nota, /^02-Guiones\//.test(p.nota || '') ? p.nota : null].find((r) => r && vault.existe(r)) || null;
+  function guionDePieza(id) {
+    const p = leerPieza(id);
+    const ruta = rutaGuion(p);
+    const g = ruta ? vault.read(ruta) : null;
+    // La idea o la referencia de la que sale (con su transcripción), para tenerla a mano al escribir
+    const ref = p.nota && p.nota !== ruta && vault.existe(p.nota) ? vault.read(p.nota) : null;
+    return {
+      ruta, texto: g ? partirNota(g.contenido).cuerpo.trimEnd() : '', modificado: g?.modificado || null,
+      referencia: ref ? { ruta: ref.path, texto: partirNota(ref.contenido).cuerpo.trimEnd() } : null,
+    };
+  }
+  // Si la pieza aún no tiene guion, se le crea su nota en 02-Guiones
+  function notaGuion(id) {
+    const p = leerPieza(id);
+    const ya = rutaGuion(p);
+    if (ya) return ya;
+    const titulo = `${p.formato || 'Guion'}: ${p.titulo}`.slice(0, 120);
+    const ruta = vault.create('02-Guiones', titulo, frontmatter({ tipo: 'guion', creado: ahora(), pieza: p.id, formato: p.formato }) + `# ${titulo}\n\n`);
+    q.setGuion.run(ruta, ruta, p.id);
+    return ruta;
+  }
+  function guardarGuion(id, { texto: t = '', modificado } = {}) {
+    if (typeof t !== 'string') throw new JarvisError('Falta el guion');
+    const ruta = notaGuion(id);
+    const { cabecera } = partirNota(vault.read(ruta).contenido);
+    vault.guardar(ruta, `${cabecera}${t.trimEnd()}\n`, { modificado: modificado || undefined });
+    return guionDePieza(id);
   }
 
   function crearNota({ carpeta = '00-Inbox', titulo, contenido = '', origen = 'dashboard', tipo = 'nota' }) {
@@ -514,7 +565,7 @@ export function createJarvis({ db, vault }) {
   }
 
   return {
-    capturarIdea, crearNota, crearPieza, listarPiezas, leerPieza, actualizarPieza, borrarPieza, pilares, ritmo, guardarRitmo, miSemana,
+    capturarIdea, guardarIdea, guionDePieza, notaGuion, guardarGuion, crearNota, crearPieza, listarPiezas, leerPieza, actualizarPieza, borrarPieza, pilares, ritmo, guardarRitmo, miSemana,
     duplicarPieza, carpetas, crearCarpeta, renombrarCarpeta, borrarCarpeta, moverACarpeta, juntarEnCarrusel,
     crearTarea, actualizarTarea, marcarTarea, borrarTarea, listarTareas, tareas, resumenDelDia, inicio, agenda, registrar, editarNota, borrarNota, restaurarNota, actividadDe,
     vault, pipeline,
