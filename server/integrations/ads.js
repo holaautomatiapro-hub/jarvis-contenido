@@ -36,18 +36,33 @@ const MAX_ANUNCIANTES = 30;
 const sinTildes = (t) => String(t || '').normalize('NFD').replace(/[\u0300-\u036f]/g, '').toLowerCase();
 
 // El vídeo y las imágenes de un anuncio salen de su vista previa (ad_snapshot_url): la Biblioteca no da el enlace
-// directo. Se buscan en su HTML (los datos van en JSON dentro de la página o en etiquetas <video>/<img>).
+// directo. Se buscan en su HTML (los datos van en JSON dentro de la página, a veces escapado dos veces, o en
+// etiquetas <video>/<img>). Las fotos pequeñas (la de perfil de la página) no cuentan.
 export function mediosDeSnapshot(html) {
-  const limpiar = (u) => String(u).replace(/\\\//g, '/').replace(/\\u0025/g, '%').replace(/\\u0026/g, '&').replace(/&amp;/g, '&');
-  const todos = (re) => [...String(html).matchAll(re)].map((m) => limpiar(m[1])).filter((u) => /^https:\/\//.test(u));
+  const texto = String(html || '').replace(/\\+\//g, '/').replace(/\\+"/g, '"').replace(/&quot;/g, '"').replace(/\\+u0025/g, '%').replace(/\\+u0026/g, '&').replace(/\\+u003[dD]/g, '=');
+  const limpiar = (u) => String(u).replace(/&amp;/g, '&');
+  const todos = (re) => [...texto.matchAll(re)].map((m) => limpiar(m[1])).filter((u) => /^https:\/\//.test(u));
   const unicos = (l) => [...new Set(l)];
-  const videos = unicos([...todos(/"video_hd_url":"([^"]+)"/g), ...todos(/"video_sd_url":"([^"]+)"/g), ...todos(/<video[^>]*\ssrc="([^"]+)"/g), ...todos(/<source[^>]*\ssrc="([^"]+)"/g)]);
-  const imagenes = unicos([...todos(/"original_image_url":"([^"]+)"/g), ...todos(/"resized_image_url":"([^"]+)"/g), ...todos(/"video_preview_image_url":"([^"]+)"/g),
-    ...todos(/<img[^>]*\ssrc="(https:\/\/[^"]*(?:scontent|fbcdn)[^"]*)"/g)]);
+  const pequena = (u) => { const m = /[/_.-][sp](\d{2,4})x(\d{2,4})[/_.-]/.exec(u); return Boolean(m && Math.max(+m[1], +m[2]) < 200); };
+  let videos = unicos([...todos(/"video_hd_url":"([^"]+)"/g), ...todos(/"video_sd_url":"([^"]+)"/g), ...todos(/<video[^>]*\ssrc="([^"]+)"/g), ...todos(/<source[^>]*\ssrc="([^"]+)"/g)]);
+  let imagenes = unicos([...todos(/"original_image_url":"([^"]+)"/g), ...todos(/"resized_image_url":"([^"]+)"/g), ...todos(/"video_preview_image_url":"([^"]+)"/g),
+    ...todos(/<video[^>]*\sposter="([^"]+)"/g), ...todos(/<img[^>]*\ssrc="(https:\/\/[^"]*(?:scontent|fbcdn)[^"]*)"/g)]).filter((u) => !pequena(u));
+  // Último recurso: cualquier enlace de vídeo o de imagen de los servidores de Meta que haya en la página
+  if (!videos.length) videos = unicos(todos(/(https:\/\/video[^"'\s<>\\]*\.fbcdn\.net\/[^"'\s<>\\]+)/g));
+  if (!imagenes.length) imagenes = unicos(todos(/(https:\/\/scontent[^"'\s<>\\]*\.fbcdn\.net\/[^"'\s<>\\]+)/g)).filter((u) => !pequena(u) && !/\.(?:js|css)(?:\?|$)/.test(u));
   return { videos, imagenes };
 }
 
-export function createAds({ db, instagram, env = process.env, fetchImpl = fetch, alCambiar = () => {}, mediosDir = null }) {
+// Por qué una vista previa no trae nada, en palabras de persona (para el aviso)
+export function motivoSnapshot({ titulo = '', texto = '', html = '' } = {}) {
+  const t = `${titulo} ${texto} ${String(html).slice(0, 20000)}`;
+  if (/iniciar sesi[oó]n|inicia sesi[oó]n|log in to|login_form|\/login\/\?/i.test(t)) return 'Meta pide iniciar sesión para ver la vista previa';
+  if (/no est[aá] disponible|isn.t available|content not found|no se ha encontrado/i.test(t)) return 'Meta dice que la vista previa ya no está disponible';
+  if (/invalid oauth|access token|token de acceso/i.test(t)) return 'Meta no ha aceptado el token al abrir la vista previa';
+  return titulo ? `Meta devolvió «${String(titulo).slice(0, 80)}»` : '';
+}
+
+export function createAds({ db, instagram, env = process.env, fetchImpl = fetch, alCambiar = () => {}, mediosDir = null, renderizar = null, fotograma = null }) {
   const aj = ajustes(db);
   const borrarCache = () => { aj.borrar('ads_cache'); for (const d of PERIODOS_CACHE) aj.borrar(`ads_cache_${d}`); };
   const q = {
@@ -307,7 +322,7 @@ export function createAds({ db, instagram, env = process.env, fetchImpl = fetch,
       activo: sigue, diasActivo: a.inicio ? Math.max(1, Math.round(((sigue ? hoy : new Date(a.fin).getTime()) - new Date(a.inicio).getTime()) / DIA)) : null,
       alcance_ue: a.alcance_ue, plataformas: a.plataformas, variantes, transcrita: Boolean(a.transcripcion),
       video: m?.video ? urlMedio(a.id, m.video) : null, imagenes: (m?.imagenes || []).map((f) => urlMedio(a.id, f)),
-      miniatura: m?.portada ? urlMedio(a.id, m.portada) : m?.imagenes?.[0] ? urlMedio(a.id, m.imagenes[0]) : null,
+      miniatura: m?.portada ? urlMedio(a.id, m.portada) : m?.imagenes?.[0] ? urlMedio(a.id, m.imagenes[0]) : a.snapshot && mediosDir ? `/api/ads/anuncios/${encodeURIComponent(a.id)}/miniatura` : null,
       verEnBiblioteca: verEnBiblioteca(a.id),
     };
   };
@@ -348,6 +363,72 @@ export function createAds({ db, instagram, env = process.env, fetchImpl = fetch,
     if (!r.ok || !r.body) throw new Error(`descarga ${r.status}`);
     await pipeline(Readable.fromWeb(r.body), createWriteStream(destino));
   }
+  // La vista previa del anuncio (con el token, como la da la API) → enlaces de su vídeo y sus imágenes.
+  // Primero se lee tal cual (rápido); si Meta la monta con JavaScript, se abre en el navegador de JARVIS.
+  async function leerSnapshot(a) {
+    const url = new URL(a.snapshot);
+    if (!url.searchParams.has('access_token') && tokenUsuario()) url.searchParams.set('access_token', tokenUsuario());
+    let html = '';
+    try {
+      const r = await fetchImpl(url, { headers: { 'user-agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/126.0 Safari/537.36', 'accept-language': 'es-ES,es;q=0.9' }, signal: AbortSignal.timeout(30000) });
+      html = await r.text();
+    } catch { /* se prueba con el navegador */ }
+    let m = mediosDeSnapshot(html);
+    if (m.videos.length || m.imagenes.length) return m;
+    let pagina = null;
+    if (renderizar) {
+      try {
+        pagina = await renderizar(url.toString());
+        const d = mediosDeSnapshot(pagina.html);
+        const unicos = (l) => [...new Set(l)];
+        m = { videos: unicos([...(pagina.videos || []), ...d.videos]), imagenes: unicos([...(pagina.imagenes || []), ...d.imagenes]) };
+        if (m.videos.length || m.imagenes.length) return m;
+      } catch (e) { pagina = { titulo: '', texto: e.message }; }
+    }
+    if (!html && !pagina) throw publico('No he podido abrir la vista previa del anuncio en Meta. Vuelve a probar en un rato.');
+    // Se guarda lo que devolvió Meta para poder ver qué ha pasado
+    try {
+      mkdirSync(dirAnuncio(a.id), { recursive: true });
+      writeFileSync(path.join(dirAnuncio(a.id), 'vista-previa.html'), (pagina?.html || html || '').replace(/access_token=[^&"'\s]+/g, 'access_token=…'));
+    } catch { /* solo era para revisar */ }
+    return { ...m, motivo: motivoSnapshot(pagina || { html }) };
+  }
+
+  // La imagen de la tarjeta: la primera vez se saca de la vista previa (la imagen o la portada del vídeo) y se
+  // guarda. Como mucho 3 a la vez, para no pedirle a Meta 25 vistas previas de golpe. Si no sale, no se vuelve a
+  // intentar hasta pasadas 6 horas.
+  let enMarcha = 0;
+  const cola = [];
+  const turno = () => new Promise((ok) => { if (enMarcha < 3) { enMarcha += 1; ok(); } else cola.push(ok); });
+  const soltar = () => { const sig = cola.shift(); if (sig) sig(); else enMarcha -= 1; };
+  const sinMiniatura = new Map();
+  async function miniaturaAnuncio(id) {
+    if (!mediosDir) return null;
+    const a = row(q.anuncio, String(id));
+    if (!a) return null;
+    const dir = dirAnuncio(a.id);
+    const m = mediosDe(a);
+    const ya = () => ['miniatura.jpg', m?.portada, m?.imagenes?.[0]].filter(Boolean).map((f) => path.join(dir, f)).find((f) => existsSync(f)) || null;
+    if (ya()) return ya();
+    if (!a.snapshot || Date.now() - (sinMiniatura.get(a.id) || 0) < 6 * 3600000) return null;
+    await turno();
+    try {
+      if (ya()) return ya();
+      const { videos, imagenes } = await leerSnapshot(a);
+      mkdirSync(dir, { recursive: true });
+      const f = path.join(dir, 'miniatura.jpg');
+      for (const u of imagenes.slice(0, 3)) {
+        try { await bajar(u, f); return f; } catch { rmSync(f, { force: true }); }
+      }
+      // Sin imagen pero con vídeo: un fotograma del vídeo
+      if (videos.length && fotograma) {
+        try { await fotograma(videos[0], f); if (existsSync(f)) return f; } catch { rmSync(f, { force: true }); }
+      }
+      sinMiniatura.set(a.id, Date.now());
+      return null;
+    } catch { sinMiniatura.set(a.id, Date.now()); return null; } finally { soltar(); }
+  }
+
   async function mediosAnuncio(id) {
     if (!mediosDir) throw publico('Aquí no se pueden guardar los vídeos de los anuncios');
     const a = row(q.anuncio, String(id));
@@ -355,15 +436,8 @@ export function createAds({ db, instagram, env = process.env, fetchImpl = fetch,
     const ya = mediosDe(a);
     if (ya && (ya.video || ya.imagenes?.length) && [ya.video, ...(ya.imagenes || [])].filter(Boolean).every((f) => existsSync(path.join(dirAnuncio(a.id), f)))) return anuncioCompetencia(a.id);
     if (!a.snapshot) throw publico('Meta no da la vista previa de este anuncio: ábrelo en la Biblioteca de anuncios');
-    const url = new URL(a.snapshot);
-    if (!url.searchParams.has('access_token') && tokenUsuario()) url.searchParams.set('access_token', tokenUsuario());
-    let html;
-    try {
-      const r = await fetchImpl(url, { headers: { 'user-agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/126 Safari/537.36', 'accept-language': 'es-ES,es;q=0.9' }, signal: AbortSignal.timeout(30000) });
-      html = await r.text();
-    } catch { throw publico('No he podido abrir la vista previa del anuncio en Meta. Vuelve a probar en un rato.'); }
-    const { videos, imagenes } = mediosDeSnapshot(html);
-    if (!videos.length && !imagenes.length) throw publico('No he podido sacar el vídeo ni las imágenes de este anuncio. Ábrelo en la Biblioteca de anuncios o sube tú el vídeo.');
+    const { videos, imagenes, motivo } = await leerSnapshot(a);
+    if (!videos.length && !imagenes.length) throw publico(`No he podido sacar el vídeo ni las imágenes de este anuncio${motivo ? ` (${motivo})` : ''}. Ábrelo en la Biblioteca de anuncios o sube tú el vídeo.`);
     const dir = dirAnuncio(a.id);
     mkdirSync(dir, { recursive: true });
     const medios = { video: null, imagenes: [], portada: null };
@@ -539,6 +613,6 @@ export function createAds({ db, instagram, env = process.env, fetchImpl = fetch,
   return {
     estado, cuentas, elegirCuenta, rendimiento, paginaCompetidor, sincronizarBiblioteca, biblioteca, recomendarImpulso, proponer, descartar, confirmar, leerBorrador, resumen,
     buscarAnunciante, seguirAnunciante, dejarAnunciante, sincronizarAnunciante, sincronizarAnunciantes, anunciosCompetencia, anuncioCompetencia,
-    mediosAnuncio, subirVideoAnuncio, rutaMedioAnuncio, guardarTranscripcionAnuncio, paraAdaptar, dirAnuncio: (id) => (mediosDir ? dirAnuncio(id) : null),
+    mediosAnuncio, miniaturaAnuncio, subirVideoAnuncio, rutaMedioAnuncio, guardarTranscripcionAnuncio, paraAdaptar, dirAnuncio: (id) => (mediosDir ? dirAnuncio(id) : null),
   };
 }

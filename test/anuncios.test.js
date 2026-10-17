@@ -9,7 +9,7 @@ import { createVault } from '../server/vault.js';
 import { createJarvis } from '../server/jarvis.js';
 import { createArchivos } from '../server/archivos.js';
 import { createAdjuntos } from '../server/adjuntos.js';
-import { createAds, mediosDeSnapshot } from '../server/integrations/ads.js';
+import { createAds, mediosDeSnapshot, motivoSnapshot } from '../server/integrations/ads.js';
 import { createApp } from '../server/index.js';
 
 const hace = (d) => new Date(Date.now() - d * 86400000).toISOString();
@@ -106,6 +106,55 @@ describe('anuncios de la competencia (Biblioteca de anuncios)', () => {
     ads.dejarAnunciante('999');
     assert.deepEqual(ads.anunciosCompetencia().anuncios, []);
     await assert.rejects(ads.seguirAnunciante({ pagina_id: 'abc' }), /Elige una página/);
+  });
+});
+
+describe('vista previa que Meta monta con JavaScript', () => {
+  test('JSON escapado dos veces y sin la foto de perfil de la página', () => {
+    const doble = String.raw`<script>{\"video_hd_url\":\"https:\\\/\\\/video.xx.fbcdn.net\\\/v\\\/a.mp4?x=1\\u00262\"}</script><img src="https://scontent.xx.fbcdn.net/v/t39.30808-1/p60x60/perfil.jpg"><img src="https://scontent.xx.fbcdn.net/v/t39.35426-6/anuncio.jpg">`;
+    assert.deepEqual(mediosDeSnapshot(doble), { videos: ['https://video.xx.fbcdn.net/v/a.mp4?x=1&2'], imagenes: ['https://scontent.xx.fbcdn.net/v/t39.35426-6/anuncio.jpg'] });
+    assert.match(motivoSnapshot({ titulo: 'Facebook', texto: 'Inicia sesión en Facebook para continuar' }), /iniciar sesión/);
+  });
+
+  test('si el HTML no trae nada se abre en el navegador; la miniatura se saca una vez y se guarda', async () => {
+    const dir = mkdtempSync(path.join(os.tmpdir(), 'jarvis-anun3-'));
+    const db = openDb(':memory:');
+    const pedidas = [];
+    const fetchImpl = async (url) => {
+      const u = new URL(url);
+      pedidas.push(u.hostname + u.pathname);
+      if (u.hostname === 'www.facebook.com') return new Response('<html><body><div id="root"></div></body></html>', { status: 200 });
+      if (/fbcdn\.net$/.test(u.hostname)) return new Response('x', { status: 200 });
+      return json({ data: [
+        { id: 'c1', page_id: '4242424', page_name: 'Rival', ad_creative_bodies: ['Hola'], ad_delivery_start_time: hace(10), ad_snapshot_url: 'https://www.facebook.com/ads/archive/render_ad/?id=c1' },
+        { id: 'c2', page_id: '4242424', page_name: 'Rival', ad_creative_bodies: ['Otro'], ad_delivery_start_time: hace(10), ad_snapshot_url: 'https://www.facebook.com/ads/archive/render_ad/?id=c2' },
+      ] });
+    };
+    const abiertas = [];
+    const renderizar = async (url) => {
+      abiertas.push(url);
+      if (url.includes('id=c2')) return { html: '<html></html>', videos: [], imagenes: [], titulo: 'Facebook', texto: 'Inicia sesión en Facebook' };
+      return { html: '<html></html>', videos: ['https://video.xx.fbcdn.net/v/c1.mp4'], imagenes: ['https://scontent.xx.fbcdn.net/v/c1.jpg'], titulo: '', texto: '' };
+    };
+    const ads = createAds({ db, instagram: { conexion: () => ({ tokenUsuario: 'TU' }), estado: () => ({ conectado: true }) }, env: {}, fetchImpl, renderizar, mediosDir: path.join(dir, 'anuncios') });
+    try {
+      await ads.seguirAnunciante({ pagina_id: '4242424', nombre: 'Rival' });
+      const c1 = ads.anunciosCompetencia().anuncios.find((a) => a.id === 'c1');
+      assert.equal(c1.miniatura, '/api/ads/anuncios/c1/miniatura', 'la tarjeta pide su imagen aunque aún no se haya abierto');
+      const f = await ads.miniaturaAnuncio('c1');
+      assert.ok(f.endsWith('miniatura.jpg') && existsSync(f));
+      assert.match(abiertas[0], /access_token=TU/, 'la vista previa se abre con el token');
+      assert.equal(await ads.miniaturaAnuncio('c1'), f);
+      assert.equal(abiertas.length, 1, 'la segunda vez, de lo guardado');
+      assert.equal(await ads.miniaturaAnuncio('c2'), null);
+      assert.equal(await ads.miniaturaAnuncio('c2'), null);
+      assert.equal(abiertas.length, 2, 'si no sale, no se vuelve a intentar enseguida');
+      const a = await ads.mediosAnuncio('c1');
+      assert.equal(a.video, '/api/ads/anuncios/c1/medio/video.mp4');
+      assert.ok(pedidas.includes('video.xx.fbcdn.net/v/c1.mp4'));
+      await assert.rejects(ads.mediosAnuncio('c2'), /Meta pide iniciar sesión/);
+      assert.ok(existsSync(path.join(dir, 'anuncios', 'c2', 'vista-previa.html')), 'se guarda lo que devolvió Meta');
+    } finally { rmSync(dir, { recursive: true, force: true }); }
   });
 });
 

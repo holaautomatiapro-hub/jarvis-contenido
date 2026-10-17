@@ -27,7 +27,7 @@ import { createAds } from './integrations/ads.js';
 import { createPublicar, REDES, REDES_POR_DEFECTO } from './publicar.js';
 import { createHermes, TAREAS_PROGRAMADAS } from './integrations/hermes.js';
 import { createKit } from './diseno/kit.js';
-import { createMotor } from './diseno/motor.js';
+import { createMotor, fotogramaDeVideo } from './diseno/motor.js';
 import { createDisenos } from './diseno/disenos.js';
 import { createRecordatorios } from './recordatorios.js';
 import { promptAdaptarAnuncio, promptReplicarCompetencia, promptReplicarPropia, normalizarFormatos, seDisena } from './replicar.js';
@@ -250,6 +250,11 @@ export function createApp({ jarvis, archivos, publicadorIg, asistente, instagram
       const r = asistente.preguntar({ conversacion: 'replicar', texto, modelo: modeloReplicar(formatos, disenar) });
       return { ok: true, peticion: r.id, transcrita: Boolean(a.transcripcion), slides: imagenes.length };
     }));
+    app.get('/api/ads/anuncios/:id/miniatura', async (req, res) => {
+      const f = await ads.miniaturaAnuncio(req.params.id).catch(() => null);
+      if (!f) return res.status(404).end();
+      res.set('Cache-Control', 'private, max-age=604800').sendFile(f);
+    });
     app.get('/api/ads/anuncios/:id/medio/:fichero', (req, res) => {
       const f = ads.rutaMedioAnuncio(req.params.id, req.params.fichero);
       if (!f) return res.status(404).end();
@@ -699,7 +704,8 @@ function main() {
   }, emitir: (e) => { emitir(e); if (e.tipo === 'fin') onChange(); disenos?.alEventoClaude(e); } });
   const instagram = createInstagram({ db, vault: jarvis.vault, alCambiar: onChange });
   const competencia = createCompetencia({ db, instagram, vault: jarvis.vault, alCambiar: onChange });
-  const ads = createAds({ db, instagram, alCambiar: onChange, mediosDir: path.join(cfg.vaultPath, '.jarvis', 'anuncios') });
+  // La vista previa de los anuncios de la competencia se abre con el navegador de Diseño (motor, más abajo)
+  const ads = createAds({ db, instagram, alCambiar: onChange, mediosDir: path.join(cfg.vaultPath, '.jarvis', 'anuncios'), renderizar: (url) => motor.mediosDePagina(url), fotograma: fotogramaDeVideo });
   const publicar = createPublicar({ db, jarvis, vault: jarvis.vault, alCambiar: onChange });
   const resultados = createResultados({ db, jarvis, vault: jarvis.vault, alCambiar: onChange });
   const jobs = createJobs({ instagram, competencia, ads, asistente, resultados, skills: createSkills(cfg.vaultPath), vault: jarvis.vault, ajustesDb: ajustes(db) });
