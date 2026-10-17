@@ -2,6 +2,7 @@ import { useState } from 'react';
 import Icon from '../components/Icon.jsx';
 import ChatJarvis from '../components/ChatJarvis.jsx';
 import LineChart from '../components/charts/LineChart.jsx';
+import AnunciosCompetencia from './ads/AnunciosCompetencia.jsx';
 import { api, useRecurso } from '../lib/api.js';
 import { fechaCorta, hace, num, numLargo } from '../lib/formato.js';
 
@@ -101,7 +102,6 @@ export default function Ads() {
   const [data, recargar] = useRecurso(`/api/ads?dias=${dias}`, null);
   const [aviso, setAviso] = useState(null);
   const [proponer, setProponer] = useState(null);
-  const [verPaginas, setVerPaginas] = useState(false);
   if (!data) return <section className="panel soon"><div className="t-dim">Cargando Meta Ads…</div></section>;
 
   const { estado, rendimiento: r } = data;
@@ -117,9 +117,7 @@ export default function Ads() {
   ];
   const pendientes = data.borradores.filter((b) => b.estado !== 'descartada');
 
-  const sincronizarLib = async () => { try { await api('/api/ads/biblioteca/sincronizar', { method: 'POST' }); setAviso({ tipo: 'ok', texto: 'Buscando anuncios de tu competencia en la Ad Library…' }); } catch (e) { setAviso({ tipo: 'error', texto: e.message }); } };
   const actualizar = async () => { try { await api('/api/ads/actualizar', { method: 'POST', body: { dias } }); recargar(); } catch (e) { setAviso({ tipo: 'error', texto: e.message }); } };
-  const guardarPagina = async (u, pagina) => { await api(`/api/ads/competidores/${u}/pagina`, { method: 'POST', body: { pagina } }); recargar(); };
 
   return (
     <section className="ig-vista">
@@ -222,33 +220,9 @@ export default function Ads() {
             {!data.recomendados.length && <div className="vacio">Sin publicaciones con datos suficientes todavía.</div>}
           </div>
 
-          <div className="panel panel-pad">
-            <div className="panel-head">
-              <div>
-                <span className="label">Creativos de la competencia</span>
-                <div className="ayuda">{data.demoBiblioteca ? 'Ejemplo con páginas ficticias' : `Ad Library · ${hace(data.bibliotecaSync)}`}</div>
-              </div>
-              {estado.conectado && <button className="link-btn" onClick={sincronizarLib}>Buscar ahora</button>}
-            </div>
-            {data.errorBiblioteca && <div className="aviso error" style={{ marginBottom: 8 }}>{data.errorBiblioteca}</div>}
-            {data.biblioteca.slice(0, 6).map((a) => (
-              <div key={a.id} className="creativo">
-                <div className="creativo-top"><b>{a.pagina}</b><span className={`chip-estado ${a.activo ? 'on' : ''}`}><span className={`dot ${a.activo ? 'on' : 'off'}`} />{a.activo ? `Activo · ${a.diasActivo} días` : `Terminado · ${a.diasActivo} días`}</span></div>
-                <p>{a.cuerpo}</p>
-                <small>{a.titulo ? `${a.titulo} · ` : ''}{a.plataformas}{a.alcance_ue ? ` · ${num(a.alcance_ue)} de alcance en la UE` : ''}{a.snapshot ? <> · <a href={a.snapshot} target="_blank" rel="noreferrer">ver anuncio</a></> : null}</small>
-              </div>
-            ))}
-            <div className="ayuda" style={{ marginTop: 8 }}>Cuantos más días lleva activo un anuncio, más probable es que le funcione.</div>
-            <button className="link-btn" style={{ marginTop: 8 }} onClick={() => setVerPaginas((v) => !v)}>{verPaginas ? 'Ocultar' : 'Configurar'} páginas de Facebook de la competencia</button>
-            {verPaginas && data.competidores.map((c) => (
-              <label key={c.username} className="pagina-fb">
-                <span>@{c.username}</span>
-                <input className="campo" defaultValue={c.fb_pagina || ''} placeholder={`Nombre o ID de su página (por defecto “${c.nombre || c.username}”)`} onBlur={(e) => e.target.value !== (c.fb_pagina || '') && guardarPagina(c.username, e.target.value)} />
-              </label>
-            ))}
-          </div>
         </div>
       </div>
+      <AnunciosCompetencia conectado={estado.conectado} />
       {proponer && <Proponer pub={proponer} objetivos={data.objetivos} max={estado.maxPresupuestoDia} onCerrar={() => setProponer(null)} onHecho={recargar} />}
     </section>
   );

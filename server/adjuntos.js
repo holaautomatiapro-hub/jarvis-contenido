@@ -187,6 +187,16 @@ export function createAdjuntos({ archivos, vaultPath, env = process.env, ffmpeg 
     return { url, texto: r.transcripcion, ...(r.de ? { con: r.de } : {}), nueva: !r.yaEstaba };
   }
 
+  // Un vídeo cualquiera (p. ej. un anuncio de la competencia): el texto se queda en dir/transcripcion.txt
+  async function transcribirRuta(ruta, { dir, nombre = 'video.mp4', tarea = null } = {}) {
+    if (!existsSync(ruta)) throw Object.assign(new Error('No encuentro el vídeo'), { publico: true });
+    mkdirSync(dir, { recursive: true });
+    const r = { transcripcion: null, avisos: [] };
+    await transcribir(ruta, { nombre, mime: 'video/mp4' }, r, dir, { tarea });
+    if (!r.transcripcion) throw Object.assign(new Error(r.avisos[0] || 'No se ha podido transcribir'), { publico: true });
+    return { texto: r.transcripcion, ...(r.de ? { con: r.de } : {}), nueva: !r.yaEstaba };
+  }
+
   // Las líneas de subtítulos de un trozo de un vídeo ya transcrito con palabras (transcribirVideo con palabras)
   function subtitulosVideo(url, { desde = 0, hasta = null } = {}) {
     const ruta = path.join(dirVideo(relDeUrl(url)), 'palabras.json');
@@ -268,7 +278,7 @@ export function createAdjuntos({ archivos, vaultPath, env = process.env, ffmpeg 
     };
   }
 
-  return { preparar, verPieza, transcribirPieza, transcribirVideo, subtitulosVideo, relDeUrl, encargar, esperarTarea, verTarea, tarea, transcribiendo, pararTarea };
+  return { preparar, verPieza, transcribirPieza, transcribirVideo, transcribirRuta, subtitulosVideo, relDeUrl, encargar, esperarTarea, verTarea, tarea, transcribiendo, pararTarea };
 }
 
 // Palabras con su tiempo ([inicio, fin, palabra], segundos del vídeo) → líneas cortas de subtítulos

@@ -28,6 +28,12 @@ En la UE la Ad Library devuelve **todos** los anuncios (no solo los políticos),
 ### 3. Las páginas de Facebook de tu competencia
 La Ad Library busca por **páginas de Facebook**, no por perfiles de Instagram. En *Creativos de la competencia → Configurar páginas de Facebook* pon, para cada competidor, el **nombre** de su página o, mejor aún, su **ID** (aparece en la biblioteca de anuncios, en la URL de la página del anunciante: `view_all_page_id=…`). Si no pones nada, JARVIS busca por el nombre de su perfil de Instagram.
 
+## Anuncios de la competencia
+En la pestaña **Meta Ads**, abajo, busca una cuenta de tu competencia (nombre, @usuario, enlace de su página o de la Biblioteca de anuncios), elige su página y verás **todos sus anuncios activos**:
+- Ordena por **más tiempo activos** (los que mantienen: los que les funcionan), **más variantes** (el mismo texto en varios anuncios: lo están escalando), **más alcance** en la UE o **más nuevos**, y filtra por antigüedad (+7, +30, +90 días).
+- Al abrir uno: su vídeo o sus imágenes (si Meta no deja sacarlos, ábrelo en la Biblioteca o sube tú el vídeo), todo su texto, **Transcribir el vídeo** (ElevenLabs o Whisper gratis; queda en 04-Competencia) y **Adaptar a mi estilo** (JARVIS escribe tu versión y la deja en Contenido → Pipeline).
+- **Actualizar** vuelve a mirar sus anuncios activos; los que ya no salen se quitan.
+
 ## Qué puedes pedir
 - *"¿Cuánto gasté este mes en la campaña de TOFU y con qué CTR y CPC?"*
 - *"¿Qué reel debería impulsar?"*: mira tus publicaciones que se guardan, comparten e interactúan más que tu media.
