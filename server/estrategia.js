@@ -17,15 +17,23 @@ export const FILAS = [
 ];
 export const TIPOS_SEMANA = ['atraer', 'educar', 'vender'];
 
+// Cada hueco de la tabla son uno o varios botones: una categoría (LM, Viral, Educar…) y, si hace falta, una nota
+const b = (c, n = null) => (n ? { c, n } : { c });
+export const CATEGORIAS_DE_SERIE = {
+  directo: ['Valor', 'Q&A', 'Testimonio', 'Roadmap'],
+  post: ['LM', 'Viral', 'Testimonio', 'Educar', 'Conexión'],
+  stories: ['Educar', 'LM', 'Testimonio', 'Q&A', 'Comunidad', 'Personal'],
+};
+
 export const ESTRUCTURAS_DE_SERIE = {
   atraer: {
     nombre: 'Atraer audiencia', etiqueta: 'Semana tipo', color: '#3987e5', objetivoPieza: 'atraer',
     resumen: 'La semana habitual. Los posts atraen audiencia nueva aportando valor útil a quien aún no sabe que tiene un problema o no conoce la solución, y las stories educan sobre el problema y cómo resolverlo. Acciones puntuales de venta: 2-3 CTA en la semana.',
     posts: 'Niveles de conciencia bajos (1-2)', stories: 'Educar a niveles 2-3',
     filas: {
-      directo: ['', '', 'Valor', '', '', '', ''],
-      post: ['Atraer', 'LM', 'Atraer', 'Educar', 'Atraer', 'Atraer', 'Testimonio'],
-      stories: ['Educar', 'LM', 'Educar con prueba social (¿con CTA?)', 'Educar (¿LM?)', 'Educar', 'Conexión', 'Testimonio con CTA'],
+      directo: [[], [], [b('Valor')], [], [], [], []],
+      post: [[b('Viral')], [b('LM')], [b('Viral')], [b('Educar')], [b('Viral')], [b('Viral')], [b('Testimonio')]],
+      stories: [[b('Educar')], [b('LM')], [b('Educar', 'con prueba social · ¿con CTA?')], [b('Educar', '¿LM?')], [b('Educar')], [b('Personal', 'conexión')], [b('Testimonio', 'con CTA')]],
     },
     tipos: [],
     pasos: [],
@@ -35,9 +43,9 @@ export const ESTRUCTURAS_DE_SERIE = {
     resumen: 'La semana previa a la de venta. Educa sobre tu solución y te posiciona como guía para quien tiene un nivel de conciencia medio o alto (3-4): trabaja las creencias, anticipa las objeciones, educa sobre la responsabilidad de actuar y crea «hype» con la oportunidad que vas a presentar.',
     posts: 'Nivel de conciencia medio (2-3)', stories: 'Educar a niveles 3-4',
     filas: {
-      directo: ['', '', 'Valor + Hype', '', '', '', ''],
-      post: ['Educar (Problema 1 · conciencia 1-2)', 'LM', 'Educar (Problema 2 · conciencia 1-2)', 'Atraer', 'Educar (Responsabilidad · general)', 'Testimonio aspiracional', 'Atraer'],
-      stories: ['Educar (Problema 3 · conciencia 3-4)', 'LM', 'Educar (Problema 4 · conciencia 3-4)', 'Presentar oportunidad aspiracional (Hype)', 'Educar (Responsabilidad · específico)', 'Presentar oportunidad aspiracional (Hype)', 'Aspiracional con prueba social'],
+      directo: [[], [], [b('Valor', '+ Hype')], [], [], [], []],
+      post: [[b('Educar', 'Problema 1 · conciencia 1-2')], [b('LM')], [b('Educar', 'Problema 2 · conciencia 1-2')], [b('Viral')], [b('Educar', 'Responsabilidad · general')], [b('Testimonio', 'aspiracional')], [b('Viral')]],
+      stories: [[b('Educar', 'Problema 3 · conciencia 3-4')], [b('LM')], [b('Educar', 'Problema 4 · conciencia 3-4')], [b('Personal', 'oportunidad aspiracional (Hype)')], [b('Educar', 'Responsabilidad · específico')], [b('Personal', 'oportunidad aspiracional (Hype)')], [b('Testimonio', 'aspiracional con prueba social')]],
     },
     tipos: [
       { nombre: 'Hype en historias', descripcion: 'Hacer ver a la persona cómo va a cambiar su vida y los beneficios que va a obtener con la oportunidad que vas a ofrecer.' },
@@ -52,9 +60,9 @@ export const ESTRUCTURAS_DE_SERIE = {
     resumen: 'Para convertir seguidores en clientes con un nivel de conciencia alto (4-5). Rompe objeciones y dudas de forma racional y emocional, con prueba social y testimonios casi a diario. Todo el contenido busca que te escriban para saber cómo les puedes ayudar.',
     posts: 'Nivel de conciencia alto (4-5)', stories: 'Storytelling a nivel 4-5',
     filas: {
-      directo: ['', 'Testimonio con cliente', 'Testimonio con cliente', 'Q&A', 'Testimonio con cliente', '', 'Valor o Roadmap del programa'],
-      post: ['Info oferta (informativo)', 'FAQs (racional)', '3 decisiones (racional)', 'Testimonio en carrusel o vídeo (emocional)', 'Objeciones comunes (racional)', 'Testimonio en carrusel o vídeo (emocional)', 'Testimonio en carrusel o vídeo (emocional)'],
-      stories: ['Storytelling con captura de apertura', 'Storytelling con captura educativa', 'Storytelling con captura educativa', 'Storytelling con captura aspiracional', 'Storytelling con captura educativa', 'Storytelling con captura aspiracional', 'Cierre estrategia (urgencia)'],
+      directo: [[], [b('Testimonio', 'con cliente')], [b('Testimonio', 'con cliente')], [b('Q&A')], [b('Testimonio', 'con cliente')], [], [b('Roadmap', 'o valor: cómo es el programa')]],
+      post: [[b('Educar', 'info de la oferta')], [b('Educar', 'FAQs (racional)')], [b('Educar', '3 decisiones (racional)')], [b('Testimonio', 'carrusel o vídeo (emocional)')], [b('Educar', 'objeciones comunes (racional)')], [b('Testimonio', 'carrusel o vídeo (emocional)')], [b('Testimonio', 'carrusel o vídeo (emocional)')]],
+      stories: [[b('Testimonio', 'storytelling con captura de apertura')], [b('Educar', 'storytelling con captura educativa')], [b('Educar', 'storytelling con captura educativa')], [b('Testimonio', 'storytelling con captura aspiracional')], [b('Educar', 'storytelling con captura educativa')], [b('Testimonio', 'storytelling con captura aspiracional')], [b('Educar', 'cierre de la estrategia (urgencia)')]],
     },
     tipos: [
       { nombre: 'Post racionales', descripcion: 'Explicar desde el beneficio el porqué de la oferta, rompiendo objeciones comunes y explicando el coste de la decisión (p. ej. «Tienes 3 opciones: no hacer nada, intentarlo por tu cuenta o decidir cambiar ahora»).' },
@@ -98,7 +106,24 @@ export const PRINCIPIOS = [
   { titulo: 'Copiar te hace uno más', texto: 'Piensa en lo que tu cliente necesita escuchar, lo que le ayuda y las palabras que usa.' },
 ];
 
-const DIA_MS = 86400000;
+// Las tablas antiguas (un texto por hueco) se pasan a botones: la categoría que encaje y el texto como nota
+const CATEGORIA_DE = [[/\bLM\b|lead ?magnet/i, 'LM'], [/testimonio|prueba social|aspiracional/i, 'Testimonio'], [/viral|atraer/i, 'Viral'],
+  [/q ?& ?a|preguntas/i, 'Q&A'], [/comunidad/i, 'Comunidad'], [/personal|hype/i, 'Personal'], [/conexi/i, 'Conexión'], [/roadmap/i, 'Roadmap'], [/valor/i, 'Valor'], [/educa|faq|objeci|decisi|oferta/i, 'Educar']];
+const aBoton = (x) => {
+  if (x && typeof x === 'object') {
+    const c = String(x.c || '').trim().slice(0, 30);
+    const n = String(x.n || '').trim().slice(0, 120);
+    return c ? (n ? { c, n } : { c }) : null;
+  }
+  const t = String(x || '').trim().slice(0, 120);
+  if (!t) return null;
+  const c = CATEGORIA_DE.find(([re]) => re.test(t))?.[1] || t.slice(0, 30);
+  return c.toLowerCase() === t.toLowerCase() ? { c } : { c, n: t };
+};
+export const celda = (v) => (Array.isArray(v) ? v : v ? [v] : []).map(aBoton).filter(Boolean).slice(0, 6);
+// «LM + Educar (Problema 1)»
+export const textoCelda = (v) => celda(v).map((x) => (x.n ? `${x.c} (${x.n})` : x.c)).join(' + ');
+
 const iso = (d) => `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`;
 const deIso = (s) => { const [a, m, d] = String(s).split('-').map(Number); return new Date(a, m - 1, d); };
 // El lunes de la semana de una fecha
@@ -122,10 +147,32 @@ export function createEstrategia({ db, jarvis = null, hoy = () => iso(new Date()
   function estructuras() {
     const propias = aj.leer('estrategia_estructuras', {}) || {};
     const out = {};
-    for (const t of TIPOS_SEMANA) out[t] = { ...ESTRUCTURAS_DE_SERIE[t], ...(propias[t] || {}), id: t, cambiada: Boolean(propias[t]) };
+    for (const t of TIPOS_SEMANA) {
+      const e = { ...ESTRUCTURAS_DE_SERIE[t], ...(propias[t] || {}), id: t, cambiada: Boolean(propias[t]) };
+      out[t] = { ...e, filas: filasValidas(e.filas) };
+    }
     return out;
   }
-  const filasValidas = (f) => Object.fromEntries(FILAS.map(({ id }) => [id, DIAS.map((_, i) => texto(f?.[id]?.[i], 120) || '')]));
+
+  // ---------- Los botones de cada fila (se pueden añadir y quitar) ----------
+  function categorias() {
+    const propias = aj.leer('estrategia_categorias', {}) || {};
+    return Object.fromEntries(FILAS.map(({ id }) => [id, Array.isArray(propias[id]) && propias[id].length ? propias[id] : CATEGORIAS_DE_SERIE[id]]));
+  }
+  function guardarCategorias(d = {}) {
+    const propias = aj.leer('estrategia_categorias', {}) || {};
+    for (const { id } of FILAS) {
+      if (!(id in d)) continue;
+      if (d[id] === null) { delete propias[id]; continue; }
+      if (!Array.isArray(d[id])) throw new EstrategiaError('Lista de botones no válida');
+      const lista = [...new Set(d[id].map((x) => String(x || '').trim().slice(0, 30)).filter(Boolean))].slice(0, 20);
+      if (!lista.length) throw new EstrategiaError('Deja al menos un botón');
+      propias[id] = lista;
+    }
+    aj.guardar('estrategia_categorias', propias);
+    return categorias();
+  }
+  const filasValidas = (f) => Object.fromEntries(FILAS.map(({ id }) => [id, DIAS.map((_, i) => celda(f?.[id]?.[i]))]));
   function guardarEstructura(tipo, d = {}) {
     if (!TIPOS_SEMANA.includes(tipo)) throw new EstrategiaError('Esa estructura no existe');
     const propias = aj.leer('estrategia_estructuras', {}) || {};
@@ -161,7 +208,7 @@ export function createEstrategia({ db, jarvis = null, hoy = () => iso(new Date()
     return {
       lunes, domingo: masDias(lunes, 6), tipo, porDefecto: !r?.tipo && !r?.objetivo,
       objetivo: r?.objetivo || null, detalle: r?.detalle || null, tactica: r?.tactica || null, campana: r?.campana || null, notas: r?.notas || null,
-      propia: Boolean(celdas), filas: celdas || est[tipo].filas,
+      propia: Boolean(celdas), filas: celdas ? filasValidas(celdas) : est[tipo].filas,
     };
   }
   function semana(lunes) {
@@ -221,33 +268,56 @@ export function createEstrategia({ db, jarvis = null, hoy = () => iso(new Date()
       out.push({
         fecha, dia: DIAS[d], tipo: s.tipo, semana: est[s.tipo].nombre, color: est[s.tipo].color, porDefecto: s.porDefecto, objetivo: OBJETIVOS_SEMANA.find((x) => x.id === s.objetivo)?.nombre || null,
         detalle: s.detalle, tactica: s.tactica, campana: s.campana,
-        directo: s.filas.directo[d] || null, post: s.filas.post[d] || null, stories: s.filas.stories[d] || null,
+        directo: textoCelda(s.filas.directo[d]) || null, post: textoCelda(s.filas.post[d]) || null, stories: textoCelda(s.filas.stories[d]) || null,
+        botones: { directo: s.filas.directo[d], post: s.filas.post[d], stories: s.filas.stories[d] },
       });
     }
     return out;
   }
 
-  // Crea en Contenido las piezas de la semana (como ideas, con su día): una por hueco elegido, sin repetir
-  function crearPiezas(lunes, huecos = []) {
+  // «Pasar al calendario»: cada botón de cada día pasa a Contenido como un hueco (una idea con su día, su
+  // categoría y lo que toca como título) para ir metiendo el contenido. Sin repetir y sin los días que ya pasaron.
+  function crearPiezas(lunes, huecos = null) {
     if (!jarvis) throw new EstrategiaError('Aquí no se pueden crear piezas');
     const s = semana(lunes);
     const est = estructuras()[s.tipo];
+    const hoyIso = hoy();
     const ya = new Set(jarvis.listarPiezas().map((p) => p.origen_ref).filter((r) => String(r || '').startsWith('estrategia:')));
+    const todos = [];
+    for (let d = 0; d < 7; d++) for (const f of FILAS) todos.push({ dia: d, fila: f.id });
     const creadas = [];
-    for (const h of Array.isArray(huecos) ? huecos : []) {
+    for (const h of Array.isArray(huecos) ? huecos : todos) {
       const d = Number(h?.dia);
       const fila = FILAS.find((f) => f.id === h?.fila);
-      const que = fila && d >= 0 && d < 7 ? s.filas[fila.id][d] : null;
-      if (!que) continue;
-      const ref = `estrategia:${s.lunes}:${d}:${fila.id}`;
-      if (ya.has(ref)) continue;
+      if (!fila || !(d >= 0 && d < 7)) continue;
       const fecha = masDias(s.lunes, d);
-      const titulo = `${fila.nombre}: ${que}`;
-      creadas.push(jarvis.crearPieza({ titulo, estado: 'idea', fecha, formato: fila.formato, objetivo: est.objetivoPieza, origen_ref: ref, origen: 'dashboard', registrarActividad: false }));
-      ya.add(ref);
+      if (fecha < hoyIso) continue;
+      s.filas[fila.id][d].forEach((x, i) => {
+        const ref = `estrategia:${s.lunes}:${d}:${fila.id}:${i}`;
+        if (ya.has(ref) || (i === 0 && ya.has(`estrategia:${s.lunes}:${d}:${fila.id}`))) return;
+        const titulo = `${fila.nombre} · ${x.c}${x.n ? ` · ${x.n}` : ''}`;
+        creadas.push(jarvis.crearPieza({ titulo, estado: 'idea', fecha, formato: fila.formato, categoria: x.c, objetivo: est.objetivoPieza, origen_ref: ref, origen: 'dashboard', registrarActividad: false }));
+        ya.add(ref);
+      });
     }
-    if (creadas.length) jarvis.registrar('Contenido', `Estrategia: ${creadas.length} ${creadas.length === 1 ? 'pieza creada' : 'piezas creadas'} para la semana del ${s.lunes}`, 'dashboard');
+    if (creadas.length) jarvis.registrar('Contenido', `Estrategia: ${creadas.length} ${creadas.length === 1 ? 'hueco pasado' : 'huecos pasados'} al calendario (semana del ${s.lunes})`, 'dashboard');
     return { creadas: creadas.length, piezas: creadas };
+  }
+  // Todo un mes (las semanas cuyo jueves cae en él)
+  function pasarMes(anioN, mes) {
+    const a = Number(anioN);
+    const m = Number(mes);
+    if (!(a > 2000 && m >= 1 && m <= 12)) throw new EstrategiaError('Mes no válido');
+    let creadas = 0;
+    let semanas = 0;
+    for (let l = lunesDe(`${a}-${String(m).padStart(2, '0')}-01`); ; l = masDias(l, 7)) {
+      const jueves = deIso(masDias(l, 3));
+      if (jueves.getFullYear() > a || (jueves.getFullYear() === a && jueves.getMonth() + 1 > m)) break;
+      if (jueves.getMonth() + 1 !== m) continue;
+      semanas += 1;
+      creadas += crearPiezas(l).creadas;
+    }
+    return { creadas, semanas };
   }
 
   // Lo que necesita JARVIS para proponer los temas de una semana
@@ -255,7 +325,7 @@ export function createEstrategia({ db, jarvis = null, hoy = () => iso(new Date()
     const s = semana(lunes);
     const est = estructuras()[s.tipo];
     const obj = OBJETIVOS_SEMANA.find((x) => x.id === s.objetivo)?.nombre;
-    const tabla = DIAS.map((dia, i) => `- ${dia} ${masDias(s.lunes, i)}: ${FILAS.map((f) => (s.filas[f.id][i] ? `${f.nombre}: ${s.filas[f.id][i]}` : null)).filter(Boolean).join(' · ') || 'nada'}`).join('\n');
+    const tabla = DIAS.map((dia, i) => `- ${dia} ${masDias(s.lunes, i)}: ${FILAS.map((f) => (s.filas[f.id][i].length ? `${f.nombre}: ${textoCelda(s.filas[f.id][i])}` : null)).filter(Boolean).join(' · ') || 'nada'}`).join('\n');
     return `Planifica el contenido de MI semana del ${s.lunes} al ${s.domingo} siguiendo mi estrategia.
 Tipo de semana: ${est.nombre}${est.etiqueta ? ` (${est.etiqueta})` : ''}. ${est.resumen}
 Posts: ${est.posts}. Stories: ${est.stories}.
@@ -265,10 +335,10 @@ ${tabla}
 ${est.tipos?.length ? `\nTipos de contenido de esta semana:\n${est.tipos.map((t) => `- ${t.nombre}: ${t.descripcion}`).join('\n')}\n` : ''}${est.pasos?.length ? `\nCómo prepararla:\n${est.pasos.map((p, i) => `${i + 1}. ${p}`).join('\n')}\n` : ''}${indicaciones ? `\nIndicaciones (mandan sobre todo lo demás): ${String(indicaciones).slice(0, 1500)}\n` : ''}
 Cómo hacerlo:
 1. Lee _voz.md y CLAUDE.md (mi oferta, mi cliente, mis pilares). Mira con mi_semana y listar_pipeline lo que ya tengo esos días para no repetirlo, y con buscar_notas mis ideas en 01-Ideas que encajen.
-2. Para cada hueco con contenido (directo, post y stories de cada día), propón un tema concreto que cumpla lo que toca ese día y el nivel de conciencia de la semana. Que los días tengan hilo entre sí.
-3. Crea cada uno con crear_pieza: estado "idea", fecha de ese día, formato (Reel, Carrusel o Post para los posts; Story para las stories; Directo para los directos), un título claro con el tema, el gancho, el cta y objetivo "${est.objetivoPieza}". Si ya hay una pieza para ese hueco, no la dupliques: complétala con mover_pieza.
+2. Para cada botón de cada día (directo, post y stories; la categoría dice el tipo de contenido y la nota, el matiz), propón un tema concreto que cumpla lo que toca ese día y el nivel de conciencia de la semana. Que los días tengan hilo entre sí.
+3. Si ese día ya hay huecos pasados al calendario (piezas en Idea con su categoría), complétalos con mover_pieza: título con el tema, gancho y cta. Si no, crea cada uno con crear_pieza: estado "idea", fecha de ese día, su categoría (la del botón: LM, Viral, Educar…), formato (Reel, Carrusel o Post para los posts; Story para las stories), un título claro con el tema, el gancho, el cta y objetivo "${est.objetivoPieza}". Nunca dupliques un hueco.
 4. No publiques nada. Responde con la semana en una tabla corta (día, hueco, tema).`;
   }
 
-  return { estructuras, guardarEstructura, restaurarEstructura, semana, anio, guardarSemana, guardarSemanas, borrarSemana, plan, crearPiezas, promptSemana };
+  return { estructuras, guardarEstructura, restaurarEstructura, categorias, guardarCategorias, semana, anio, guardarSemana, guardarSemanas, borrarSemana, plan, crearPiezas, pasarMes, promptSemana };
 }

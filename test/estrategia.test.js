@@ -29,7 +29,7 @@ describe('estrategia de contenido', () => {
       assert.equal(anio[0].lunes, '2025-12-29', 'la semana del 1 de enero');
       assert.equal(anio.at(-1).lunes, '2026-12-28');
       assert.ok(anio.every((s) => s.tipo === 'atraer' && s.porDefecto));
-      assert.deepEqual(anio[0].filas.post, ['Atraer', 'LM', 'Atraer', 'Educar', 'Atraer', 'Atraer', 'Testimonio']);
+      assert.deepEqual(anio[0].filas.post, [[{ c: 'Viral' }], [{ c: 'LM' }], [{ c: 'Viral' }], [{ c: 'Educar' }], [{ c: 'Viral' }], [{ c: 'Viral' }], [{ c: 'Testimonio' }]]);
 
       // Como el calendario de marketing: educación, anuncio de la oferta y venta
       estrategia.guardarSemana('2026-01-07', { objetivo: 'educacion', tactica: 'Tráfico frío + contenido orgánico' });
@@ -43,8 +43,9 @@ describe('estrategia de contenido', () => {
       assert.equal(estrategia.guardarSemana('2026-01-26', { objetivo: 'valor', tipo: 'educar' }).tipo, 'educar');
 
       const dias = estrategia.plan({ desde: '2026-01-19', dias: 7 });
-      assert.deepEqual(dias.map((d) => d.post), ['Info oferta (informativo)', 'FAQs (racional)', '3 decisiones (racional)', 'Testimonio en carrusel o vídeo (emocional)', 'Objeciones comunes (racional)', 'Testimonio en carrusel o vídeo (emocional)', 'Testimonio en carrusel o vídeo (emocional)']);
-      assert.equal(dias[6].stories, 'Cierre estrategia (urgencia)');
+      assert.deepEqual(dias.map((d) => d.botones.post.map((x) => x.c)), [['Educar'], ['Educar'], ['Educar'], ['Testimonio'], ['Educar'], ['Testimonio'], ['Testimonio']]);
+      assert.equal(dias[1].post, 'Educar (FAQs (racional))');
+      assert.equal(dias[6].stories, 'Educar (cierre de la estrategia (urgencia))');
       assert.equal(dias[3].directo, 'Q&A');
       assert.equal(dias[0].objetivo, 'Venta');
       assert.equal(estrategia.borrarSemana('2026-01-20').porDefecto, true);
@@ -56,37 +57,58 @@ describe('estrategia de contenido', () => {
     const { estrategia, limpiar } = nuevo();
     try {
       const filas = estrategia.estructuras().educar.filas;
-      const propia = { ...filas, post: filas.post.map((x, i) => (i === 0 ? 'Educar (Por qué no te contestan los leads)' : x)) };
+      const propia = { ...filas, post: filas.post.map((x, i) => (i === 0 ? [{ c: 'Educar', n: 'Por qué no te contestan los leads' }, { c: 'LM' }] : x)) };
       const s = estrategia.guardarSemana('2026-02-16', { tipo: 'educar', celdas: propia });
       assert.equal(s.propia, true);
-      assert.equal(estrategia.plan({ desde: '2026-02-16', dias: 1 })[0].post, 'Educar (Por qué no te contestan los leads)');
+      assert.equal(estrategia.plan({ desde: '2026-02-16', dias: 1 })[0].post, 'Educar (Por qué no te contestan los leads) + LM');
+      // Las tablas antiguas (un texto por hueco) se pasan a botones
+      const vieja = estrategia.guardarSemana('2026-02-23', { tipo: 'atraer', celdas: { post: ['Atraer', 'LM'], stories: ['Testimonio con CTA'], directo: [] } });
+      assert.deepEqual(vieja.filas.post.slice(0, 3), [[{ c: 'Viral', n: 'Atraer' }], [{ c: 'LM' }], []]);
+      assert.deepEqual(vieja.filas.stories[0], [{ c: 'Testimonio', n: 'Testimonio con CTA' }]);
       assert.equal(estrategia.guardarSemana('2026-02-16', { celdas: null }).propia, false);
 
-      const e = estrategia.guardarEstructura('atraer', { filas: { ...estrategia.estructuras().atraer.filas, directo: ['', '', 'Valor', '', '', '', 'Q&A'] }, tipos: [{ nombre: 'Atraer', descripcion: 'Valor para nivel 1-2' }] });
+      const e = estrategia.guardarEstructura('atraer', { filas: { ...estrategia.estructuras().atraer.filas, directo: [[], [], [{ c: 'Valor' }], [], [], [], [{ c: 'Q&A' }]] }, tipos: [{ nombre: 'Atraer', descripcion: 'Valor para nivel 1-2' }] });
       assert.equal(e.atraer.cambiada, true);
-      assert.equal(e.atraer.filas.directo[6], 'Q&A');
-      assert.equal(estrategia.plan({ desde: '2026-03-01', dias: 1 })[0].directo, 'Q&A', 'las semanas sin tabla propia usan la estructura');
+      assert.deepEqual(e.atraer.filas.directo[6], [{ c: 'Q&A' }]);
+      assert.equal(estrategia.plan({ desde: '2026-03-08', dias: 1 })[0].directo, 'Q&A', 'las semanas sin tabla propia usan la estructura');
       assert.equal(estrategia.restaurarEstructura('atraer').atraer.cambiada, false);
       assert.throws(() => estrategia.guardarEstructura('otra', {}), /no existe/);
+      // Los botones de cada fila se añaden y se quitan
+      assert.deepEqual(estrategia.categorias().post, ['LM', 'Viral', 'Testimonio', 'Educar', 'Conexión']);
+      assert.deepEqual(estrategia.categorias().stories, ['Educar', 'LM', 'Testimonio', 'Q&A', 'Comunidad', 'Personal']);
+      assert.deepEqual(estrategia.guardarCategorias({ post: ['LM', 'Viral', 'Humor', 'Viral'] }).post, ['LM', 'Viral', 'Humor']);
+      assert.throws(() => estrategia.guardarCategorias({ stories: [] }), /al menos/);
+      assert.equal(estrategia.guardarCategorias({ post: null }).post.length, 5);
     } finally { limpiar(); }
   });
 
-  test('crear las ideas de la semana: una por hueco, con su día y sin repetir', () => {
+  test('pasar al calendario: un hueco por botón, en su día, desde hoy y sin repetir', () => {
     const { estrategia, jarvis, limpiar } = nuevo();
     try {
-      estrategia.guardarSemana('2026-01-19', { objetivo: 'venta' });
-      const r = estrategia.crearPiezas('2026-01-19', [{ dia: 0, fila: 'post' }, { dia: 0, fila: 'stories' }, { dia: 0, fila: 'directo' }, { dia: 1, fila: 'directo' }]);
+      estrategia.guardarSemana('2026-11-16', { objetivo: 'venta' });
+      const r = estrategia.crearPiezas('2026-11-16', [{ dia: 0, fila: 'post' }, { dia: 0, fila: 'stories' }, { dia: 0, fila: 'directo' }, { dia: 1, fila: 'directo' }]);
       assert.equal(r.creadas, 3, 'el lunes no hay directo');
-      const p = jarvis.listarPiezas().find((x) => x.fecha === '2026-01-20');
-      assert.equal(p.titulo, 'Directo: Testimonio con cliente');
+      const p = jarvis.listarPiezas().find((x) => x.fecha === '2026-11-17');
+      assert.equal(p.titulo, 'Directo · Testimonio · con cliente');
+      assert.equal(p.categoria, 'Testimonio');
       assert.equal(p.objetivo, 'convertir');
       assert.equal(jarvis.listarPiezas().find((x) => x.titulo.startsWith('Stories')).formato, 'Story');
-      assert.equal(estrategia.crearPiezas('2026-01-19', [{ dia: 0, fila: 'post' }]).creadas, 0);
-      const prompt = estrategia.promptSemana('2026-01-19', { indicaciones: 'Oferta: programa 1:1' });
+      // Toda la semana: el resto (lo ya pasado no se repite)
+      const toda = estrategia.crearPiezas('2026-11-16');
+      assert.equal(toda.creadas, 19 - 3, '7 posts + 7 stories + 5 directos = 19 botones');
+      assert.equal(estrategia.crearPiezas('2026-11-16').creadas, 0);
+      // Los días que ya han pasado no se pasan (hoy es el 18 de octubre)
+      assert.equal(estrategia.crearPiezas('2026-10-12').creadas, 2, 'solo el domingo: su post y su story');
+      // Un mes entero
+      const mes = estrategia.pasarMes(2026, 12);
+      assert.equal(mes.semanas, 5);
+      assert.ok(mes.creadas > 50);
+      assert.throws(() => estrategia.pasarMes(2026, 13), /Mes/);
+      const prompt = estrategia.promptSemana('2026-11-16', { indicaciones: 'Oferta: programa 1:1' });
       assert.match(prompt, /Semana de venta/);
-      assert.match(prompt, /Lunes 2026-01-19: Post: Info oferta/);
+      assert.match(prompt, /Lunes 2026-11-16: Post: Educar \(info de la oferta\)/);
+      assert.match(prompt, /huecos pasados al calendario/);
       assert.match(prompt, /Oferta: programa 1:1/);
-      assert.match(prompt, /objetivo "convertir"/);
     } finally { limpiar(); }
   });
 
@@ -130,7 +152,7 @@ describe('estrategia de contenido', () => {
       const m = await client.callTool({ name: 'marcar_semana_estrategia', arguments: { fecha: '2026-01-21', objetivo: 'venta', campana: 'Año Nuevo' } });
       assert.equal(JSON.parse(m.content[0].text).tipo, 'vender');
       const v = JSON.parse((await client.callTool({ name: 'ver_estrategia', arguments: { desde: '2026-01-19', dias: 2 } })).content[0].text);
-      assert.equal(v.dias[1].post, 'FAQs (racional)');
+      assert.equal(v.dias[1].post, 'Educar (FAQs (racional))');
       assert.equal(v.dias[1].campana, 'Año Nuevo');
       assert.ok(v.estructuras.educar.tipos.length > 0);
     } finally { limpiar(); }

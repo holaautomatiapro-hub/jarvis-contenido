@@ -3,7 +3,8 @@ import Icon from '../../components/Icon.jsx';
 import CampoCaption from '../../components/CampoCaption.jsx';
 import GenerarPortada, { esFormatoVideo } from './Portada.jsx';
 import { ResultadosPieza } from './Resultados.jsx';
-import { api, useMensajes } from '../../lib/api.js';
+import { api, useMensajes, useRecurso } from '../../lib/api.js';
+import { colorCategoria } from '../../lib/categorias.js';
 import { markdownANegrita } from '../../lib/negrita.js';
 import { diaLargo, hoyIso, sumarDias } from '../../lib/fechas.js';
 import { NOMBRE_TIPO_IG, planDePublicacion } from '../../lib/planIg.js';
@@ -97,6 +98,25 @@ function CajaInstagram({ ig, pieza, plan, marcado, onMarcar, onAhora, onConverti
 // ---------- Ficha de una pieza: nueva o para editar ----------
 // piezas y pilares: para enseñar de dónde sale y qué ha salido de ella, y sugerir pilares.
 // onDerivada: abre una pieza nueva que sale de esta (p. ej. el carrusel de un reel).
+// El botón de la estrategia que cubre la pieza (LM, Viral, Educar…): los de publicaciones o los de stories
+function CampoCategoria({ valor, story, onCambio }) {
+  const [cats] = useRecurso('/api/estrategia/categorias', null);
+  if (!cats?.post) return null;
+  const lista = [...new Set([...(story ? cats.stories : cats.post), ...(valor ? [valor] : [])])];
+  return (
+    <>
+      <label className="campo-et">Tipo de contenido <span className="ayuda">(de tu estrategia)</span></label>
+      <div className="pildoras">
+        {lista.map((c) => (
+          <button type="button" key={c} className={valor === c ? 'on' : ''} style={valor === c ? { '--c': colorCategoria(c) } : undefined} onClick={() => onCambio(valor === c ? '' : c)}>
+            <span className="punto" style={{ background: colorCategoria(c) }} />{c}
+          </button>
+        ))}
+      </div>
+    </>
+  );
+}
+
 export function EditorContenido({ pieza, carpetas, ig, onClose, onGuardado, onVisor, onRepublicar, piezas = [], pilares = [], onAbrir, onDerivada }) {
   const ESTADOS = useFases();
   const nueva = !pieza.id;
@@ -104,7 +124,7 @@ export function EditorContenido({ pieza, carpetas, ig, onClose, onGuardado, onVi
     titulo: pieza.titulo || '', carpeta: pieza.carpeta || '', formato: tipoDe(pieza.formato)?.id || pieza.formato || 'Reel',
     estado: pieza.estado || 'idea', fecha: pieza.fecha || '', hora: pieza.hora || '', caption: pieza.caption || '', video_url: pieza.video_url || '',
     publicar_ig: Boolean(pieza.publicar_ig), leadmagnet: Boolean(pieza.leadmagnet), leadmagnet_url: pieza.leadmagnet_url || '',
-    pilar: pieza.pilar || '', objetivo: pieza.objetivo || '', gancho: pieza.gancho || '', cta: pieza.cta || '',
+    pilar: pieza.pilar || '', objetivo: pieza.objetivo || '', gancho: pieza.gancho || '', cta: pieza.cta || '', categoria: pieza.categoria || '',
   }));
   const padre = pieza.padre_id ? piezas.find((p) => p.id === pieza.padre_id) : null;
   const derivadas = pieza.id ? piezas.filter((p) => p.padre_id === pieza.id) : [];
@@ -210,7 +230,7 @@ export function EditorContenido({ pieza, carpetas, ig, onClose, onGuardado, onVi
     }
     setGuardando(true); setError('');
     if (d.leadmagnet && d.leadmagnet_url && !/^https?:\/\//i.test(d.leadmagnet_url)) return setError('El enlace del lead magnet debe empezar por https://');
-    const body = { ...d, pilar: d.pilar.trim() || null, objetivo: d.objetivo || null, gancho: d.gancho.trim() || null, cta: d.cta.trim() || null, ...(nueva && pieza.padre_id ? { padre_id: pieza.padre_id } : {}), ...(nueva && pieza.origen_ref ? { origen_ref: pieza.origen_ref } : {}), carpeta: d.carpeta || null, fecha: d.fecha || null, hora: d.hora || null, archivos, portada: esFormatoVideo(d.formato) ? portada : null, publicar_ig: ahora ? false : conIg ? d.publicar_ig : false, leadmagnet_url: d.leadmagnet ? d.leadmagnet_url.trim() || null : null };
+    const body = { ...d, categoria: d.categoria || null, pilar: d.pilar.trim() || null, objetivo: d.objetivo || null, gancho: d.gancho.trim() || null, cta: d.cta.trim() || null, ...(nueva && pieza.padre_id ? { padre_id: pieza.padre_id } : {}), ...(nueva && pieza.origen_ref ? { origen_ref: pieza.origen_ref } : {}), carpeta: d.carpeta || null, fecha: d.fecha || null, hora: d.hora || null, archivos, portada: esFormatoVideo(d.formato) ? portada : null, publicar_ig: ahora ? false : conIg ? d.publicar_ig : false, leadmagnet_url: d.leadmagnet ? d.leadmagnet_url.trim() || null : null };
     if (!conIg) delete body.publicar_ig;
     try {
       await guion.current?.guardar();
@@ -279,6 +299,7 @@ export function EditorContenido({ pieza, carpetas, ig, onClose, onGuardado, onVi
               </button>
             ))}
           </div>
+          <CampoCategoria valor={d.categoria} story={d.formato === 'Story'} onCambio={(v) => setD((x) => ({ ...x, categoria: v }))} />
           <label className="campo-et">Guion</label>
           {nueva ? <div className="ayuda">Guarda la pieza y vuelve a abrirla para escribir su guion (a mano o con IA).</div> : <CajaGuion ref={guion} pieza={pieza} />}
           <label className="campo-et">Caption <span className={`contador${largo ? ' pasado' : ''}`}>{d.caption.length} / {MAX_CAPTION}</span></label>
