@@ -162,7 +162,8 @@ function Categorias({ data, recargar }) {
 function Semana({ lunes, data, onClose, recargarAnio }) {
   const [r, recargar] = useRecurso(`/api/estrategia/semana/${lunes}`, null);
   const [f, setF] = useState(null);
-  const [celdas, setCeldas] = useState(null); // la tabla propia de esta semana mientras se edita
+  const [celdas, setCeldas] = useState(null); // la tabla de esta semana tal como se ha cambiado aquí
+  const [guardadoDias, setGuardadoDias] = useState('');
   const [aviso, setAviso] = useState(null);
   const [ocupado, setOcupado] = useState('');
   const [indicaciones, setIndicaciones] = useState('');
@@ -182,12 +183,27 @@ function Semana({ lunes, data, onClose, recargarAnio }) {
   const piezas = new Map();
   for (const p of r.piezas) piezas.set(p.fecha, [...(piezas.get(p.fecha) || []), p]);
   const filas = celdas || (s.propia && tipo === s.tipo ? s.filas : e.filas);
+  // Los días se guardan solos al tocarlos (antes había que darle a otro botón y se perdían)
+  const cambiarDias = async (nuevas) => {
+    setCeldas(nuevas); setGuardadoDias('guardando');
+    try {
+      await api(`/api/estrategia/semana/${s.lunes}`, { method: 'PUT', body: { celdas: nuevas, tipo } });
+      setGuardadoDias('ok'); recargarAnio();
+    } catch (err) { setGuardadoDias(''); setAviso({ tipo: 'error', texto: err.message }); }
+  };
+  const volverAEstructura = async () => {
+    await api(`/api/estrategia/semana/${s.lunes}`, { method: 'PUT', body: { celdas: null } });
+    setCeldas(null); setGuardadoDias(''); recargar(); recargarAnio();
+  };
+  const cambiarTipo = (t) => { setF({ ...f, tipo: t }); if (t !== tipo) setCeldas(null); };
 
   const guardar = async (extra = {}) => {
     setOcupado('guardar'); setAviso(null);
     try {
-      await api(`/api/estrategia/semana/${s.lunes}`, { method: 'PUT', body: { ...f, tipo: f.tipo, objetivo: f.objetivo || null, ...extra } });
-      setCeldas(null); recargar(); recargarAnio();
+      // Si ha cambiado la estructura, los días pasan a ser los de la nueva (salvo los que se hayan tocado aquí)
+      const dias = celdas ? { celdas, tipo } : tipo !== s.tipo && s.propia ? { celdas: null } : {};
+      await api(`/api/estrategia/semana/${s.lunes}`, { method: 'PUT', body: { ...f, tipo: f.tipo, objetivo: f.objetivo || null, ...dias, ...extra } });
+      recargar(); recargarAnio();
       setAviso({ tipo: 'ok', texto: 'Semana guardada.' });
     } catch (err) { setAviso({ tipo: 'error', texto: err.message }); }
     setOcupado('');
@@ -195,7 +211,7 @@ function Semana({ lunes, data, onClose, recargarAnio }) {
   const crearPiezas = async () => {
     setOcupado('piezas'); setAviso(null);
     try {
-      await guardar(celdas ? { celdas, tipo } : {});
+      await guardar();
       const x = await api(`/api/estrategia/semana/${s.lunes}/piezas`, { method: 'POST', body: {} });
       setAviso({ tipo: 'ok', texto: x.creadas ? `${x.creadas} ${x.creadas === 1 ? 'hueco pasado' : 'huecos pasados'} al calendario de Contenido, cada uno en su día. Ábrelos allí para ir metiendo el contenido.` : 'Ya estaba todo en el calendario (los días que ya han pasado no se pasan).' });
       recargar();
@@ -220,14 +236,14 @@ function Semana({ lunes, data, onClose, recargarAnio }) {
           <span className="label">Qué semana es</span>
           <div className="est-chips">
             {data.objetivos.map((o) => (
-              <button type="button" key={o.id} className={`chip${f.objetivo === o.id ? ' chip-acento' : ''}`} onClick={() => setF({ ...f, objetivo: f.objetivo === o.id ? '' : o.id, tipo: f.objetivo === o.id ? f.tipo : o.tipo })}>{o.nombre}</button>
+              <button type="button" key={o.id} className={`chip${f.objetivo === o.id ? ' chip-acento' : ''}`} onClick={() => { const nuevo = f.objetivo === o.id ? '' : o.id; const t = nuevo ? o.tipo : f.tipo; setF({ ...f, objetivo: nuevo, tipo: t }); if ((t || 'atraer') !== tipo) setCeldas(null); }}>{o.nombre}</button>
             ))}
           </div>
         </div>
         <div className="est-campo est-ancho">
           <span className="label">Estructura de contenido</span>
           <div className="est-chips">
-            {Object.values(data.estructuras).map((x) => <ChipTipo key={x.id} e={x} apagado={tipo !== x.id} onClick={() => setF({ ...f, tipo: x.id })} title={x.etiqueta} />)}
+            {Object.values(data.estructuras).map((x) => <ChipTipo key={x.id} e={x} apagado={tipo !== x.id} onClick={() => cambiarTipo(x.id)} title={x.etiqueta} />)}
           </div>
         </div>
         <label className="est-campo"><span className="label">Detalle del objetivo</span>
@@ -251,20 +267,11 @@ function Semana({ lunes, data, onClose, recargarAnio }) {
           <div className="ayuda">Posts: {e.posts} · Stories: {e.stories}</div>
         </div>
         <div className="est-semana-btns">
-          {celdas ? (
-            <>
-              <button type="button" className="link-btn" onClick={() => setCeldas(null)}>Cancelar</button>
-              <button type="button" className="btn btn-sec" onClick={() => guardar({ celdas, tipo })} disabled={Boolean(ocupado)}>Guardar los cambios de esta semana</button>
-            </>
-          ) : (
-            <>
-              {s.propia && <button type="button" className="link-btn" onClick={() => guardar({ celdas: null })}>Volver a la estructura</button>}
-              <button type="button" className="link-btn" onClick={() => setCeldas(filas)}><Icon name="pen" size={12} /> Cambiar solo esta semana</button>
-            </>
-          )}
+          <span className="ayuda">{guardadoDias === 'guardando' ? 'Guardando…' : guardadoDias === 'ok' ? '✓ Guardado solo para esta semana' : 'Pulsa + para añadir un botón, o uno para cambiarlo. Se guarda solo.'}</span>
+          {(celdas || (s.propia && tipo === s.tipo)) && <button type="button" className="link-btn" onClick={volverAEstructura}>Volver a la estructura</button>}
         </div>
       </div>
-      <Tabla filas={filas} nombresFilas={data.filas} dias={data.dias} editable={Boolean(celdas)} onCambio={setCeldas} fechas={fechas} piezas={piezas} color={e.color} categorias={data.categorias} />
+      <Tabla filas={filas} nombresFilas={data.filas} dias={data.dias} editable onCambio={cambiarDias} fechas={fechas} piezas={piezas} color={e.color} categorias={data.categorias} />
       {e.pasos?.length > 0 && <ol className="est-pasos">{e.pasos.map((p) => <li key={p}>{p}</li>)}</ol>}
 
       {r.planificando && <div className="aviso">JARVIS está planificando esta semana: las piezas irán apareciendo en Contenido, cada una en su día.</div>}
@@ -281,6 +288,70 @@ function Semana({ lunes, data, onClose, recargarAnio }) {
           {!s.porDefecto && <button type="button" className="link-btn" onClick={async () => { await api(`/api/estrategia/semana/${s.lunes}`, { method: 'DELETE' }); recargarAnio(); onClose(); }}>Vaciar la semana</button>}
           <button type="button" className="btn" onClick={() => guardar()} disabled={Boolean(ocupado)}>{ocupado === 'guardar' ? 'Guardando…' : 'Guardar'}</button>
         </div>
+      </div>
+    </Modal>
+  );
+}
+
+// Varias semanas a la vez (un mes, o 2-3 semanas): solo se cambia lo que se toca; los días, si se marca
+function SemanasJuntas({ lunes, data, onClose, onHecho }) {
+  const [f, setF] = useState({ objetivo: null, tipo: null, detalle: '', tactica: '', campana: '', notas: '' });
+  const [tocados, setTocados] = useState(new Set());
+  const [conDias, setConDias] = useState(false);
+  const [dias, setDias] = useState(null);
+  const [error, setError] = useState('');
+  const [guardando, setGuardando] = useState(false);
+  const tipo = f.tipo || data.objetivos.find((o) => o.id === f.objetivo)?.tipo || 'atraer';
+  const e = data.estructuras[tipo];
+  const poner = (k, v) => { setF((x) => ({ ...x, [k]: v })); setTocados((t) => new Set([...t, k])); };
+  const ordenadas = [...lunes].sort();
+  const guardar = async () => {
+    setGuardando(true); setError('');
+    const cambios = {};
+    for (const k of tocados) cambios[k] = f[k];
+    if ('objetivo' in cambios && !('tipo' in cambios) && f.objetivo) cambios.tipo = tipo;
+    if (conDias) { cambios.celdas = dias || e.filas; cambios.tipo = tipo; } else if ('tipo' in cambios) cambios.celdas = null;
+    if (!Object.keys(cambios).length) { setGuardando(false); return setError('No has cambiado nada.'); }
+    try {
+      await api('/api/estrategia/semanas', { method: 'PUT', body: { semanas: ordenadas.map((l) => ({ lunes: l, ...cambios })) } });
+      onHecho(`${ordenadas.length} ${ordenadas.length === 1 ? 'semana cambiada' : 'semanas cambiadas'}.`);
+    } catch (err) { setError(err.message); setGuardando(false); }
+  };
+  const campo = (k, ph, max = 120) => <input className="campo" value={f[k]} onChange={(ev) => poner(k, ev.target.value)} placeholder={tocados.has(k) ? '' : `Sin cambiar · p. ej. ${ph}`} maxLength={max} />;
+  return (
+    <Modal titulo={<><Icon name="calendar" size={15} />Cambiar {ordenadas.length} semanas a la vez · {corta(ordenadas[0])} – {corta(masDias(ordenadas.at(-1), 6))}</>} onClose={onClose} ancho={1180} cerrarFuera={false} clase="est-semana">
+      <p className="ayuda">Solo se cambia lo que toques; lo demás se queda como está en cada semana.</p>
+      <div className="est-semana-datos">
+        <div className="est-campo est-ancho">
+          <span className="label">Qué semana es</span>
+          <div className="est-chips">
+            {data.objetivos.map((o) => <button type="button" key={o.id} className={`chip${f.objetivo === o.id ? ' chip-acento' : ''}`} onClick={() => poner('objetivo', f.objetivo === o.id ? null : o.id)}>{o.nombre}</button>)}
+          </div>
+        </div>
+        <div className="est-campo est-ancho">
+          <span className="label">Estructura de contenido</span>
+          <div className="est-chips">
+            {Object.values(data.estructuras).map((x) => <ChipTipo key={x.id} e={x} apagado={!(tocados.has('tipo') || tocados.has('objetivo')) || tipo !== x.id} onClick={() => { poner('tipo', x.id); setDias(null); }} title={x.etiqueta} />)}
+          </div>
+        </div>
+        <label className="est-campo"><span className="label">Detalle del objetivo</span>{campo('detalle', 'Propósito de Año Nuevo')}</label>
+        <label className="est-campo"><span className="label">Táctica</span>
+          <input className="campo" list="est-tacticas-v" value={f.tactica} onChange={(ev) => poner('tactica', ev.target.value)} placeholder={tocados.has('tactica') ? '' : 'Sin cambiar'} maxLength={160} />
+          <datalist id="est-tacticas-v">{data.tacticas.map((t) => <option key={t} value={t} />)}</datalist>
+        </label>
+        <label className="est-campo"><span className="label">Campaña o game plan</span>{campo('campana', 'Estrategia de Año Nuevo')}</label>
+      </div>
+      <label className="est-check-dias"><input type="checkbox" checked={conDias} onChange={(ev) => setConDias(ev.target.checked)} /> Cambiar también los días (directo, post y stories) de todas estas semanas</label>
+      {conDias && (
+        <>
+          <div className="ayuda">Parte de «{e.nombre}». Pulsa + para añadir un botón, o uno para cambiarlo.</div>
+          <Tabla filas={dias || e.filas} nombresFilas={data.filas} dias={data.dias} editable onCambio={setDias} color={e.color} categorias={data.categorias} />
+        </>
+      )}
+      {error && <div className="aviso error">{error}</div>}
+      <div className="modal-pie">
+        <button type="button" className="link-btn" onClick={onClose}>Cancelar</button>
+        <button type="button" className="btn" onClick={guardar} disabled={guardando}>{guardando ? 'Guardando…' : `Guardar en las ${ordenadas.length} semanas`}</button>
       </div>
     </Modal>
   );
@@ -358,6 +429,32 @@ export default function Estrategia() {
   const [verEstructura, setVerEstructura] = useState('atraer');
   const [aviso, setAviso] = useState(null);
   const [pasando, setPasando] = useState(null);
+  const [sel, setSel] = useState([]); // semanas elegidas (lunes)
+  const [ultima, setUltima] = useState(null);
+  const [juntas, setJuntas] = useState(false);
+  // Elegir semanas: una a una, un tramo con Mayús, o el mes entero
+  const alternar = (lunes, tramo) => {
+    if (tramo && ultima && data) {
+      const todas = data.semanas.map((x) => x.lunes);
+      const [a, b] = [todas.indexOf(ultima), todas.indexOf(lunes)].sort((x, y) => x - y);
+      setSel((sl) => [...new Set([...sl, ...todas.slice(a, b + 1)])]);
+    } else setSel((sl) => (sl.includes(lunes) ? sl.filter((x) => x !== lunes) : [...sl, lunes]));
+    setUltima(lunes);
+  };
+  const enLote = async (que) => {
+    if (que === 'vaciar' && !window.confirm(`¿Vaciar ${sel.length} semanas? Vuelven a ser «semana tipo» (lo que ya pasaste al calendario se queda).`)) return;
+    setPasando('lote'); setAviso(null);
+    try {
+      if (que === 'pasar') {
+        const r = await api('/api/estrategia/semanas/piezas', { method: 'POST', body: { lunes: sel } });
+        setAviso({ tipo: 'ok', texto: r.creadas ? `${r.creadas} ${r.creadas === 1 ? 'hueco pasado' : 'huecos pasados'} al calendario de Contenido.` : 'Ya estaba todo en el calendario (los días que ya han pasado no se pasan).' });
+      } else {
+        await api('/api/estrategia/semanas/vaciar', { method: 'POST', body: { lunes: sel } });
+        setSel([]); recargar();
+      }
+    } catch (e) { setAviso({ tipo: 'error', texto: e.message }); }
+    setPasando(null);
+  };
   // «Pasar al calendario» todo un mes: cada botón de cada día pasa a Contenido como un hueco
   const pasarMes = async (m) => {
     if (!window.confirm(`¿Pasar ${MESES[m].toLowerCase()} al calendario de Contenido? Cada botón de cada día (desde hoy) será un hueco en su día para ir metiendo el contenido. Lo que ya esté pasado no se repite.`)) return;
@@ -409,6 +506,7 @@ export default function Estrategia() {
             <h2>Calendario de marketing {anio}</h2>
             <button type="button" className="icon-btn" onClick={() => setAnio((a) => a + 1)} aria-label="Año siguiente">›</button>
           </div>
+          <div className="ayuda est-ayuda-sel">Marca las casillas para cambiar varias semanas a la vez (Mayús para un tramo).</div>
           <div className="est-leyenda">{Object.values(est).map((e) => <span key={e.id}><i style={{ background: e.color }} />{e.nombre}</span>)}</div>
         </div>
         {aviso && <div className={`aviso ${aviso.tipo}`} style={{ marginBottom: 10 }}>{aviso.texto}<button className="link-btn" onClick={() => setAviso(null)}>Cerrar</button></div>}
@@ -417,19 +515,31 @@ export default function Estrategia() {
             <div key={MESES[m]} className="est-mes">
               <div className="est-mes-nombre">
                 <span>{MESES[m]}</span>
-                {semanas.length > 0 && <button type="button" className="link-btn" onClick={() => pasarMes(m)} disabled={pasando != null}><Icon name="calendar" size={11} /> {pasando === m ? 'Pasando…' : 'Pasar al calendario'}</button>}
+                {semanas.length > 0 && (
+                  <span className="est-mes-acciones">
+                    <button type="button" className="link-btn" onClick={() => { const ls = semanas.map((x) => x.lunes); const todas = ls.every((l) => sel.includes(l)); setSel((sl) => (todas ? sl.filter((l) => !ls.includes(l)) : [...new Set([...sl, ...ls])])); }}>
+                      {semanas.every((x) => sel.includes(x.lunes)) ? 'Quitar el mes' : 'Elegir el mes'}
+                    </button>
+                    <button type="button" className="link-btn" onClick={() => pasarMes(m)} disabled={pasando != null}><Icon name="calendar" size={11} /> {pasando === m ? 'Pasando…' : 'Pasar al calendario'}</button>
+                  </span>
+                )}
               </div>
               {semanas.map((s, i) => {
                 const e = est[s.tipo];
                 return (
-                  <button type="button" key={s.lunes} className={`est-fila${s.porDefecto ? ' por-defecto' : ''}${s.lunes === data.estaSemana ? ' hoy' : ''}`} style={{ '--c': e.color }} onClick={() => setAbierta(s.lunes)}>
+                  <div key={s.lunes} className={`est-fila-caja${sel.includes(s.lunes) ? ' elegida' : ''}`}>
+                  <label className="est-check" title="Elegir para cambiar varias semanas a la vez (Mayús: un tramo)" onClick={(ev) => { ev.preventDefault(); alternar(s.lunes, ev.shiftKey); }}>
+                    <input type="checkbox" checked={sel.includes(s.lunes)} readOnly tabIndex={-1} />
+                  </label>
+                  <button type="button" className={`est-fila${s.porDefecto ? ' por-defecto' : ''}${s.lunes === data.estaSemana ? ' hoy' : ''}`} style={{ '--c': e.color }} onClick={() => setAbierta(s.lunes)}>
                     <span className="est-fila-s">S{i + 1}</span>
                     <span className="est-fila-fechas">{corta(s.lunes)} – {corta(s.domingo)}</span>
                     <span className="est-fila-tipo"><i />{e.nombre}</span>
-                    <span className="est-fila-obj">{objetivo(s) || (s.porDefecto ? <span className="t-dim">Sin marcar (semana tipo)</span> : '')}{s.detalle ? ` · ${s.detalle}` : ''}</span>
+                    <span className="est-fila-obj">{objetivo(s) || (s.porDefecto ? <span className="t-dim" title="Sin marcar: es la semana tipo (atraer audiencia)">Sin marcar</span> : '')}{s.detalle ? ` · ${s.detalle}` : ''}</span>
                     <span className="est-fila-tac">{s.tactica || ''}</span>
                     <span className="est-fila-camp">{s.campana || ''}{s.propia ? ' ✎' : ''}</span>
                   </button>
+                  </div>
                 );
               })}
             </div>
@@ -449,6 +559,16 @@ export default function Estrategia() {
         <Estructura key={verEstructura + (est[verEstructura].cambiada ? '-c' : '')} e={est[verEstructura]} data={data} recargar={recargar} />
       </section>
 
+      {sel.length > 0 && (
+        <div className="est-lote">
+          <b>{sel.length} {sel.length === 1 ? 'semana elegida' : 'semanas elegidas'}</b>
+          <button type="button" className="btn" onClick={() => setJuntas(true)}><Icon name="pen" size={14} />Cambiarlas juntas</button>
+          <button type="button" className="btn btn-sec" onClick={() => enLote('pasar')} disabled={pasando != null}><Icon name="calendar" size={14} />{pasando === 'lote' ? 'Pasando…' : 'Pasar al calendario'}</button>
+          <button type="button" className="link-btn" onClick={() => enLote('vaciar')} disabled={pasando != null}>Vaciar</button>
+          <button type="button" className="link-btn" onClick={() => setSel([])}>Quitar la selección</button>
+        </div>
+      )}
+      {juntas && <SemanasJuntas lunes={sel} data={data} onClose={() => setJuntas(false)} onHecho={(t) => { setJuntas(false); setSel([]); setAviso({ tipo: 'ok', texto: t }); recargar(); }} />}
       {abierta && <Semana key={abierta} lunes={abierta} data={data} onClose={() => setAbierta(null)} recargarAnio={recargar} />}
     </div>
   );

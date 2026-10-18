@@ -610,6 +610,8 @@ export function createApp({ jarvis, archivos, miniaturas = null, estrategia = nu
     app.delete('/api/estrategia/estructuras/:tipo', h((req) => estrategia.restaurarEstructura(req.params.tipo), true));
     app.post('/api/estrategia/semana/:lunes/piezas', h((req) => estrategia.crearPiezas(req.params.lunes, req.body?.huecos || null), true));
     app.post('/api/estrategia/mes', h((req) => estrategia.pasarMes(req.body?.anio, req.body?.mes), true));
+    app.post('/api/estrategia/semanas/piezas', h((req) => estrategia.pasarSemanas(req.body?.lunes), true));
+    app.post('/api/estrategia/semanas/vaciar', h((req) => estrategia.vaciarSemanas(req.body?.lunes), true));
     app.get('/api/estrategia/categorias', h(() => estrategia.categorias()));
     app.put('/api/estrategia/categorias', h((req) => estrategia.guardarCategorias(req.body || {}), true));
     app.post('/api/estrategia/semana/:lunes/jarvis', h((req) => {
