@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useRef, useState } from 'react';
-import { normaliza } from '../../lib/api.js';
+import { normaliza, useRecurso } from '../../lib/api.js';
 import { num } from '../../lib/formato.js';
 import Icon from '../../components/Icon.jsx';
 import { celdasMes, diaCorto, diaLargo, hoyIso, mesDe, nombreMes, sumarMeses } from '../../lib/fechas.js';
@@ -150,6 +150,11 @@ export function Calendario({ piezas, versiones = [], carpetas = [], dia, setDia,
   }, [piezas, versiones]);
   const redesTxt = (p) => (conPieza.get(p.id) || []).map((v) => `${redDe(v.red).corto}${v.estado === 'publicado' ? ' ✓' : ''}`).join(', ');
   const delDia = porDia.get(dia) || [];
+  // La estrategia: de qué tipo es cada semana y qué toca cada día (Estrategia)
+  const celdas = celdasMes(mes);
+  const [plan] = useRecurso(`/api/estrategia/plan?desde=${celdas[0]}&dias=${celdas.length}`, null);
+  const planDe = useMemo(() => new Map((Array.isArray(plan) ? plan : []).map((d) => [d.fecha, d])), [plan]);
+  const toca = planDe.get(dia);
 
   const soltar = (f) => (e) => {
     e.preventDefault();
@@ -171,12 +176,14 @@ export function Calendario({ piezas, versiones = [], carpetas = [], dia, setDia,
         </div>
         <div className="cal-grid">
           {DIAS.map((d) => <div key={d} className="cal-dia-nombre">{d}</div>)}
-          {celdasMes(mes).map((f) => {
+          {celdas.map((f) => {
             const lista = porDia.get(f) || [];
-            const clase = ['cal-celda', mesDe(f) !== mes && 'fuera', f === dia && 'sel', sobre === f && 'sobre'].filter(Boolean).join(' ');
+            const pl = planDe.get(f);
+            const clase = ['cal-celda', mesDe(f) !== mes && 'fuera', f === dia && 'sel', sobre === f && 'sobre', pl && !pl.porDefecto && 'con-sem'].filter(Boolean).join(' ');
             return (
               <div
-                key={f} className={clase} tabIndex={0}
+                key={f} className={clase} tabIndex={0} style={pl ? { '--sem': pl.color } : undefined}
+                title={pl ? `${pl.semana}${pl.post ? ` · Post: ${pl.post}` : ''}${pl.stories ? ` · Stories: ${pl.stories}` : ''}${pl.directo ? ` · Directo: ${pl.directo}` : ''}` : undefined}
                 onClick={(e) => abrirMenu(f, e.currentTarget)}
                 onDoubleClick={() => { setMenu(null); onNuevo(f); }}
                 onKeyDown={(e) => e.key === 'Enter' && abrirMenu(f, e.currentTarget)}
@@ -231,6 +238,12 @@ export function Calendario({ piezas, versiones = [], carpetas = [], dia, setDia,
             <button className="chip" onClick={() => onNuevo(dia)}><Icon name="plus" />Nuevo</button>
           </div>
         </div>
+        {toca && (toca.post || toca.stories || toca.directo) && (
+          <a className="cal-toca" href="#estrategia" style={{ '--sem': toca.color }} title="Según tu estrategia (pestaña Estrategia)">
+            <b>Toca · {toca.semana}{toca.objetivo ? ` (${toca.objetivo}${toca.detalle ? `: ${toca.detalle}` : ''})` : ''}</b>
+            <span>{[toca.directo && `Directo: ${toca.directo}`, toca.post && `Post: ${toca.post}`, toca.stories && `Stories: ${toca.stories}`].filter(Boolean).join(' · ')}</span>
+          </a>
+        )}
         {!delDia.length && !(aparte.get(dia) || []).length && <div className="vacio">Nada planificado este día.</div>}
         {delDia.map((p) => <FilaDia key={p.id} p={p} redes={redesTxt(p)} onAbrir={onAbrir} />)}
         {(aparte.get(dia) || []).map((v) => (

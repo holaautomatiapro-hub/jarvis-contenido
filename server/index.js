@@ -34,6 +34,7 @@ import { createRecordatorios } from './recordatorios.js';
 import { promptAdaptarAnuncio, promptReplicarCompetencia, promptReplicarPropia, promptGuionPieza, normalizarFormatos, seDisena } from './replicar.js';
 import { createReferencias } from './referencias.js';
 import { createMiniaturas } from './miniaturas.js';
+import { createEstrategia, DIAS, FILAS, OBJETIVOS_SEMANA, PRINCIPIOS, TACTICAS, lunesDe } from './estrategia.js';
 import { createLaboratorio, carpetaPorDefecto } from './laboratorio.js';
 import { promptCaption, limpiarCaption, createContextoCaption } from './caption.js';
 import { createRecortador } from './recortar.js';
@@ -50,7 +51,7 @@ const DIST = path.join(ROOT, 'web', 'dist');
 // Replicar con diseño de carruseles o stories: lo hace Opus, como en Diseño
 const modeloReplicar = (formatos, disenar) => { try { return seDisena(normalizarFormatos(formatos), disenar) ? 'opus' : undefined; } catch { return undefined; } };
 
-export function createApp({ jarvis, archivos, miniaturas = null, publicadorIg, asistente, instagram, competencia, ads, publicar, hermes, jobs, kit, disenos, recordatorios, laboratorio, resultados, adjuntos, preferencias, actualizar, conversiones, port, onChange = () => {}, status, tts = sintetizar }) {
+export function createApp({ jarvis, archivos, miniaturas = null, estrategia = null, publicadorIg, asistente, instagram, competencia, ads, publicar, hermes, jobs, kit, disenos, recordatorios, laboratorio, resultados, adjuntos, preferencias, actualizar, conversiones, port, onChange = () => {}, status, tts = sintetizar }) {
   const estadoSistema = status || (() => systemStatus({ vaultPath: jarvis.vault.base, instagram: Boolean(instagram?.estado().conectado), ads: Boolean(ads?.estado().conectado && ads?.estado().cuenta), hermes: Boolean(hermes?.estado().gateway.online) }));
   const app = express();
 
@@ -583,6 +584,40 @@ export function createApp({ jarvis, archivos, miniaturas = null, publicadorIg, a
   app.delete('/api/notas', h((req) => jarvis.borrarNota(String(req.query.ruta || '')), true));
   app.post('/api/notas/restaurar', h((req) => jarvis.restaurarNota(req.body?.papelera, req.body?.ruta), true));
   app.post('/api/ideas', h((req) => jarvis.capturarIdea(req.body || {}), true));
+  // Estrategia: qué toca cada día según la semana sea para atraer, educar o vender
+  if (estrategia) {
+    let semanaEnMarcha = null; // la que JARVIS está planificando
+    const planificando = () => (asistente && semanaEnMarcha && asistente.estado({ conversacion: 'guiones' }).ocupadoAqui ? semanaEnMarcha : null);
+    const piezasDeSemana = (lunes) => {
+      const fin = new Date(`${lunes}T12:00:00`); fin.setDate(fin.getDate() + 6);
+      const hasta = fin.toLocaleDateString('sv-SE');
+      return jarvis.listarPiezas().filter((p) => p.fecha && p.fecha >= lunes && p.fecha <= hasta)
+        .map((p) => ({ id: p.id, titulo: p.titulo, fecha: p.fecha, estado: p.estado, formato: p.formato, origen_ref: p.origen_ref }));
+    };
+    app.get('/api/estrategia', h((req) => ({
+      estructuras: estrategia.estructuras(), semanas: estrategia.anio(req.query.anio), objetivos: OBJETIVOS_SEMANA, tacticas: TACTICAS, principios: PRINCIPIOS,
+      dias: DIAS, filas: FILAS, estaSemana: lunesDe(new Date().toLocaleDateString('sv-SE')), planificando: planificando(),
+    })));
+    app.get('/api/estrategia/plan', h((req) => estrategia.plan({ desde: req.query.desde || undefined, dias: req.query.dias })));
+    app.get('/api/estrategia/semana/:lunes', h((req) => {
+      const s = estrategia.semana(req.params.lunes);
+      return { semana: s, piezas: piezasDeSemana(s.lunes), planificando: planificando() === s.lunes };
+    }));
+    app.put('/api/estrategia/semana/:lunes', h((req) => estrategia.guardarSemana(req.params.lunes, req.body || {}), true));
+    app.delete('/api/estrategia/semana/:lunes', h((req) => estrategia.borrarSemana(req.params.lunes), true));
+    app.put('/api/estrategia/semanas', h((req) => estrategia.guardarSemanas(req.body?.semanas), true));
+    app.put('/api/estrategia/estructuras/:tipo', h((req) => estrategia.guardarEstructura(req.params.tipo, req.body || {}), true));
+    app.delete('/api/estrategia/estructuras/:tipo', h((req) => estrategia.restaurarEstructura(req.params.tipo), true));
+    app.post('/api/estrategia/semana/:lunes/piezas', h((req) => estrategia.crearPiezas(req.params.lunes, req.body?.huecos), true));
+    app.post('/api/estrategia/semana/:lunes/jarvis', h((req) => {
+      if (!asistente) throw Object.assign(new Error('JARVIS (Claude Code) no está disponible'), { publico: true });
+      if (asistente.estado({ conversacion: 'guiones' }).ocupado) throw new OcupadoError('JARVIS está terminando otra petición. Espera un momento.');
+      const s = estrategia.semana(req.params.lunes);
+      const r = asistente.preguntar({ conversacion: 'guiones', texto: estrategia.promptSemana(s.lunes, { indicaciones: String(req.body?.indicaciones || '').trim() }) });
+      semanaEnMarcha = s.lunes;
+      return { ok: true, peticion: r.id };
+    }, true));
+  }
   // «Guardar como idea» una publicación o un anuncio de la competencia (con su transcripción si se pide)
   const referencias = createReferencias({ jarvis, competencia, ads, adjuntos, asistente, kit, vaultPath: jarvis.vault.base });
   // La ficha de una idea guardada de la competencia (la publicación, su caption y su transcripción) y «Replicar» en ella
@@ -811,7 +846,8 @@ function main() {
       miniaturas.preparar(rels).catch(() => {});
     }, 60_000).unref();
   }
-  const server = createServer(createApp({ jarvis, archivos, miniaturas, publicadorIg, asistente, instagram, competencia, ads, publicar, hermes, jobs, kit, disenos, recordatorios, laboratorio, resultados, adjuntos, preferencias, actualizar, conversiones, port: cfg.port, onChange }));
+  const estrategia = createEstrategia({ db, jarvis });
+  const server = createServer(createApp({ jarvis, archivos, miniaturas, estrategia, publicadorIg, asistente, instagram, competencia, ads, publicar, hermes, jobs, kit, disenos, recordatorios, laboratorio, resultados, adjuntos, preferencias, actualizar, conversiones, port: cfg.port, onChange }));
   // Solo el propio dashboard puede escuchar los eventos (otra web abierta en el navegador, no)
   const local = hostsPermitidos(cfg.port);
   wss = new WebSocketServer({ server, path: '/ws', verifyClient: ({ origin, req }) => local.has(req.headers.host) && (!origin || local.has(origin.replace(/^https?:\/\//, ''))) });

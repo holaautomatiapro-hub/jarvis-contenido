@@ -37,6 +37,7 @@ Reglas que no se rompen:
 1. Lee _voz.md y escribe con esa voz (si está vacío, tono cercano y directo, y avísalo en una línea).
 2. Busca con buscar_notas en 03-Transcripciones y 01-Ideas historias, frases e ideas relacionadas con el tema y úsalas como materia prima. No escribas desde cero si hay material propio; di de qué nota sale cada idea reutilizada.
 3. Si hay una skill adecuada en .claude/skills (guion-reel-30s, guion-reel-60s, ganchos-reel, carrusel-educativo…), síguela.
+4. Si el contenido es para un día concreto o para planificar varios días, mira con ver_estrategia qué toca ese día (semana para atraer, educativa o de venta) y haz que cumpla con eso.
 Cuando la persona dé el guion por bueno o pida guardarlo, guárdalo con crear_nota en 02-Guiones y crea o mueve la pieza del pipeline al estado "guion".`,
   },
   replicar: {

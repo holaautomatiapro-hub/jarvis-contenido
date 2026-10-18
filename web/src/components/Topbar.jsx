@@ -7,6 +7,7 @@ export const TABS = [
   { id: 'inicio', label: 'Inicio', icon: 'home' },
   { id: 'tareas', label: 'Tareas', icon: 'tasks' },
   { id: 'contenido', label: 'Contenido', icon: 'layers' },
+  { id: 'estrategia', label: 'Estrategia', icon: 'target' },
   { id: 'laboratorio', label: 'Laboratorio', icon: 'flask' },
   { id: 'notas', label: 'Notas', icon: 'notes' },
   { id: 'chat', label: 'Chat', icon: 'voice' },
