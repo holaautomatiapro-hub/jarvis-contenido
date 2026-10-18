@@ -1038,6 +1038,7 @@ input.filtro-select { padding-right: 10px; }
 .modo:disabled { opacity: .4; cursor: not-allowed; }
 
 /* Editor y Programar */
+.editor-grid.solo-story { grid-template-columns: minmax(0, 1fr); }
 .editor-grid { display: grid; grid-template-columns: minmax(0, 1fr) 320px; gap: 20px; max-height: 72vh; overflow-y: auto; padding-right: 4px; }
 .editor-datos .campo-et:first-child { margin-top: 0; }
 .pildoras { display: flex; flex-wrap: wrap; gap: 6px; }
