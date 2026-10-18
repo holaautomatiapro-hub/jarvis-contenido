@@ -29,16 +29,23 @@ function conectar() {
   } catch { /* sin WebSocket: queda el refresco periódico */ }
 }
 
+// Los avisos de cambio llegan a ráfagas (p. ej. mientras se exporta un diseño): se juntan en uno cada medio segundo
+// para no pedir lo mismo diez veces seguidas. Con la pestaña en segundo plano no se pide nada: al volver, se pone al día.
 export function useCambios(fn) {
   const ref = useRef(fn);
   ref.current = fn;
   useEffect(() => {
     conectar();
-    const f = () => ref.current();
+    let reloj = null;
+    let pendiente = false;
+    const ya = () => { reloj = null; if (document.hidden) { pendiente = true; return; } ref.current(); };
+    const f = () => { if (!reloj) reloj = setTimeout(ya, 500); };
+    const alVolver = () => { if (!document.hidden && pendiente) { pendiente = false; f(); } };
     oyentes.add(f);
     window.addEventListener('focus', f);
+    document.addEventListener('visibilitychange', alVolver);
     const id = setInterval(f, 30000);
-    return () => { oyentes.delete(f); window.removeEventListener('focus', f); clearInterval(id); };
+    return () => { oyentes.delete(f); window.removeEventListener('focus', f); document.removeEventListener('visibilitychange', alVolver); clearInterval(id); clearTimeout(reloj); };
   }, []);
 }
 
@@ -55,17 +62,39 @@ export function useMensajes(type, fn) {
   }, [type]);
 }
 
-// Carga un recurso y lo recarga solo cuando hay cambios
+// Carga un recurso y lo recarga solo cuando hay cambios. Si lo que llega es igual que lo que había, no se toca (así no se vuelve a pintar toda la página) y si ya hay
+// una petición en marcha no se lanza otra igual.
 export function useRecurso(path, inicial) {
   const [data, setData] = useState(inicial);
   const [error, setError] = useState(null);
+  const ultimo = useRef(null);
+  const enMarcha = useRef(null);
+  const otraVez = useRef(false);
   const cargar = useCallback(() => {
     if (!path) return;
-    api(path).then((d) => { setData(d); setError(null); }).catch((e) => setError(e.message));
+    // Ya se está pidiendo: al terminar se pide otra vez (lo que ha cambiado entretanto no se pierde)
+    if (enMarcha.current === path) { otraVez.current = true; return; }
+    enMarcha.current = path;
+    fetch(path).then(async (r) => {
+      const texto = await r.text();
+      let d = {};
+      try { d = texto ? JSON.parse(texto) : {}; } catch { /* sin JSON */ }
+      if (!r.ok) throw new Error(d.error || `Error ${r.status}`);
+      setError(null);
+      if (texto === ultimo.current) return;
+      ultimo.current = texto;
+      setData(d);
+    }).catch((e) => setError(e.message)).finally(() => {
+      if (enMarcha.current !== path) return;
+      enMarcha.current = null;
+      if (otraVez.current) { otraVez.current = false; cargar(); }
+    });
   }, [path]);
-  useEffect(cargar, [cargar]);
+  useEffect(() => { ultimo.current = null; cargar(); }, [cargar]);
   useCambios(cargar);
-  return [data, cargar, error, setData];
+  // setData a mano (p. ej. un cambio optimista): lo siguiente que llegue del servidor se pinta aunque sea igual
+  const poner = useCallback((v) => { ultimo.current = null; setData(v); }, []);
+  return [data, cargar, error, poner];
 }
 
 export const obsidianUrl = (vault, ruta) =>

@@ -4,7 +4,7 @@ import ChatJarvis from '../../components/ChatJarvis.jsx';
 import { api, useRecurso } from '../../lib/api.js';
 import { fechaCorta } from '../../lib/formato.js';
 import { BotonCopiar } from '../contenido/comun.jsx';
-import { Grupo, subirLab, urlArchivo, esVideoRuta } from './comun.jsx';
+import { Grupo, MiniLab, subirLab } from './comun.jsx';
 
 // Imágenes con Higgsfield, en simple: qué quieres (y, si quieres, la foto a editar), formato y cuántas, y
 // referencias. JARVIS decide si es imagen o vídeo, usa tu cara si sales tú y mira el coste antes de gastar.
@@ -12,7 +12,7 @@ const VACIO = { descripcion: '', editar: null, formato: '9:16', cantidad: 1, ref
 const resumenPregunta = (t) => (/^(Genera con Higgsfield|Quiero entrenar en Higgsfield|Quiero usar en JARVIS lo que YA tengo)/.test(t) ? t.split('\n').slice(0, 2).join('\n') : t);
 
 // Miniatura de un archivo subido (imagen o vídeo)
-const Miniatura = ({ ruta }) => (esVideoRuta(ruta) ? <video src={`${urlArchivo(ruta)}#t=0.3`} muted preload="metadata" /> : <img src={urlArchivo(ruta)} alt="" loading="lazy" />);
+const Miniatura = ({ ruta }) => <MiniLab ruta={ruta} />;
 
 // Sube a imagenes/_referencias (las fotos a editar y las referencias van ahí)
 async function subirReferencias(lista, setEstado) {

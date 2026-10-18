@@ -1,4 +1,5 @@
 import path from 'node:path';
+import { gzipSync } from 'node:zlib';
 import dotenv from 'dotenv';
 import express from 'express';
 import { createServer } from 'node:http';
@@ -32,6 +33,7 @@ import { createDisenos } from './diseno/disenos.js';
 import { createRecordatorios } from './recordatorios.js';
 import { promptAdaptarAnuncio, promptReplicarCompetencia, promptReplicarPropia, promptGuionPieza, normalizarFormatos, seDisena } from './replicar.js';
 import { createReferencias } from './referencias.js';
+import { createMiniaturas } from './miniaturas.js';
 import { createLaboratorio, carpetaPorDefecto } from './laboratorio.js';
 import { promptCaption, limpiarCaption, createContextoCaption } from './caption.js';
 import { createRecortador } from './recortar.js';
@@ -48,7 +50,7 @@ const DIST = path.join(ROOT, 'web', 'dist');
 // Replicar con diseño de carruseles o stories: lo hace Opus, como en Diseño
 const modeloReplicar = (formatos, disenar) => { try { return seDisena(normalizarFormatos(formatos), disenar) ? 'opus' : undefined; } catch { return undefined; } };
 
-export function createApp({ jarvis, archivos, publicadorIg, asistente, instagram, competencia, ads, publicar, hermes, jobs, kit, disenos, recordatorios, laboratorio, resultados, adjuntos, preferencias, actualizar, conversiones, port, onChange = () => {}, status, tts = sintetizar }) {
+export function createApp({ jarvis, archivos, miniaturas = null, publicadorIg, asistente, instagram, competencia, ads, publicar, hermes, jobs, kit, disenos, recordatorios, laboratorio, resultados, adjuntos, preferencias, actualizar, conversiones, port, onChange = () => {}, status, tts = sintetizar }) {
   const estadoSistema = status || (() => systemStatus({ vaultPath: jarvis.vault.base, instagram: Boolean(instagram?.estado().conectado), ads: Boolean(ads?.estado().conectado && ads?.estado().cuenta), hermes: Boolean(hermes?.estado().gateway.online) }));
   const app = express();
 
@@ -65,6 +67,17 @@ export function createApp({ jarvis, archivos, publicadorIg, asistente, instagram
     next();
   });
   app.use(express.json({ limit: '2mb' }));
+  // Las respuestas grandes de la API van comprimidas (por Tailscale o el móvil se nota: Contenido pasa de 60 KB a 10)
+  app.use('/api', (req, res, next) => {
+    const json = res.json.bind(res);
+    res.json = (obj) => {
+      const texto = JSON.stringify(obj);
+      if (texto === undefined || texto.length < 8192 || !/\bgzip\b/.test(req.headers['accept-encoding'] || '') || res.headersSent) return json(obj);
+      res.set({ 'Content-Type': 'application/json; charset=utf-8', 'Content-Encoding': 'gzip', Vary: 'Accept-Encoding' });
+      return res.send(gzipSync(texto, { level: 5 }));
+    };
+    next();
+  });
 
   // Envuelve cada endpoint: errores de validación → 400 con mensaje claro
   const h = (fn, cambia = false) => async (req, res) => {
@@ -318,6 +331,13 @@ export function createApp({ jarvis, archivos, publicadorIg, asistente, instagram
       const aislada = /^text\/html/.test(a.mime) ? { 'Content-Security-Policy': 'sandbox allow-scripts allow-forms allow-popups allow-popups-to-escape-sandbox allow-modals' } : {};
       res.type(a.mime).sendFile(a.abs, { dotfiles: 'allow', headers: { 'Cache-Control': 'private, no-cache', ...aislada } });
     });
+    // La miniatura de un clip, un testimonio o una foto del Laboratorio (para las listas)
+    const minisLab = createMiniaturas({ dir: path.join(laboratorio.dir, '.miniaturas'), resolver: (r) => laboratorio.archivo(r).abs });
+    app.get('/api/laboratorio/miniatura', async (req, res) => {
+      const f = await minisLab.ruta(String(req.query.ruta || '')).catch(() => null);
+      if (!f) return res.status(404).end();
+      res.sendFile(f, { dotfiles: 'allow', headers: { 'Cache-Control': 'private, max-age=31536000, immutable' } }, (e) => { if (e && !res.headersSent) res.status(404).end(); });
+    });
     app.get('/api/laboratorio/texto', h((req) => laboratorio.texto(String(req.query.ruta || ''))));
     app.delete('/api/laboratorio/archivo', h((req) => laboratorio.borrar(String(req.query.ruta || '')), true));
     app.post('/api/laboratorio/biblioteca', h((req) => laboratorio.aBiblioteca(req.body || {}), true));
@@ -463,6 +483,13 @@ export function createApp({ jarvis, archivos, publicadorIg, asistente, instagram
   if (archivos) {
     // El navegador manda el archivo tal cual (sin JSON ni formularios) y se escribe al disco por trozos
     app.post('/api/contenido/archivos', h((req) => archivos.guardar(req, { nombre: String(req.query.nombre || ''), mime: String(req.query.mime || '') })));
+    // La miniatura (JPG pequeño) de una foto o un vídeo, para las tarjetas
+    const minis = miniaturas || createMiniaturas({ dir: path.join(archivos.dir, '.miniaturas'), resolver: archivos.ruta });
+    app.get('/api/contenido/miniatura/:mes/:fichero', async (req, res) => {
+      const f = await minis.ruta(`${req.params.mes}/${req.params.fichero}`).catch(() => null);
+      if (!f) return res.status(404).end();
+      res.sendFile(f, { dotfiles: 'allow', headers: { 'Cache-Control': 'private, max-age=31536000, immutable' } }, (e) => { if (e && !res.headersSent) res.status(404).end(); });
+    });
     app.get('/api/contenido/archivos/:mes/:fichero', (req, res) => {
       let ruta;
       try { ruta = archivos.ruta(`${req.params.mes}/${req.params.fichero}`); } catch { return res.status(404).json({ error: 'No existe' }); }
@@ -706,7 +733,20 @@ export function createApp({ jarvis, archivos, publicadorIg, asistente, instagram
   app.use('/api', (_req, res) => res.status(404).json({ error: 'No existe' }));
 
   if (existsSync(DIST)) {
-    app.use(express.static(DIST));
+    // El código de la interfaz (assets/, con su huella en el nombre) se guarda en el navegador para siempre y va
+    // comprimido; index.html se comprueba cada vez para ver las actualizaciones al momento.
+    const comprimidos = new Map();
+    app.get(/^\/assets\/[\w.-]+\.(js|css|svg)$/, (req, res, next) => {
+      if (!/\bgzip\b/.test(req.headers['accept-encoding'] || '')) return next();
+      const f = path.join(DIST, req.path);
+      if (!f.startsWith(path.join(DIST, 'assets')) || !existsSync(f)) return next();
+      if (!comprimidos.has(f)) comprimidos.set(f, gzipSync(readFileSync(f), { level: 9 }));
+      res.set({ 'Content-Encoding': 'gzip', Vary: 'Accept-Encoding', 'Cache-Control': 'public, max-age=31536000, immutable' });
+      res.type(path.extname(f)).send(comprimidos.get(f));
+    });
+    app.use(express.static(DIST, {
+      setHeaders: (res, f) => res.setHeader('Cache-Control', /[\\/]assets[\\/]/.test(f) ? 'public, max-age=31536000, immutable' : 'no-cache'),
+    }));
     app.get(/^\/(?!api|ws).*/, (_req, res) => res.sendFile(path.join(DIST, 'index.html')));
   } else {
     app.get('/', (_req, res) => res.type('text').send('Falta compilar la interfaz: ejecuta "npm run build".'));
@@ -762,7 +802,16 @@ function main() {
   const conversiones = createConversiones({ jarvis, archivos, disenos, emitir, alCambiar: onChange });
   const actualizar = createActualizar({ dir: ROOT, dataDir: path.dirname(cfg.dbPath),
     ocupado: () => asistente.estado().ocupado || asistente.estado({ conversacion: 'laboratorio' }).ocupado || disenos?.listar().some((d) => d.estado === 'exportando') });
-  const server = createServer(createApp({ jarvis, archivos, publicadorIg, asistente, instagram, competencia, ads, publicar, hermes, jobs, kit, disenos, recordatorios, laboratorio, resultados, adjuntos, preferencias, actualizar, conversiones, port: cfg.port, onChange }));
+  // Miniaturas de la biblioteca: las que falten se hacen al rato de arrancar, sin prisa
+  const miniaturas = archivos ? createMiniaturas({ dir: path.join(archivos.dir, '.miniaturas'), resolver: archivos.ruta, log: (m) => console.log(`  [Miniaturas] ${m}`) }) : null;
+  if (miniaturas) {
+    setTimeout(() => {
+      const rels = [];
+      for (const p of jarvis.listarPiezas()) for (const a of [p.portada, ...(p.archivos || []).slice(0, 1)]) if (a?.path && !rels.includes(a.path)) rels.push(a.path);
+      miniaturas.preparar(rels).catch(() => {});
+    }, 60_000).unref();
+  }
+  const server = createServer(createApp({ jarvis, archivos, miniaturas, publicadorIg, asistente, instagram, competencia, ads, publicar, hermes, jobs, kit, disenos, recordatorios, laboratorio, resultados, adjuntos, preferencias, actualizar, conversiones, port: cfg.port, onChange }));
   // Solo el propio dashboard puede escuchar los eventos (otra web abierta en el navegador, no)
   const local = hostsPermitidos(cfg.port);
   wss = new WebSocketServer({ server, path: '/ws', verifyClient: ({ origin, req }) => local.has(req.headers.host) && (!origin || local.has(origin.replace(/^https?:\/\//, ''))) });
