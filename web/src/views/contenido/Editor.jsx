@@ -152,6 +152,7 @@ export function EditorContenido({ pieza, carpetas, ig, onClose, onGuardado, onVi
   const [guardando, setGuardando] = useState(false);
   const [error, setError] = useState('');
   const [sobre, setSobre] = useState(false);
+  const [fichaCompleta, setFichaCompleta] = useState(false);
   const input = useRef(null);
   const titulo = useRef(null);
   const guion = useRef(null);
@@ -251,13 +252,16 @@ export function EditorContenido({ pieza, carpetas, ig, onClose, onGuardado, onVi
   };
 
   const largo = d.caption.length > MAX_CAPTION;
+  // Una story solo lleva título, fecha, tipo de contenido y guion (el resto, con «Ver todos los campos»)
+  const soloStory = d.formato === 'Story' && !fichaCompleta;
   return (
-    <Modal titulo={nueva ? 'Nuevo contenido' : 'Editar contenido'} onClose={cerrar} ancho={960} cerrarFuera={false} clase="editor-c">
-      <form className="editor-grid" onSubmit={guardar}>
+    <Modal titulo={nueva ? 'Nuevo contenido' : soloStory ? 'Story' : 'Editar contenido'} onClose={cerrar} ancho={soloStory ? 680 : 960} cerrarFuera={false} clase="editor-c">
+      <form className={`editor-grid${soloStory ? ' solo-story' : ''}`} onSubmit={guardar}>
         <div className="editor-datos">
           <label className="campo-et">Título</label>
-          <input ref={titulo} className="campo" value={d.titulo} onChange={cambia('titulo')} placeholder="3 errores al grabar un reel" maxLength={200} />
-          {carpetas.length > 0 && (
+          <input ref={titulo} className="campo" value={d.titulo} onChange={cambia('titulo')} placeholder={soloStory ? 'De qué va la story' : '3 errores al grabar un reel'} maxLength={200} />
+          {soloStory && <div className="ayuda">Es una story. <button type="button" className="link-btn" onClick={() => setFichaCompleta(true)}>Ver todos los campos</button> (formato, estado, caption, archivos…)</div>}
+          {!soloStory && carpetas.length > 0 && (
             <>
               <label className="campo-et">Carpeta</label>
               <select className="campo" value={d.carpeta} onChange={cambia('carpeta')}>
@@ -266,11 +270,15 @@ export function EditorContenido({ pieza, carpetas, ig, onClose, onGuardado, onVi
               </select>
             </>
           )}
-          <label className="campo-et">Tipo</label>
-          <Pildoras opciones={TIPOS} valor={d.formato} onCambio={cambia('formato')} />
-          <label className="campo-et">Estado</label>
-          <Pildoras opciones={ESTADOS} valor={d.estado} onCambio={cambia('estado')} color />
-          {(padre || pieza.origen_ref || derivadas.length > 0 || (!nueva && onDerivada)) && (
+          {!soloStory && (
+            <>
+              <label className="campo-et">Tipo</label>
+              <Pildoras opciones={TIPOS} valor={d.formato} onCambio={cambia('formato')} />
+              <label className="campo-et">Estado</label>
+              <Pildoras opciones={ESTADOS} valor={d.estado} onCambio={cambia('estado')} color />
+            </>
+          )}
+          {!soloStory && (padre || pieza.origen_ref || derivadas.length > 0 || (!nueva && onDerivada)) && (
             <div className="origen-pieza">
               {padre && <span>Sale de <button type="button" className="link-btn" onClick={() => onAbrir?.(padre)}>«{padre.titulo}»</button></span>}
               {!padre && pieza.origen_ref && <span>Sale de {pieza.origen_ref.replace(/^laboratorio:/, 'Laboratorio · ')}</span>}
@@ -285,23 +293,31 @@ export function EditorContenido({ pieza, carpetas, ig, onClose, onGuardado, onVi
               <label className="campo-et">Fecha de publicación</label>
               <input type="date" className="campo" value={d.fecha} onChange={cambia('fecha')} />
             </div>
-            <div>
-              <label className="campo-et">Hora (opcional)</label>
-              <input type="time" className="campo" value={d.hora} onChange={cambia('hora')} />
-            </div>
+            {!soloStory && (
+              <div>
+                <label className="campo-et">Hora (opcional)</label>
+                <input type="time" className="campo" value={d.hora} onChange={cambia('hora')} />
+              </div>
+            )}
           </div>
           {!d.fecha && <div className="ayuda">Sin fecha se queda en la biblioteca hasta que la programes.</div>}
-          <label className="campo-et">Objetivo</label>
-          <div className="pildoras">
-            {OBJETIVOS.map((o) => (
-              <button type="button" key={o.id} title={o.ayuda} className={d.objetivo === o.id ? 'on' : ''} style={d.objetivo === o.id ? { '--c': o.color } : undefined} onClick={() => setD((x) => ({ ...x, objetivo: x.objetivo === o.id ? '' : o.id }))}>
-                <span className="punto" style={{ background: o.color }} />{o.label}
-              </button>
-            ))}
-          </div>
+          {!soloStory && (
+            <>
+              <label className="campo-et">Objetivo</label>
+              <div className="pildoras">
+                {OBJETIVOS.map((o) => (
+                  <button type="button" key={o.id} title={o.ayuda} className={d.objetivo === o.id ? 'on' : ''} style={d.objetivo === o.id ? { '--c': o.color } : undefined} onClick={() => setD((x) => ({ ...x, objetivo: x.objetivo === o.id ? '' : o.id }))}>
+                    <span className="punto" style={{ background: o.color }} />{o.label}
+                  </button>
+                ))}
+              </div>
+            </>
+          )}
           <CampoCategoria valor={d.categoria} story={d.formato === 'Story'} onCambio={(v) => setD((x) => ({ ...x, categoria: v }))} />
           <label className="campo-et">Guion</label>
           {nueva ? <div className="ayuda">Guarda la pieza y vuelve a abrirla para escribir su guion (a mano o con IA).</div> : <CajaGuion ref={guion} pieza={pieza} />}
+          {!soloStory && (
+          <>
           <label className="campo-et">Caption <span className={`contador${largo ? ' pasado' : ''}`}>{d.caption.length} / {MAX_CAPTION}</span></label>
           <CampoCaption rows={7} value={d.caption} onChange={cambia('caption')} placeholder="El texto que acompaña a la publicación…" onIA={() => crearCaption({ ...d, nota: pieza.nota, archivos })} />
           <CampoLeadMagnet activo={d.leadmagnet} url={d.leadmagnet_url} onCambio={(c) => setD((x) => ({ ...x, ...c }))} />
@@ -315,8 +331,11 @@ export function EditorContenido({ pieza, carpetas, ig, onClose, onGuardado, onVi
           </div>
           {avisoPortada && <div className="ayuda">{avisoPortada}</div>}
           {avisoGenerar && <div className="aviso ok">{avisoGenerar}</div>}
+          </>
+          )}
         </div>
 
+        {!soloStory && (
         <div className="editor-archivos">
           <label className="campo-et">Contenido (vídeos y fotos)</label>
           <div
@@ -356,8 +375,9 @@ export function EditorContenido({ pieza, carpetas, ig, onClose, onGuardado, onVi
           </div>
           {!archivos.length && <div className="ayuda">Se guardan en tu PC, en la carpeta data\contenido de JARVIS.</div>}
         </div>
+        )}
       </form>
-      {!nueva && <ResultadosPieza pieza={{ ...pieza, estado: d.estado, fecha: d.fecha }} onVinculada={(p) => p && setD((x) => ({ ...x, estado: p.estado, fecha: p.fecha || '' }))} />}
+      {!nueva && !soloStory && <ResultadosPieza pieza={{ ...pieza, estado: d.estado, fecha: d.fecha }} onVinculada={(p) => p && setD((x) => ({ ...x, estado: p.estado, fecha: p.fecha || '' }))} />}
       {!nueva && (['video', 'imagen'].includes(generando) || version) && (
         <OtraVersion
           key={version ? 'servidor' : generando}
