@@ -95,11 +95,29 @@ export const OpcionesCarpetas = ({ carpetas }) => carpetas.map((c) => (
   <option key={c.nombre} value={c.nombre}>{'\u00a0\u00a0\u00a0'.repeat(c.nivel || 0)}{c.nivel ? '↳ ' : ''}{c.etiqueta || c.nombre}</option>
 ));
 
+// La miniatura ligera que hace el servidor (JPG pequeño) de un archivo de la biblioteca
+export const urlMiniatura = (a) => (/^\/api\/contenido\/archivos\//.test(a?.url || '') ? a.url.replace('/api/contenido/archivos/', '/api/contenido/miniatura/') : null);
+
+// Nunca carga el vídeo ni la foto entera: con muchas piezas, eso dejaba la pestaña pillada. Si la miniatura no
+// sale, en una foto se usa la foto y en un vídeo, un icono.
+function ImagenMini({ a }) {
+  const [fallo, setFallo] = useState(0);
+  const video = esVideo(a);
+  const mini = urlMiniatura(a);
+  const src = fallo === 0 && mini ? mini : !video && fallo <= (mini ? 1 : 0) ? a.url : null;
+  return (
+    <>
+      {src ? <img src={src} alt="" loading="lazy" decoding="async" onError={() => setFallo((f) => f + 1)} /> : <span className="sin-archivo"><Icon name="play" size={16} /></span>}
+      {video && src && <span className="mini-play"><Icon name="play" size={10} /></span>}
+    </>
+  );
+}
+
 export function Miniatura({ p, className = '', onClick }) {
   const a = p.archivos?.[0];
   return (
     <div className={`miniatura-c ${className}`} onClick={onClick}>
-      {a ? (esVideo(a) ? <video src={`${a.url}#t=0.1`} preload="metadata" muted playsInline /> : <img src={a.url} alt="" loading="lazy" />)
+      {a ? <ImagenMini key={a.url} a={a} />
         : <span className="sin-archivo"><Icon name={estadoDe(p.estado).icon} size={16} color={estadoDe(p.estado).color} /></span>}
     </div>
   );

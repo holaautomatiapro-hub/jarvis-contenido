@@ -4,6 +4,16 @@ import { api } from '../../lib/api.js';
 import { Modal } from '../contenido/comun.jsx';
 
 export const urlArchivo = (ruta) => `/api/laboratorio/archivo?ruta=${encodeURIComponent(ruta)}`;
+export const urlMiniaturaLab = (ruta) => `/api/laboratorio/miniatura?ruta=${encodeURIComponent(ruta)}`;
+
+// La miniatura ligera (JPG pequeño que hace el servidor), nunca el vídeo entero: con muchos clips la página se
+// quedaba pillada. Si no sale, en una foto se usa la foto y en un vídeo, un icono.
+export function MiniLab({ ruta }) {
+  const [fallo, setFallo] = useState(0);
+  const video = esVideoRuta(ruta);
+  const src = fallo === 0 ? urlMiniaturaLab(ruta) : !video && fallo === 1 ? urlArchivo(ruta) : null;
+  return src ? <img src={src} alt="" loading="lazy" decoding="async" onError={() => setFallo((f) => f + 1)} /> : <span className="sin-archivo"><Icon name="play" size={16} /></span>;
+}
 export const esVideoRuta = (r) => /\.(mp4|mov|m4v|webm)$/i.test(r);
 const mb = (b) => (b < 1024 ** 3 ? `${Math.max(1, Math.round(b / 1024 ** 2))} MB` : `${(b / 1024 ** 3).toLocaleString('es-ES', { maximumFractionDigits: 1 })} GB`);
 
@@ -107,7 +117,7 @@ export function Medio({ a, onVer, seleccionado, onSeleccionar }) {
     <div className={`lab-medio${seleccionado ? ' sel' : ''}${a.enBiblioteca ? ' enviado' : ''}`}>
       {a.enBiblioteca && <span className="lab-enviado" title="Ya está en la biblioteca de Contenido">✓ En la biblioteca</span>}
       <button className="lab-medio-ver" onClick={() => onVer(a)} title="Ver">
-        {esVideoRuta(a.ruta) ? <video src={`${urlArchivo(a.ruta)}#t=0.5`} preload="metadata" muted playsInline /> : <img src={urlArchivo(a.ruta)} alt="" loading="lazy" />}
+        <MiniLab ruta={a.ruta} />
       </button>
       <label className="lab-medio-pie">
         {onSeleccionar && <input type="checkbox" checked={seleccionado} onChange={() => onSeleccionar(a)} />}
