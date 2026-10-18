@@ -1501,7 +1501,7 @@ button.portada-muestra { padding: 0; border: 0; width: 100%; cursor: pointer; fo
 .aprendido-nueva input { flex: 1 1 260px; min-width: 0; }
 
 /* Apps → JARVIS: actualizar */
-.actualizar { display: grid; gap: 10px; }
+.actualizar { display: grid; gap: 10px; margin-bottom: 14px; }
 .actualizar .panel-head { margin-bottom: 0; }
 .actualizar-lista { display: grid; gap: 8px; justify-items: start; }
 .actualizar-lista ul { margin: 0; padding-left: 18px; display: grid; gap: 4px; font-size: 13px; }

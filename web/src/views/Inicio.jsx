@@ -7,6 +7,7 @@ import { Plazo, Prioridad } from './Tareas.jsx';
 import { BotonCopiar } from './contenido/comun.jsx';
 import { redDe } from '../lib/redes.js';
 import { ParaProducir, TuSemana } from './inicio/Semana.jsx';
+import Actualizar from '../components/Actualizar.jsx';
 
 function Kpi({ k, ir }) {
   const up = k.delta >= 0;
@@ -124,7 +125,6 @@ function TareasPanel({ tareas, ir, alCambiar }) {
     <div className="panel panel-pad">
       <div className="panel-head">
         <span className="label">Tareas</span>
-        <button className="link-btn" onClick={() => ir?.('tareas')}>Ver todas</button>
       </div>
       <div className="seg seg-ancho seg-mini inicio-seg">
         {PESTANAS_TAREAS.map((p) => (
@@ -338,6 +338,7 @@ export default function Inicio({ data, onAsk, acciones = {}, recargar = () => {}
 
   return (
     <>
+      <Actualizar />
       <section className="home">
         <div className="col">
           {data.kpis.map((k) => <Kpi key={k.id} k={k} ir={acciones.ir} />)}
