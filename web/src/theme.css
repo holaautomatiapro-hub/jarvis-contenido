@@ -1651,3 +1651,17 @@ button.anun-chip { padding: 5px 12px; cursor: pointer; }
 .ref-menu button:disabled { opacity: .5; cursor: not-allowed; }
 .ref-menu small { color: var(--muted); font-size: 11.5px; }
 .ficha-ref .modal-pie { position: sticky; bottom: -16px; margin: 12px -16px -16px; padding: 12px 16px; background: var(--panel); border-top: 1px solid var(--border-soft); z-index: 2; }
+
+/* Lead magnets: el modelo (Laboratorio) y la lista en la Biblioteca */
+.lm-modelo { display: flex; flex-direction: column; gap: 8px; }
+.lm-modelo-actual { display: flex; justify-content: space-between; gap: 12px; align-items: baseline; flex-wrap: wrap; font-size: 13px; }
+.lm-modelo-btns { display: flex; gap: 12px; }
+.lmb { margin-top: 14px; display: flex; flex-direction: column; gap: 8px; }
+.lmb-fila { display: flex; gap: 12px; align-items: center; justify-content: space-between; padding: 10px 12px; border: 1px solid var(--border-soft); border-radius: 10px; background: var(--panel-2); }
+.lmb-fila.editando { display: grid; grid-template-columns: minmax(0, 1fr) minmax(0, 1.3fr) auto; }
+@media (max-width: 760px) { .lmb-fila, .lmb-fila.editando { grid-template-columns: 1fr; flex-direction: column; align-items: stretch; } }
+.lmb-txt { display: flex; flex-direction: column; gap: 3px; min-width: 0; }
+.lmb-url { display: flex; gap: 10px; align-items: center; font-size: 12.5px; min-width: 0; }
+.lmb-url a { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; color: var(--accent-texto, var(--accent)); }
+.lmb-acciones { display: flex; gap: 8px; align-items: center; flex-shrink: 0; }
+.lm-chat-modal .lm-chat { height: min(62vh, 560px); }

@@ -102,6 +102,46 @@ function Vercel({ v, recargar }) {
   );
 }
 
+// Tu lead magnet modelo: JARVIS copia su diseño y su estructura en todos los nuevos
+function Modelo({ plantilla, recargar }) {
+  const [url, setUrl] = useState('');
+  const [cambiando, setCambiando] = useState(!plantilla);
+  const [ocupado, setOcupado] = useState(false);
+  const [error, setError] = useState('');
+  const usar = async (e) => {
+    e.preventDefault();
+    setOcupado(true); setError('');
+    try { await api('/api/laboratorio/leadmagnets/plantilla', { method: 'PUT', body: { url } }); setUrl(''); setCambiando(false); recargar(); } catch (err) { setError(err.message); }
+    setOcupado(false);
+  };
+  const quitar = async () => {
+    if (!window.confirm('¿Dejar de usar este lead magnet como modelo? JARVIS volverá a usar la plantilla de tu sistema de diseño.')) return;
+    try { await api('/api/laboratorio/leadmagnets/plantilla', { method: 'DELETE' }); setCambiando(true); recargar(); } catch (err) { setError(err.message); }
+  };
+  return (
+    <div className="panel panel-pad lm-modelo">
+      <div className="panel-head"><span className="label">Tu lead magnet modelo</span></div>
+      {plantilla && !cambiando ? (
+        <div className="lm-modelo-actual">
+          <span>Todos los nuevos salen con el diseño y la estructura de <a href={plantilla.url} target="_blank" rel="noreferrer">{plantilla.titulo || plantilla.url}</a>.</span>
+          <span className="lm-modelo-btns">
+            <button type="button" className="link-btn" onClick={() => setCambiando(true)}>Cambiar</button>
+            <button type="button" className="link-btn" onClick={quitar}>Quitar</button>
+          </span>
+        </div>
+      ) : (
+        <form className="fila" onSubmit={usar}>
+          <input className="campo" value={url} onChange={(e) => setUrl(e.target.value)} placeholder="Enlace de un lead magnet tuyo que te guste (https://…)" required />
+          <button className="btn" disabled={ocupado || !url.trim()}>{ocupado ? 'Trayéndolo…' : 'Usar como modelo'}</button>
+          {plantilla && <button type="button" className="link-btn" onClick={() => setCambiando(false)}>Cancelar</button>}
+        </form>
+      )}
+      <small className="ayuda">JARVIS copia su diseño (colores, letras, bloques) y su orden de secciones, y cambia el contenido. Si sus banners de Skool y WhatsApp no estaban subidos, se cogen de ahí.</small>
+      {error && <div className="aviso error">{error}</div>}
+    </div>
+  );
+}
+
 function Banner({ cual, nombre, ruta, recargar }) {
   const input = useRef(null);
   const [estado, setEstado] = useState('');
@@ -220,6 +260,7 @@ export default function LeadMagnets({ trabajando }) {
     <div className="lab-dos">
       <div className="lab-col">
         <Vercel v={data.vercel} recargar={recargar} />
+        <Modelo key={data.plantilla?.url || 'sin'} plantilla={data.plantilla} recargar={recargar} />
 
         <form ref={form} className="panel panel-pad" onSubmit={empezar}>
           <div className="panel-head">
@@ -262,7 +303,7 @@ export default function LeadMagnets({ trabajando }) {
           </div>
           {aviso && <div className={`aviso ${aviso.tipo}`}>{aviso.texto}</div>}
           <div className="modal-pie">
-            <span className="ayuda">{data.kit ? 'Con la guía y la plantilla de lead magnets de tu sistema de diseño.' : 'Sin sistema de diseño importado: JARVIS usará un diseño limpio.'}</span>
+            <span className="ayuda">{data.plantilla ? 'Con el diseño y la estructura de tu lead magnet modelo.' : data.kit ? 'Con la guía y la plantilla de lead magnets de tu sistema de diseño.' : 'Sin sistema de diseño importado: JARVIS usará un diseño limpio.'}</span>
             <button className="btn" disabled={enviando || trabajando || !f.titulo.trim()}><Icon name="sparkle" size={14} />{rehacer ? 'Pedir cambios' : 'Crear con JARVIS'}</button>
           </div>
         </form>

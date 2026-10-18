@@ -343,6 +343,10 @@ export function createApp({ jarvis, archivos, publicadorIg, asistente, instagram
     const lm = laboratorio.leadmagnets;
     app.get('/api/laboratorio/leadmagnets', h(() => lm.estado()));
     app.post('/api/laboratorio/leadmagnets/banner', h((req) => lm.subirBanner(req, { cual: String(req.query.cual || ''), nombre: String(req.query.nombre || '') }), true));
+    app.put('/api/laboratorio/leadmagnets/plantilla', h((req) => lm.importarPlantilla(req.body?.url), true));
+    app.delete('/api/laboratorio/leadmagnets/plantilla', h(() => lm.quitarPlantilla(), true));
+    app.post('/api/laboratorio/leadmagnets/enlace', h((req) => lm.anadirPorEnlace(req.body || {}), true));
+    app.patch('/api/laboratorio/leadmagnets/:slug', h((req) => lm.editarDatos(req.params.slug, req.body || {}), true));
     app.put('/api/laboratorio/leadmagnets/vercel', h((req) => lm.conectarVercel(req.body || {}), true));
     app.put('/api/laboratorio/leadmagnets/github', h((req) => lm.conectarGithub(req.body || {}), true));
     app.post('/api/laboratorio/leadmagnets/:slug/publicar', h((req) => lm.publicar(req.params.slug), true));
