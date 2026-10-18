@@ -17,6 +17,7 @@ import { createCompetencia } from '../server/integrations/competencia.js';
 import { createAds } from '../server/integrations/ads.js';
 import { createPublicar, REDES } from '../server/publicar.js';
 import { createResultados } from '../server/resultados.js';
+import { createEstrategia } from '../server/estrategia.js';
 import { PIEZAS_TESTIMONIO, PLANTILLAS_REEL } from '../server/laboratorio.js';
 import { TIPOS_LM } from '../server/leadmagnets.js';
 import { FORMATOS_IMAGEN, TIPOS_IMAGEN } from '../server/imagenes.js';
@@ -29,7 +30,7 @@ import { Readable } from 'node:stream';
 
 dotenv.config({ path: path.join(ROOT, '.env'), quiet: true });
 
-export function buildServer(jarvis, { origen = 'claude', avisar = () => {}, instagram = null, competencia = null, ads = null, publicar = null, diseno = null, recordatorios = null, resultados = null, laboratorio = null, preferencias = null } = {}) {
+export function buildServer(jarvis, { origen = 'claude', avisar = () => {}, instagram = null, competencia = null, ads = null, publicar = null, diseno = null, recordatorios = null, resultados = null, laboratorio = null, preferencias = null, calendario = null } = {}) {
   const server = new McpServer({ name: 'jarvis', version: '0.2.0' });
 
   const tool = (name, description, inputSchema, fn, escribe = false) =>
@@ -192,6 +193,27 @@ export function buildServer(jarvis, { origen = 'claude', avisar = () => {}, inst
   tool('tareas_de_hoy', 'Devuelve las tareas que vencen hoy o caen en esta semana/mes, y las atrasadas.', {}, () => jarvis.tareas());
 
   tool('resumen_del_dia', 'Resumen del día: tareas, estado del pipeline, piezas previstas para hoy e ideas recientes.', {}, () => jarvis.resumenDelDia());
+
+  // Estrategia: qué tipo de contenido toca cada día (semana para atraer, educar o vender)
+  if (calendario) {
+    tool('ver_estrategia', 'La ESTRATEGIA de contenido de la persona: qué toca cada día (directo, post y stories) según la semana sea para atraer audiencia, educativa (preparar la venta) o de venta, con su objetivo, táctica y campaña del calendario de marketing. Úsala SIEMPRE antes de planificar o proponer contenido para unos días, para que cada pieza cumpla lo que toca ese día.',
+      { desde: z.string().optional().describe('AAAA-MM-DD (por defecto, hoy)'), dias: z.number().int().min(1).max(120).optional().describe('Cuántos días (por defecto 14)') },
+      ({ desde, dias }) => ({
+        dias: calendario.plan({ desde, dias }),
+        estructuras: Object.fromEntries(Object.entries(calendario.estructuras()).map(([k, e]) => [k, { nombre: e.nombre, etiqueta: e.etiqueta, resumen: e.resumen, posts: e.posts, stories: e.stories, tipos: e.tipos, pasos: e.pasos }])),
+      }));
+    tool('marcar_semana_estrategia', 'Apunta en el calendario de marketing qué es una semana: su estructura (atraer, educar o vender), su objetivo, su táctica y su campaña. Solo cuando la persona lo pida o lo confirme (p. ej. al planificar un lanzamiento: semanas educativas, anuncio de la oferta y venta).',
+      {
+        fecha: z.string().describe('Cualquier día de esa semana, AAAA-MM-DD'),
+        tipo: z.enum(['atraer', 'educar', 'vender']).optional(),
+        objetivo: z.enum(['recurrente', 'valor', 'educacion', 'anuncio', 'venta']).optional().describe('recurrente o valor (aportar valor sin venta) → atraer; educacion o anuncio (anuncio de la oferta) → educar; venta → vender'),
+        detalle: z.string().optional().describe('P. ej. «Propósito de Año Nuevo»'),
+        tactica: z.string().optional().describe('P. ej. «Retargeting + contenido orgánico»'),
+        campana: z.string().optional().describe('Game plan o campaña, p. ej. «Estrategia de Año Nuevo»'),
+        notas: z.string().optional(),
+      },
+      ({ fecha, ...d }) => calendario.guardarSemana(fecha, d), true);
+  }
 
   if (recordatorios) {
     const DIAS = 'dias: 0 = domingo, 1 = lunes … 6 = sábado; sin dias = todos los días';
@@ -544,7 +566,7 @@ async function main() {
     if (!res.ok) throw new Error(j.error || `Error ${res.status}`);
     return j;
   };
-  await buildServer(jarvis, { origen, avisar, instagram, competencia, ads, publicar, diseno, recordatorios, resultados, laboratorio: { servidor, subir }, preferencias: createPreferencias({ db }) }).connect(new StdioServerTransport());
+  await buildServer(jarvis, { origen, avisar, instagram, competencia, ads, publicar, diseno, recordatorios, resultados, laboratorio: { servidor, subir }, preferencias: createPreferencias({ db }), calendario: createEstrategia({ db, jarvis }) }).connect(new StdioServerTransport());
 }
 
 const esPrincipal = process.argv[1] && path.resolve(process.argv[1]) === fileURLToPath(import.meta.url);

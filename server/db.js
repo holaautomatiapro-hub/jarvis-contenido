@@ -263,6 +263,18 @@ export function openDb(file) {
   ]) migrar(sql);
   // Cómo se unió la pieza con su publicación de Instagram: jarvis, enlace, caption, fecha, manual o ninguna (soltada a mano)
   migrar('ALTER TABLE piezas ADD COLUMN ig_vinculo TEXT');
+  // Estrategia: cada semana del calendario de marketing (atraer, educar o vender) y, si se cambia, su propia tabla de días
+  db.exec(`CREATE TABLE IF NOT EXISTS estrategia_semanas (
+    lunes TEXT PRIMARY KEY,
+    tipo TEXT,
+    objetivo TEXT,
+    detalle TEXT,
+    tactica TEXT,
+    campana TEXT,
+    celdas TEXT,
+    notas TEXT,
+    actualizado TEXT NOT NULL DEFAULT (datetime('now','localtime'))
+  )`);
   // La nota de 02-Guiones con el guion de la pieza (cuando su "nota" es otra: la idea de la que sale)
   migrar('ALTER TABLE piezas ADD COLUMN guion_nota TEXT');
   db.exec('CREATE INDEX IF NOT EXISTS piezas_padre ON piezas(padre_id); CREATE INDEX IF NOT EXISTS piezas_origen_ref ON piezas(origen_ref);');
