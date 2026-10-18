@@ -8,6 +8,7 @@ import { BancoIdeas, Calendario, Lista, Pipeline } from './contenido/Vistas.jsx'
 import { Biblioteca } from './contenido/Biblioteca.jsx';
 import { EditorContenido, ProgramarContenido, Visor } from './contenido/Editor.jsx';
 import { FichaReferencia, esReferencia } from './contenido/FichaReferencia.jsx';
+import { LeadMagnetsBiblioteca } from './contenido/LeadMagnetsBiblioteca.jsx';
 
 const VISTAS = [
   { id: 'calendario', label: 'Calendario', icon: 'calendar' },
@@ -156,6 +157,7 @@ export default function Contenido({ onCaptura }) {
       {vista === 'calendario' && <Calendario piezas={piezas} versiones={data?.versiones || []} carpetas={carpetas} dia={dia} setDia={setDia} onAbrir={setEditando} onNuevo={nuevo} onMover={mover} onProgramar={(p, f) => setProgramando({ p, f })} />}
       {vista === 'lista' && <Lista piezas={filtradas} metricas={data?.metricas || {}} cargando={!data} onAbrir={setEditando} onMover={mover} />}
       {vista === 'biblioteca' && <Biblioteca piezas={biblioteca} publicados={publicados} carpetas={carpetas} onAbrir={setEditando} onProgramar={(p) => setProgramando({ p })} onRepublicar={republicar} recargar={recargar} />}
+      {vista === 'biblioteca' && <LeadMagnetsBiblioteca />}
       {vista === 'ideas' && <BancoIdeas piezas={piezas} onAbrir={setEditando} onMover={mover} onNuevaIdea={() => onCaptura('idea')} />}
       {vista === 'pipeline' && <Pipeline piezas={piezas} onAbrir={setEditando} onMover={mover} onNuevaIdea={() => onCaptura('idea')} />}
 

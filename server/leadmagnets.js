@@ -12,6 +12,8 @@ import { guardarEnv } from './env-archivo.js';
 //   leadmagnets/<slug>/leadmagnet.json  título, tipo, palabra clave, enlace publicado y pieza
 //   leadmagnets/<slug>/captura.png      la portada a 375 px (la saca laboratorio/captura.mjs)
 //   leadmagnets/_comun/                 banners de las comunidades (Skool, WhatsApp), se suben una vez
+//   leadmagnets/_comun/plantilla.html   tu lead magnet modelo (traído de su enlace): JARVIS copia su diseño y su
+//                                       estructura en todos los nuevos (manda sobre la plantilla del kit)
 // Se publican de una de dos formas:
 //   · En tu repositorio de GitHub (LM_GITHUB_REPO), una carpeta por lead magnet (<slug>/index.html), y Vercel
 //     lo publica solo en tu dominio (LM_DOMINIO): https://recursos.tudominio.com/<slug>/  (lo recomendado)
@@ -242,7 +244,7 @@ export function createLeadMagnets({ base, vaultPath = null, jarvis = null, env =
           listo: hay, tamano: st?.size || 0, mod: st?.mtime.toISOString() || m.creado || '',
           html: hay ? `leadmagnets/${e.name}/index.html` : null,
           captura: existsSync(path.join(raiz, e.name, 'captura.png')) ? `leadmagnets/${e.name}/captura.png` : null,
-          url: m.publicado?.url || null, publicado: m.publicado?.fecha || null,
+          url: m.publicado?.url || null, publicado: m.publicado?.fecha || null, externo: Boolean(m.publicado?.externo),
           cambiado: Boolean(m.publicado?.fecha && st && st.mtime.toISOString() > m.publicado.fecha),
           pieza: m.pieza || null,
         };
@@ -260,7 +262,55 @@ export function createLeadMagnets({ base, vaultPath = null, jarvis = null, env =
   };
 
   function estado() {
-    return { leadmagnets: lista(), banners: banners(), vercel: estadoPublicar(), tipos: TIPOS_LM, kit: Boolean(guia()) };
+    return { leadmagnets: lista(), banners: banners(), vercel: estadoPublicar(), tipos: TIPOS_LM, kit: Boolean(guia()), plantilla: plantillaPropia() };
+  }
+
+  // ---------- Tu lead magnet modelo ----------
+  // Se trae de su enlace y se guarda sin sus imágenes grandes (los banners de las comunidades pasan a ser los
+  // marcadores {{SKOOL}} y {{WA}}, y si aún no tenías banners subidos, se guardan como tus banners).
+  const rutaPlantilla = () => path.join(comun, 'plantilla.html');
+  const plantillaPropia = () => {
+    if (!existsSync(rutaPlantilla())) return null;
+    try { return JSON.parse(readFileSync(path.join(comun, 'plantilla.json'), 'utf8')); } catch { return { url: null }; }
+  };
+  async function importarPlantilla(url) {
+    let u;
+    try { u = new URL(String(url || '').trim()); } catch { throw new LeadMagnetError('Pega el enlace completo de tu lead magnet (https://…)'); }
+    if (u.protocol !== 'https:') throw new LeadMagnetError('El enlace tiene que empezar por https://');
+    let html;
+    try {
+      const r = await fetchImpl(u.toString(), { headers: { 'user-agent': 'Mozilla/5.0 (JARVIS)' }, signal: AbortSignal.timeout(30000) });
+      if (!r.ok) throw new LeadMagnetError(`Esa página responde ${r.status}: ¿está publicada?`);
+      html = await r.text();
+    } catch (e) { throw e instanceof LeadMagnetError ? e : new LeadMagnetError('No he podido abrir ese enlace. Comprueba que se abre en el navegador.'); }
+    if (html.length > MAX_HTML || !/<html[\s>]/i.test(html) || !/<body[\s>]/i.test(html)) throw new LeadMagnetError('Ese enlace no es una página web que se pueda usar de modelo');
+    mkdirSync(comun, { recursive: true });
+    const sinBanners = !banners().skool || !banners().whatsapp;
+    const guardados = {};
+    let otras = 0;
+    const ligero = html.replace(/data:image\/([a-z+]+);base64,([A-Za-z0-9+/=]+)/g, (todo, tipo, datos, pos) => {
+      if (datos.length < 20000) return todo; // iconos y logos pequeños se quedan
+      // Qué banner es: por su texto alternativo y, si no lo dice, por lo que tiene justo antes
+      const antes = html.slice(Math.max(0, pos - 400), pos).toLowerCase();
+      const alt = (/^[^>]*?\salt="([^"]*)"/.exec(html.slice(pos + todo.length, pos + todo.length + 600))?.[1] || '').toLowerCase();
+      const cual = /whatsapp/.test(alt) ? 'whatsapp' : /skool/.test(alt) ? 'skool' : /whatsapp/.test(antes) ? 'whatsapp' : /banner|skool|comunidad/.test(antes) ? 'skool' : null;
+      if (!cual || guardados[cual]) { otras += 1; return `{{IMAGEN_${otras}}}`; }
+      guardados[cual] = true;
+      if (sinBanners && !banners()[cual]) {
+        const ext = tipo === 'png' ? 'png' : tipo === 'webp' ? 'webp' : 'jpg';
+        try { writeFileSync(path.join(comun, `${cual}.${ext}`), Buffer.from(datos, 'base64')); } catch { /* se suben a mano */ }
+      }
+      return cual === 'whatsapp' ? '{{WA}}' : '{{SKOOL}}';
+    });
+    writeFileSync(rutaPlantilla(), ligero);
+    const meta = { url: u.toString(), fecha: new Date().toISOString(), titulo: (/<title>([^<]*)<\/title>/i.exec(html)?.[1] || '').trim().slice(0, 160) || null };
+    writeFileSync(path.join(comun, 'plantilla.json'), JSON.stringify(meta, null, 2));
+    return estado();
+  }
+  function quitarPlantilla() {
+    rmSync(rutaPlantilla(), { force: true });
+    rmSync(path.join(comun, 'plantilla.json'), { force: true });
+    return estado();
   }
 
   // ---------- Banners de las comunidades ----------
@@ -280,6 +330,11 @@ export function createLeadMagnets({ base, vaultPath = null, jarvis = null, env =
   // ---------- Crear (lo hace Claude) ----------
   // La guía y la plantilla del sistema de diseño de la persona (si las tiene)
   function guia() {
+    const propia = existsSync(rutaPlantilla()) ? { guia: null, plantilla: rutaPlantilla(), propia: true, nombre: null, handle: null } : null;
+    const delKit = guiaKit();
+    return propia ? { ...(delKit || {}), plantilla: propia.plantilla, propia: true } : delKit;
+  }
+  function guiaKit() {
     if (!vaultPath) return null;
     const kit = path.join(path.resolve(vaultPath), '_diseno');
     let k;
@@ -318,7 +373,7 @@ Tema: ${titulo}
 Tipo: ${TIPOS_LM[tipo]}
 ${linea('Palabra clave que comentan para recibirlo', palabra)}${pieza ? `Va con esta pieza de contenido: «${pieza.titulo}» (${pieza.formato || 'pieza'}). ${pieza.nota ? `Su guion está en la nota ${pieza.nota} (léela con leer_nota). ` : ''}${pieza.caption ? `Caption:\n"""\n${String(pieza.caption).slice(0, 2000)}\n"""\n` : ''}` : ''}${d.nota ? `Material de base: la nota ${String(d.nota).slice(0, 300)} del vault (léela con leer_nota).\n` : ''}${d.contenido ? `Contenido de base:\n"""\n${String(d.contenido).slice(0, 12000)}\n"""\n` : ''}${linea('Indicaciones', d.indicaciones && String(d.indicaciones).slice(0, 2000))}${rehacer && existsSync(path.join(carpeta(slug), 'index.html')) ? `La versión actual está en ${rel}/index.html: léela y cámbiala según las indicaciones (sin empezar de cero si no hace falta).\n` : ''}
 Cómo hacerlo:
-1. ${g?.guia ? `Lee la guía de mi sistema de diseño (${g.guia}): la sección de Lead magnets entera (colores, tipografía, estructura, componentes, reglas técnicas) y las reglas generales (idioma, datos reales, palabra clave, comunidades).` : 'No tengo sistema de diseño importado: usa un diseño limpio, móvil primero, con mi nombre y mi tono (lee CLAUDE.md y _voz.md del vault).'}${g?.plantilla ? `\n2. Parte de la plantilla ${g.plantilla}: copia su HTML, su CSS y su JS (casillas con progreso guardado, botones de copiar, pestañas, acordeón) y cambia el contenido. No inventes otro estilo.` : '\n2. Hazlo en un solo archivo HTML con el CSS y el JS dentro.'}
+1. ${g?.propia ? `${g.guia ? `Lee de la guía de mi sistema de diseño (${g.guia}) solo las reglas generales (idioma, datos reales, palabra clave, comunidades): el diseño y la estructura los marca mi lead magnet modelo (paso 2).` : 'Lee CLAUDE.md y _voz.md del vault (mi nombre, mi oferta, mi tono). El diseño y la estructura los marca mi lead magnet modelo (paso 2).'}` : g?.guia ? `Lee la guía de mi sistema de diseño (${g.guia}): la sección de Lead magnets entera (colores, tipografía, estructura, componentes, reglas técnicas) y las reglas generales (idioma, datos reales, palabra clave, comunidades).` : 'No tengo sistema de diseño importado: usa un diseño limpio, móvil primero, con mi nombre y mi tono (lee CLAUDE.md y _voz.md del vault).'}${g?.propia ? `\n2. MI LEAD MAGNET MODELO está en ${g.plantilla} (sale de ${plantillaPropia()?.url || 'mi web'}): el nuevo tiene que tener SU MISMO DISEÑO Y SU MISMA ESTRUCTURA. Léelo entero y, antes de escribir, apunta su índice: cada sección en orden (portada, introducción, bloques, el núcleo interactivo, casos, avisos, cierre con comunidades, pie) y qué componente usa cada una. Copia tal cual su <head>, su CSS (colores, tipografías, bandas, botones, tarjetas) y su JS (asistente por pasos con «Siguiente», barra de progreso, casillas, botones de copiar, capturas simuladas…), y cambia solo el contenido. Mismo orden de secciones; el número de pasos o elementos se adapta al tema. Si el tipo pedido no es una guía, su parte interactiva (checklist, test, generador, calculadora…) va en el sitio del núcleo del modelo y con sus mismos estilos. Quita lo que no encaje con el tema en vez de inventarlo. Los marcadores {{IMAGEN_N}} eran imágenes del modelo: quítalas o pon una propia. Nada de otro estilo.` : g?.plantilla ? `\n2. Parte de la plantilla ${g.plantilla}: copia su HTML, su CSS y su JS (casillas con progreso guardado, botones de copiar, pestañas, acordeón) y cambia el contenido. No inventes otro estilo.` : '\n2. Hazlo en un solo archivo HTML con el CSS y el JS dentro.'}
 3. Escribe el contenido con MI voz (lee _voz.md y CLAUDE.md del vault; busca con buscar_notas material mío sobre el tema). Útil de verdad y accionable, sin relleno. Nada de datos inventados: si un ejemplo es ilustrativo, que se note.
 4. Banners de las comunidades (los marcadores {{SKOOL}} y {{WA}} de la plantilla): ${b.skool || b.whatsapp ? `${[b.skool ? `Skool → ${b.skool}` : null, b.whatsapp ? `WhatsApp → ${b.whatsapp}` : null].filter(Boolean).join(', ')}. Mételos dentro del HTML en base64 (data:image/…;base64,…) con python. ` : ''}${!b.skool || !b.whatsapp ? `${b.skool || b.whatsapp ? 'El que falte' : 'No hay banners subidos'}: quita su <figure> y deja el resto del bloque.` : ''}
 5. Guarda la página en ${rel}/index.html (relativo a la carpeta de trabajo). Es la versión para web propia: documento completo con <!doctype html>, <html lang="es">, <meta charset="utf-8"> y <meta name="viewport" content="width=device-width, initial-scale=1">, y un <title> con el tema. Un solo archivo con todo dentro (las fuentes, de Google Fonts). Sin vídeos de YouTube incrustados ni descargas forzadas. Todo localStorage dentro de try/catch.
@@ -369,6 +424,7 @@ Cómo hacerlo:
   async function despublicar(slug) {
     const m = leerMeta(slug);
     if (!m?.publicado) return { leadmagnets: lista() };
+    if (m.publicado.externo) throw new LeadMagnetError('Este lo publicaste fuera de JARVIS: quítalo desde donde lo publicaste (aquí puedes cambiar o borrar su enlace)');
     if (m.publicado.repo) {
       if (!conGithub() || github().repo !== m.publicado.repo) throw new LeadMagnetError(`Está publicado en el repositorio ${m.publicado.repo}: conéctalo en Lead magnets → Publicar para poder quitarlo.`);
       await quitarGithub(slug);
@@ -392,13 +448,60 @@ Cómo hacerlo:
     return { leadmagnets: lista() };
   }
 
+  // ---------- Los que ya tienes publicados fuera de JARVIS ----------
+  // Se guardan con su título y su enlace; si la página se puede bajar, también su HTML, para poder cambiarla con JARVIS
+  async function anadirPorEnlace({ titulo, url } = {}) {
+    const t = String(titulo || '').trim().slice(0, 120);
+    let u;
+    try { u = new URL(String(url || '').trim()); } catch { throw new LeadMagnetError('Pega el enlace completo del lead magnet (https://…)'); }
+    if (!/^https?:$/.test(u.protocol)) throw new LeadMagnetError('El enlace tiene que empezar por https://');
+    if (lista().some((x) => x.url === u.toString())) throw new LeadMagnetError('Ese lead magnet ya está guardado');
+    let html = null;
+    try {
+      const r = await fetchImpl(u.toString(), { headers: { 'user-agent': 'Mozilla/5.0 (JARVIS)' }, signal: AbortSignal.timeout(30000) });
+      const x = r.ok ? await r.text() : '';
+      if (x.length <= MAX_HTML && /<html[\s>]/i.test(x)) html = x;
+    } catch { /* se guarda solo el enlace */ }
+    const titulo2 = t || (html && (/<title>([^<]*)<\/title>/i.exec(html)?.[1] || '').split('·')[0].trim()) || u.pathname.split('/').filter(Boolean).pop() || u.hostname;
+    const b = slugLm(u.pathname.split('/').filter(Boolean).pop() || titulo2) || 'lead-magnet';
+    let slug = b;
+    for (let i = 2; existsSync(path.join(raiz, slug)); i++) slug = `${b}-${i}`.slice(0, 60);
+    mkdirSync(carpeta(slug), { recursive: true });
+    if (html) writeFileSync(path.join(carpeta(slug), 'index.html'), html);
+    guardarMeta(slug, { titulo: titulo2.slice(0, 120), tipo: 'guia', palabra: null, creado: new Date().toISOString(), publicado: { url: u.toString(), fecha: null, externo: true } });
+    return { slug, conPagina: Boolean(html), leadmagnets: lista() };
+  }
+  // Cambiar a mano el título o el enlace
+  function editarDatos(slug, { titulo, url } = {}) {
+    const m = leerMeta(slug);
+    if (!m) throw new LeadMagnetError('Ese lead magnet ya no está');
+    const cambios = { ...m };
+    if (titulo != null) {
+      const t = String(titulo).trim().slice(0, 120);
+      if (!t) throw new LeadMagnetError('Ponle un título');
+      cambios.titulo = t;
+    }
+    if (url != null) {
+      const v = String(url).trim();
+      if (!v) delete cambios.publicado;
+      else {
+        try { const u = new URL(v); if (!/^https?:$/.test(u.protocol)) throw new Error(); } catch { throw new LeadMagnetError('El enlace tiene que empezar por https://'); }
+        cambios.publicado = { ...(m.publicado || { externo: true }), url: v };
+      }
+    }
+    guardarMeta(slug, cambios);
+    if (m.pieza && jarvis && cambios.publicado?.url !== m.publicado?.url) { try { jarvis.actualizarPieza(m.pieza, { leadmagnet: true, leadmagnet_url: cambios.publicado?.url || null }); } catch { /* la pieza ya no está */ } }
+    return { leadmagnets: lista() };
+  }
+
   async function borrar(slug) {
     const m = leerMeta(slug);
     quitarDePieza(m, { soltar: true });
-    if (m?.publicado) await despublicar(slug);
+    // Los traídos de fuera no se quitan de donde estén publicados: solo se olvidan aquí
+    if (m?.publicado && !m.publicado.externo) await despublicar(slug);
     rmSync(carpeta(slug), { recursive: true, force: true });
     return { leadmagnets: lista() };
   }
 
-  return { estado, lista, nuevo, publicar, despublicar, asignar, borrar, subirBanner, conectarVercel, conectarGithub, estadoVercel, estadoPublicar, banners, guia };
+  return { estado, lista, nuevo, publicar, despublicar, asignar, borrar, subirBanner, importarPlantilla, quitarPlantilla, anadirPorEnlace, editarDatos, conectarVercel, conectarGithub, estadoVercel, estadoPublicar, banners, guia };
 }
