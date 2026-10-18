@@ -2,17 +2,13 @@ import { useCallback, useEffect, useState } from 'react';
 import Topbar, { TABS } from './components/Topbar.jsx';
 import Captura from './components/Captura.jsx';
 import Inicio from './views/Inicio.jsx';
-import Tareas from './views/Tareas.jsx';
 import Contenido from './views/Contenido.jsx';
 import Estrategia from './views/Estrategia.jsx';
 import Laboratorio from './views/Laboratorio.jsx';
-import Notas from './views/Notas.jsx';
 import Chat from './views/Chat.jsx';
-import Skills from './views/Skills.jsx';
 import Instagram from './views/Instagram.jsx';
 import Competencia from './views/Competencia.jsx';
 import Ads from './views/Ads.jsx';
-import Apps from './views/Apps.jsx';
 import { obsidianUrl, useRecurso } from './lib/api.js';
 import { ponerFases } from './views/contenido/comun.jsx';
 
@@ -48,7 +44,7 @@ export default function App() {
   const acciones = {
     nota: () => setCaptura('nota'),
     idea: () => setCaptura('idea'),
-    guion: () => go('skills'),
+    guion: () => go('chat'),
     dictar: () => go('chat'),
     vault: () => { window.location.href = obsidianUrl(cfg.vault); },
     ir: go,
@@ -56,21 +52,18 @@ export default function App() {
 
   let vista;
   if (tab === 'inicio') vista = <Inicio data={inicio} onAsk={(t) => { setPendiente(t); go('chat'); }} acciones={acciones} recargar={recargarInicio} />;
-  else if (tab === 'tareas') vista = <Tareas />;
   else if (tab === 'contenido') vista = <Contenido onCaptura={setCaptura} />;
   else if (tab === 'estrategia') vista = <Estrategia />;
   else if (tab === 'laboratorio') vista = <Laboratorio />;
-  else if (tab === 'notas') vista = <Notas onCaptura={setCaptura} />;
   else if (tab === 'chat') vista = <Chat pendiente={pendiente} onConsumido={() => setPendiente(null)} />;
-  else if (tab === 'skills') vista = <Skills />;
   else if (tab === 'instagram') vista = <Instagram />;
   else if (tab === 'competencia') vista = <Competencia />;
   else if (tab === 'ads') vista = <Ads />;
-  else vista = <Apps />;
+  else vista = <Inicio data={inicio} onAsk={(t) => { setPendiente(t); go('chat'); }} acciones={acciones} recargar={recargarInicio} />;
 
   return (
     <div className="app">
-      <Topbar tab={tab} onTab={go} onBuscar={() => go('notas')} />
+      <Topbar tab={tab} onTab={go} />
       {vista}
       {captura && <Captura tipo={captura} onClose={cerrar} />}
     </div>

@@ -519,7 +519,7 @@ export function createApp({ jarvis, archivos, miniaturas = null, estrategia = nu
   // «Trabajando en…»: todo lo que JARVIS está haciendo ahora, para verlo desde cualquier pestaña
   if (asistente) {
     const NOMBRE = { principal: 'Chat', replicar: 'Replicando una publicación', diseno: 'Diseño', laboratorio: 'Laboratorio', guiones: 'Guiones', ads: 'Meta Ads', publicar: 'Adaptando a otras redes', sistema: 'Tarea de fondo' };
-    const IR = { principal: { tab: 'chat' }, replicar: { tab: 'contenido' }, diseno: { tab: 'laboratorio', seccion: 'diseno' }, laboratorio: { tab: 'laboratorio' }, guiones: { tab: 'skills' }, ads: { tab: 'ads' }, publicar: { tab: 'contenido' } };
+    const IR = { principal: { tab: 'chat' }, replicar: { tab: 'contenido' }, diseno: { tab: 'laboratorio', seccion: 'diseno' }, laboratorio: { tab: 'laboratorio' }, guiones: { tab: 'chat' }, ads: { tab: 'ads' }, publicar: { tab: 'contenido' } };
     const resumir = (t) => String(t || '').replace(/^\[[^\]]*\]\s*/, '').split('\n').find((l) => l.trim())?.trim().slice(0, 240) || '';
     // Cada trabajo puede llevar «parar»: lo que hay que hacer para cortarlo (no sale en la respuesta)
     const trabajosAhora = () => {
@@ -544,10 +544,10 @@ export function createApp({ jarvis, archivos, miniaturas = null, estrategia = nu
         lista.push({ id: `convertir-${c.pieza}`, tipo: 'convertir', titulo: `${c.a === 'video' ? 'Vídeo' : 'Imagen'} de «${c.titulo}»`, detalle: c.deDiseno ? 'Exportando desde su diseño' : c.a === 'video' ? 'Pasando las fotos a vídeo' : 'Sacando un fotograma', progreso: c.progreso, desde: c.inicio, ir: { tab: 'contenido', pieza: c.pieza }, parar: () => conversiones.parar(c.pieza) });
       }
       for (const t of adjuntos?.transcribiendo?.() || []) {
-        lista.push({ id: `transcribir-${t.clave}`, tipo: 'transcribir', titulo: t.titulo, detalle: t.motor === 'Whisper' ? 'Con Whisper (gratis): tarda unos minutos' : t.motor ? `Con ${t.motor}` : 'Preparando el audio', progreso: t.progreso, desde: t.inicio, ir: { tab: 'notas' }, parar: () => adjuntos.pararTarea(t.clave) });
+        lista.push({ id: `transcribir-${t.clave}`, tipo: 'transcribir', titulo: t.titulo, detalle: t.motor === 'Whisper' ? 'Con Whisper (gratis): tarda unos minutos' : t.motor ? `Con ${t.motor}` : 'Preparando el audio', progreso: t.progreso, desde: t.inicio, ir: null, parar: () => adjuntos.pararTarea(t.clave) });
       }
       const u = actualizar?.enCurso();
-      if (u) lista.push({ id: 'actualizar', tipo: 'actualizar', titulo: 'Actualizando JARVIS', detalle: 'Se reiniciará en medio: es normal que la página se corte un momento', desde: Date.parse(u.inicio) || null, ir: { tab: 'apps' } });
+      if (u) lista.push({ id: 'actualizar', tipo: 'actualizar', titulo: 'Actualizando JARVIS', detalle: 'Se reiniciará en medio: es normal que la página se corte un momento', desde: Date.parse(u.inicio) || null, ir: { tab: 'inicio' } });
       return lista;
     };
     app.get('/api/trabajos', h(() => ({ trabajos: trabajosAhora().map(({ parar, ...t }) => ({ ...t, parable: Boolean(parar) })) })));
