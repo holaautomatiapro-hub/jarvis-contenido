@@ -106,17 +106,37 @@ export const PRINCIPIOS = [
   { titulo: 'Copiar te hace uno más', texto: 'Piensa en lo que tu cliente necesita escuchar, lo que le ayuda y las palabras que usa.' },
 ];
 
-// Las tablas antiguas (un texto por hueco) se pasan a botones: la categoría que encaje y el texto como nota
+// Las tablas antiguas (un texto por hueco) se pasan a botones: primero las de serie de antes, tal cual; si no,
+// «Categoría (nota)» o «Categoría nota»; si no, la categoría que encaje y el texto entero como nota
+const VIEJAS = {
+  Atraer: b('Viral'), 'Educar con prueba social (¿con CTA?)': b('Educar', 'con prueba social · ¿con CTA?'), 'Educar (¿LM?)': b('Educar', '¿LM?'),
+  'Testimonio con CTA': b('Testimonio', 'con CTA'), 'Valor + Hype': b('Valor', '+ Hype'), 'Testimonio aspiracional': b('Testimonio', 'aspiracional'),
+  'Presentar oportunidad aspiracional (Hype)': b('Personal', 'oportunidad aspiracional (Hype)'), 'Aspiracional con prueba social': b('Testimonio', 'aspiracional con prueba social'),
+  'Testimonio con cliente': b('Testimonio', 'con cliente'), 'Valor o Roadmap del programa': b('Roadmap', 'o valor: cómo es el programa'),
+  'Info oferta (informativo)': b('Educar', 'info de la oferta'), 'FAQs (racional)': b('Educar', 'FAQs (racional)'), '3 decisiones (racional)': b('Educar', '3 decisiones (racional)'),
+  'Testimonio en carrusel o vídeo (emocional)': b('Testimonio', 'carrusel o vídeo (emocional)'), 'Objeciones comunes (racional)': b('Educar', 'objeciones comunes (racional)'),
+  'Storytelling con captura de apertura': b('Testimonio', 'storytelling con captura de apertura'), 'Storytelling con captura educativa': b('Educar', 'storytelling con captura educativa'),
+  'Storytelling con captura aspiracional': b('Testimonio', 'storytelling con captura aspiracional'), 'Cierre estrategia (urgencia)': b('Educar', 'cierre de la estrategia (urgencia)'),
+};
+const NOMBRES = ['LM', 'Viral', 'Testimonio', 'Educar', 'Conexión', 'Q&A', 'Comunidad', 'Personal', 'Valor', 'Roadmap'];
 const CATEGORIA_DE = [[/\bLM\b|lead ?magnet/i, 'LM'], [/testimonio|prueba social|aspiracional/i, 'Testimonio'], [/viral|atraer/i, 'Viral'],
   [/q ?& ?a|preguntas/i, 'Q&A'], [/comunidad/i, 'Comunidad'], [/personal|hype/i, 'Personal'], [/conexi/i, 'Conexión'], [/roadmap/i, 'Roadmap'], [/valor/i, 'Valor'], [/educa|faq|objeci|decisi|oferta/i, 'Educar']];
 const aBoton = (x) => {
   if (x && typeof x === 'object') {
     const c = String(x.c || '').trim().slice(0, 30);
     const n = String(x.n || '').trim().slice(0, 120);
+    // Los que salieron de pasar una tabla antigua con la versión anterior (nota = el texto viejo de serie)
+    if (n && VIEJAS[n]) return { ...VIEJAS[n] };
     return c ? (n ? { c, n } : { c }) : null;
   }
   const t = String(x || '').trim().slice(0, 120);
   if (!t) return null;
+  if (VIEJAS[t]) return { ...VIEJAS[t] };
+  const cabeza = NOMBRES.find((c) => t.toLowerCase() === c.toLowerCase() || t.toLowerCase().startsWith(`${c.toLowerCase()} `));
+  if (cabeza) {
+    const resto = t.slice(cabeza.length).trim().replace(/^\((.*)\)$/, '$1').trim();
+    return resto ? { c: cabeza, n: resto } : { c: cabeza };
+  }
   const c = CATEGORIA_DE.find(([re]) => re.test(t))?.[1] || t.slice(0, 30);
   return c.toLowerCase() === t.toLowerCase() ? { c } : { c, n: t };
 };
@@ -340,5 +360,13 @@ Cómo hacerlo:
 4. No publiques nada. Responde con la semana en una tabla corta (día, hueco, tema).`;
   }
 
-  return { estructuras, guardarEstructura, restaurarEstructura, categorias, guardarCategorias, semana, anio, guardarSemana, guardarSemanas, borrarSemana, plan, crearPiezas, pasarMes, promptSemana };
+  // Varias semanas a la vez (las elegidas en el calendario de marketing)
+  const lista = (l) => {
+    if (!Array.isArray(l) || !l.length) throw new EstrategiaError('Elige alguna semana');
+    return [...new Set(l.filter(esFecha).map(lunesDe))].slice(0, 60);
+  };
+  const pasarSemanas = (l) => ({ creadas: lista(l).reduce((n, x) => n + crearPiezas(x).creadas, 0) });
+  const vaciarSemanas = (l) => { for (const x of lista(l)) q.borrar.run(x); return { ok: true }; };
+
+  return { estructuras, guardarEstructura, restaurarEstructura, categorias, guardarCategorias, semana, anio, guardarSemana, guardarSemanas, borrarSemana, plan, crearPiezas, pasarMes, pasarSemanas, vaciarSemanas, promptSemana };
 }

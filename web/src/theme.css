@@ -1767,3 +1767,14 @@ button.est-boton:hover { background: color-mix(in srgb, var(--cat) 30%, transpar
 .est-nueva-cat { width: 110px; padding: 5px 8px; font-size: 12px; }
 @media (max-width: 760px) { .est-categorias-fila { grid-template-columns: 1fr; } }
 .cal-chip-cat { flex: none; font-size: 9.5px; font-weight: 700; padding: 0 4px; border-radius: 4px; margin-right: 4px; color: #fff; background: var(--cat); }
+
+/* Elegir varias semanas a la vez */
+.est-fila-caja { display: grid; grid-template-columns: 24px minmax(0, 1fr); gap: 6px; align-items: center; }
+.est-check { display: grid; place-items: center; cursor: pointer; }
+.est-check input { width: 15px; height: 15px; cursor: pointer; accent-color: var(--accent); }
+.est-fila-caja.elegida .est-fila { box-shadow: 0 0 0 2px color-mix(in srgb, var(--accent) 60%, transparent); }
+.est-mes-acciones { display: inline-flex; gap: 12px; }
+.est-ayuda-sel { flex: 1; text-align: center; }
+.est-lote { position: sticky; bottom: 12px; z-index: 30; display: flex; gap: 12px; align-items: center; flex-wrap: wrap; padding: 12px 16px; border-radius: 14px; background: var(--panel); border: 1px solid var(--accent-2); box-shadow: var(--sombra); }
+.est-lote b { margin-right: auto; }
+.est-check-dias { display: flex; gap: 8px; align-items: center; font-size: 13px; margin: 6px 0 8px; cursor: pointer; }

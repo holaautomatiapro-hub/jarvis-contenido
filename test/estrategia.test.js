@@ -63,8 +63,11 @@ describe('estrategia de contenido', () => {
       assert.equal(estrategia.plan({ desde: '2026-02-16', dias: 1 })[0].post, 'Educar (Por qué no te contestan los leads) + LM');
       // Las tablas antiguas (un texto por hueco) se pasan a botones
       const vieja = estrategia.guardarSemana('2026-02-23', { tipo: 'atraer', celdas: { post: ['Atraer', 'LM'], stories: ['Testimonio con CTA'], directo: [] } });
-      assert.deepEqual(vieja.filas.post.slice(0, 3), [[{ c: 'Viral', n: 'Atraer' }], [{ c: 'LM' }], []]);
-      assert.deepEqual(vieja.filas.stories[0], [{ c: 'Testimonio', n: 'Testimonio con CTA' }]);
+      assert.deepEqual(vieja.filas.post.slice(0, 1), [[{ c: 'Viral' }]], 'el «Atraer» de antes es Viral, sin nota');
+      assert.deepEqual(vieja.filas.stories[0], [{ c: 'Testimonio', n: 'con CTA' }]);
+      // Y los botones que salieron mal pasados con la versión anterior se arreglan solos
+      const mal = estrategia.guardarSemana('2026-04-06', { tipo: 'atraer', celdas: { post: [[{ c: 'Viral', n: 'Atraer' }], [{ c: 'LM', n: 'Educar (¿LM?)' }]] } });
+      assert.deepEqual(mal.filas.post.slice(0, 2), [[{ c: 'Viral' }], [{ c: 'Educar', n: '¿LM?' }]]);
       assert.equal(estrategia.guardarSemana('2026-02-16', { celdas: null }).propia, false);
 
       const e = estrategia.guardarEstructura('atraer', { filas: { ...estrategia.estructuras().atraer.filas, directo: [[], [], [{ c: 'Valor' }], [], [], [], [{ c: 'Q&A' }]] }, tipos: [{ nombre: 'Atraer', descripcion: 'Valor para nivel 1-2' }] });
@@ -104,6 +107,13 @@ describe('estrategia de contenido', () => {
       assert.equal(mes.semanas, 5);
       assert.ok(mes.creadas > 50);
       assert.throws(() => estrategia.pasarMes(2026, 13), /Mes/);
+      // Varias semanas elegidas: cambiarlas juntas, pasarlas y vaciarlas
+      const juntas = estrategia.guardarSemanas([{ lunes: '2027-01-04', objetivo: 'educacion', campana: 'Año Nuevo' }, { lunes: '2027-01-11', objetivo: 'educacion', campana: 'Año Nuevo' }]);
+      assert.deepEqual(juntas.map((x) => [x.tipo, x.campana]), [['educar', 'Año Nuevo'], ['educar', 'Año Nuevo']]);
+      assert.equal(estrategia.pasarSemanas(['2027-01-04', '2027-01-13']).creadas, 2 * 15, '7 posts + 7 stories + 1 directo por semana educativa');
+      estrategia.vaciarSemanas(['2027-01-04', '2027-01-11']);
+      assert.equal(estrategia.semana('2027-01-11').porDefecto, true);
+      assert.throws(() => estrategia.pasarSemanas([]), /Elige/);
       const prompt = estrategia.promptSemana('2026-11-16', { indicaciones: 'Oferta: programa 1:1' });
       assert.match(prompt, /Semana de venta/);
       assert.match(prompt, /Lunes 2026-11-16: Post: Educar \(info de la oferta\)/);
