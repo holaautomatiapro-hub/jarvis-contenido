@@ -5,10 +5,18 @@ import Icon from '../../components/Icon.jsx';
 import { celdasMes, diaCorto, diaLargo, hoyIso, mesDe, nombreMes, sumarMeses } from '../../lib/fechas.js';
 import { EditorFases } from './Fases.jsx';
 import { redDe } from '../../lib/redes.js';
+import { colorCategoria } from '../../lib/categorias.js';
 import { ChipEstado, MarcaLeadMagnet, Miniatura, useFases, Modal, esStory, estadoDe, objetivoDe, textoTipo, tipoDe } from './comun.jsx';
 
 const MAX_POR_DIA = 4;
 const DIAS = ['Lun', 'Mar', 'Mié', 'Jue', 'Vie', 'Sáb', 'Dom'];
+// Un hueco recién pasado desde Estrategia se llama «Post · Viral · nota»: en el calendario ya se ve su botón
+const tituloCorto = (p) => {
+  const t = p.titulo || 'Sin título';
+  if (!p.categoria) return t;
+  const resto = t.replace(/^(Post|Stories|Directo) · /, '').replace(p.categoria, '').replace(/^ · /, '').trim();
+  return t.startsWith(`${t.split(' · ')[0]} · ${p.categoria}`) ? resto || 'por definir' : t;
+};
 const ordenDia = (a, b) => (a.hora || '').localeCompare(b.hora || '') || a.id - b.id;
 
 // ---------- Calendario del mes ----------
@@ -209,7 +217,9 @@ export function Calendario({ piezas, versiones = [], carpetas = [], dia, setDia,
                     >
                       {(p.publicar_ig || p.ig_estado) ? <span className={`cal-chip-ig ${p.ig_estado || 'pendiente'}`}><Icon name="instagram" size={9} /></span> : null}
                       {p.leadmagnet ? <span className="cal-chip-lm" title="Lleva lead magnet"><Icon name="target" size={9} /></span> : null}
-                      <span className="cal-chip-tipo">{tipoDe(p.formato)?.corto || ''}</span>{p.titulo || 'Sin título'}
+                      <span className="cal-chip-tipo">{tipoDe(p.formato)?.corto || ''}</span>
+                      {p.categoria && <span className="cal-chip-cat" style={{ '--cat': colorCategoria(p.categoria) }}>{p.categoria}</span>}
+                      {tituloCorto(p)}
                       {conPieza.get(p.id)?.length ? <span className="cal-chip-redes" title={`También en: ${redesTxt(p)}`}>+{conPieza.get(p.id).length}</span> : null}
                     </button>
                   ))}

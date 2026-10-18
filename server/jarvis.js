@@ -140,7 +140,7 @@ export function createJarvis({ db, vault }) {
   // Normaliza los campos que se pueden escribir en una pieza
   const camposPieza = (c) => {
     const set = {};
-    for (const k of ['titulo', 'estado', 'formato', 'plataformas', 'fecha', 'hora', 'nota', 'caption', 'video_url', 'carpeta', 'archivos', 'leadmagnet_url', 'pilar', 'objetivo', 'gancho', 'cta', 'origen_ref']) {
+    for (const k of ['titulo', 'estado', 'formato', 'plataformas', 'fecha', 'hora', 'nota', 'caption', 'video_url', 'carpeta', 'archivos', 'leadmagnet_url', 'pilar', 'objetivo', 'gancho', 'cta', 'origen_ref', 'categoria']) {
       if (!(k in c)) continue;
       const v = c[k];
       if (k === 'archivos') set.archivos = archivosValidos(v);
@@ -180,6 +180,7 @@ export function createJarvis({ db, vault }) {
     if (set.gancho) set.gancho = set.gancho.slice(0, 300);
     if (set.cta) set.cta = set.cta.slice(0, 300);
     if (set.origen_ref) set.origen_ref = set.origen_ref.slice(0, 500);
+    if (set.categoria) set.categoria = set.categoria.slice(0, 30);
     if ('padre_id' in c) {
       const id = c.padre_id ? Number(c.padre_id) : null;
       if (id && !row(q.getPieza, id)) throw new JarvisError('La pieza de la que sale no existe');

@@ -592,10 +592,10 @@ export function createApp({ jarvis, archivos, miniaturas = null, estrategia = nu
       const fin = new Date(`${lunes}T12:00:00`); fin.setDate(fin.getDate() + 6);
       const hasta = fin.toLocaleDateString('sv-SE');
       return jarvis.listarPiezas().filter((p) => p.fecha && p.fecha >= lunes && p.fecha <= hasta)
-        .map((p) => ({ id: p.id, titulo: p.titulo, fecha: p.fecha, estado: p.estado, formato: p.formato, origen_ref: p.origen_ref }));
+        .map((p) => ({ id: p.id, titulo: p.titulo, fecha: p.fecha, estado: p.estado, formato: p.formato, categoria: p.categoria, origen_ref: p.origen_ref }));
     };
     app.get('/api/estrategia', h((req) => ({
-      estructuras: estrategia.estructuras(), semanas: estrategia.anio(req.query.anio), objetivos: OBJETIVOS_SEMANA, tacticas: TACTICAS, principios: PRINCIPIOS,
+      estructuras: estrategia.estructuras(), categorias: estrategia.categorias(), semanas: estrategia.anio(req.query.anio), objetivos: OBJETIVOS_SEMANA, tacticas: TACTICAS, principios: PRINCIPIOS,
       dias: DIAS, filas: FILAS, estaSemana: lunesDe(new Date().toLocaleDateString('sv-SE')), planificando: planificando(),
     })));
     app.get('/api/estrategia/plan', h((req) => estrategia.plan({ desde: req.query.desde || undefined, dias: req.query.dias })));
@@ -608,7 +608,10 @@ export function createApp({ jarvis, archivos, miniaturas = null, estrategia = nu
     app.put('/api/estrategia/semanas', h((req) => estrategia.guardarSemanas(req.body?.semanas), true));
     app.put('/api/estrategia/estructuras/:tipo', h((req) => estrategia.guardarEstructura(req.params.tipo, req.body || {}), true));
     app.delete('/api/estrategia/estructuras/:tipo', h((req) => estrategia.restaurarEstructura(req.params.tipo), true));
-    app.post('/api/estrategia/semana/:lunes/piezas', h((req) => estrategia.crearPiezas(req.params.lunes, req.body?.huecos), true));
+    app.post('/api/estrategia/semana/:lunes/piezas', h((req) => estrategia.crearPiezas(req.params.lunes, req.body?.huecos || null), true));
+    app.post('/api/estrategia/mes', h((req) => estrategia.pasarMes(req.body?.anio, req.body?.mes), true));
+    app.get('/api/estrategia/categorias', h(() => estrategia.categorias()));
+    app.put('/api/estrategia/categorias', h((req) => estrategia.guardarCategorias(req.body || {}), true));
     app.post('/api/estrategia/semana/:lunes/jarvis', h((req) => {
       if (!asistente) throw Object.assign(new Error('JARVIS (Claude Code) no está disponible'), { publico: true });
       if (asistente.estado({ conversacion: 'guiones' }).ocupado) throw new OcupadoError('JARVIS está terminando otra petición. Espera un momento.');

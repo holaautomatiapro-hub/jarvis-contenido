@@ -2,6 +2,7 @@ import { useEffect, useMemo, useState } from 'react';
 import Icon from '../components/Icon.jsx';
 import { api, useRecurso } from '../lib/api.js';
 import { Modal } from './contenido/comun.jsx';
+import { colorCategoria } from '../lib/categorias.js';
 
 // Estrategia: el calendario de marketing por semanas (atraer audiencia, semana educativa o de venta, con su
 // objetivo, táctica y campaña) y qué tipo de contenido toca cada día en directo, post y stories.
@@ -22,9 +23,67 @@ function ChipTipo({ e, apagado = false, onClick, title }) {
   );
 }
 
-// La tabla de la semana: directo, post y stories de lunes a domingo. editable: cada celda es un campo
-function Tabla({ filas, nombresFilas, dias, editable = false, onCambio, fechas = null, piezas = null, color }) {
-  const cambiar = (fila, i, v) => onCambio({ ...filas, [fila]: filas[fila].map((x, j) => (j === i ? v : x)) });
+// Un botón de la estrategia: su categoría (LM, Viral, Educar…) y, debajo, su nota si la tiene
+export function Boton({ x, onClick, title }) {
+  const Tag = onClick ? 'button' : 'span';
+  return (
+    <Tag type={onClick ? 'button' : undefined} className="est-boton" style={{ '--cat': colorCategoria(x.c) }} onClick={onClick} title={title || (x.n ? `${x.c} · ${x.n}` : x.c)}>
+      <b>{x.c}</b>{x.n && <small>{x.n}</small>}
+    </Tag>
+  );
+}
+
+// El menú de un botón (o de uno nuevo): elegir la categoría, escribir una nota o quitarlo
+function MenuBoton({ x, categorias, onElegir, onQuitar, onCerrar, pos }) {
+  const [nota, setNota] = useState(x?.n || '');
+  const [otra, setOtra] = useState('');
+  useEffect(() => {
+    const f = (e) => { if (!e.target.closest?.('.est-menu')) onCerrar(); };
+    const t = setTimeout(() => document.addEventListener('mousedown', f), 0);
+    return () => { clearTimeout(t); document.removeEventListener('mousedown', f); };
+  }, [onCerrar]);
+  const elegir = (c) => onElegir({ c, ...(nota.trim() ? { n: nota.trim() } : {}) });
+  return (
+    <div className="est-menu" role="dialog" style={pos}>
+      <div className="est-menu-cats">
+        {categorias.map((c) => (
+          <button type="button" key={c} className={`est-boton${x?.c === c ? ' sel' : ''}`} style={{ '--cat': colorCategoria(c) }} onClick={() => elegir(c)}><b>{c}</b></button>
+        ))}
+      </div>
+      <input className="campo" value={nota} onChange={(e) => setNota(e.target.value)} placeholder="Nota (opcional): «Problema 1», «con CTA»…" maxLength={120}
+        onKeyDown={(e) => { if (e.key === 'Enter' && x?.c) { e.preventDefault(); elegir(x.c); } }} />
+      <div className="est-menu-pie">
+        <input className="campo" value={otra} onChange={(e) => setOtra(e.target.value)} placeholder="Otro botón…" maxLength={30}
+          onKeyDown={(e) => { if (e.key === 'Enter' && otra.trim()) { e.preventDefault(); elegir(otra.trim()); } }} />
+        {x?.c && <button type="button" className="link-btn" onClick={() => elegir(x.c)}>Guardar nota</button>}
+        {onQuitar && <button type="button" className="link-btn rojo" onClick={onQuitar}>Quitar</button>}
+      </div>
+    </div>
+  );
+}
+
+// La tabla de la semana: directo, post y stories de lunes a domingo, con sus botones. editable: se añaden,
+// cambian y quitan botones en cada hueco
+function Tabla({ filas, nombresFilas, dias, editable = false, onCambio, fechas = null, piezas = null, color, categorias = {} }) {
+  const [menu, setMenu] = useState(null); // { fila, dia, i, pos } (i = null: uno nuevo)
+  // El menú va fijo en pantalla, debajo del hueco (dentro de la tabla se cortaría)
+  const abrir = (e, m) => {
+    const r = e.currentTarget.closest('td').getBoundingClientRect();
+    setMenu({ ...m, pos: { left: Math.max(8, Math.min(window.innerWidth - 268, r.left + r.width / 2 - 130)), top: Math.max(8, Math.min(r.bottom + 4, window.innerHeight - 230)) } });
+  };
+  const poner = (fila, dia, lista) => onCambio({ ...filas, [fila]: filas[fila].map((x, j) => (j === dia ? lista : x)) });
+  const elegir = (nuevo) => {
+    const { fila, dia, i } = menu;
+    const lista = [...filas[fila][dia]];
+    if (i == null) lista.push(nuevo); else lista[i] = nuevo;
+    poner(fila, dia, lista);
+    setMenu(null);
+  };
+  const quitar = () => {
+    const { fila, dia, i } = menu;
+    poner(fila, dia, filas[fila][dia].filter((_, j) => j !== i));
+    setMenu(null);
+  };
   return (
     <div className="est-tabla-caja">
       <table className="est-tabla" style={{ '--c': color }}>
@@ -35,13 +94,20 @@ function Tabla({ filas, nombresFilas, dias, editable = false, onCambio, fechas =
           {nombresFilas.map((f) => (
             <tr key={f.id}>
               <th>{f.nombre}</th>
-              {dias.map((d, i) => (
-                <td key={d} className={filas[f.id][i] ? '' : 'vacia'}>
-                  {editable
-                    ? <textarea className="est-celda" rows={2} value={filas[f.id][i]} onChange={(e) => cambiar(f.id, i, e.target.value)} placeholder="—" maxLength={120} />
-                    : filas[f.id][i] || <span className="t-dim">—</span>}
-                </td>
-              ))}
+              {dias.map((d, i) => {
+                const lista = filas[f.id][i] || [];
+                const abierto = menu && menu.fila === f.id && menu.dia === i;
+                return (
+                  <td key={d} className={`${lista.length ? '' : 'vacia'}${editable ? ' editable' : ''}`}>
+                    <div className="est-botones">
+                      {lista.map((x, j) => <Boton key={`${x.c}-${j}`} x={x} onClick={editable ? (e) => abrir(e, { fila: f.id, dia: i, i: j }) : undefined} />)}
+                      {!lista.length && !editable && <span className="t-dim">—</span>}
+                      {editable && lista.length < 6 && <button type="button" className="est-mas" onClick={(e) => abrir(e, { fila: f.id, dia: i, i: null })} aria-label="Añadir botón">+</button>}
+                    </div>
+                    {abierto && <MenuBoton x={menu.i != null ? lista[menu.i] : null} categorias={categorias[f.id] || []} onElegir={elegir} onQuitar={menu.i != null ? quitar : null} onCerrar={() => setMenu(null)} pos={menu.pos} />}
+                  </td>
+                );
+              })}
             </tr>
           ))}
           {piezas && (
@@ -49,7 +115,7 @@ function Tabla({ filas, nombresFilas, dias, editable = false, onCambio, fechas =
               <th>En Contenido</th>
               {fechas.map((f) => (
                 <td key={f}>
-                  {(piezas.get(f) || []).map((p) => <span key={p.id} className="est-pieza" title={`${p.titulo} · ${p.estado}`}>{p.titulo}</span>)}
+                  {(piezas.get(f) || []).map((p) => <span key={p.id} className="est-pieza" style={p.categoria ? { '--cat': colorCategoria(p.categoria) } : undefined} title={`${p.titulo} · ${p.estado}`}>{p.titulo}</span>)}
                   {!(piezas.get(f) || []).length && <span className="t-dim">Nada</span>}
                 </td>
               ))}
@@ -57,6 +123,37 @@ function Tabla({ filas, nombresFilas, dias, editable = false, onCambio, fechas =
           )}
         </tbody>
       </table>
+    </div>
+  );
+}
+
+// Los botones que se pueden poner en cada fila (posts, stories, directos): añadir y quitar
+function Categorias({ data, recargar }) {
+  const [nuevo, setNuevo] = useState({});
+  const [error, setError] = useState('');
+  const guardar = async (fila, lista) => {
+    setError('');
+    try { await api('/api/estrategia/categorias', { method: 'PUT', body: { [fila]: lista } }); recargar(); } catch (e) { setError(e.message); }
+  };
+  return (
+    <div className="est-categorias">
+      {data.filas.map((f) => (
+        <div key={f.id} className="est-categorias-fila">
+          <span className="label">{f.id === 'post' ? 'Publicaciones' : f.nombre}</span>
+          <div className="est-botones">
+            {data.categorias[f.id].map((c) => (
+              <span key={c} className="est-boton" style={{ '--cat': colorCategoria(c) }}>
+                <b>{c}</b>
+                <button type="button" className="est-boton-x" onClick={() => guardar(f.id, data.categorias[f.id].filter((x) => x !== c))} aria-label={`Quitar ${c}`}>×</button>
+              </span>
+            ))}
+            <form onSubmit={(e) => { e.preventDefault(); const v = (nuevo[f.id] || '').trim(); if (v) { guardar(f.id, [...data.categorias[f.id], v]); setNuevo({ ...nuevo, [f.id]: '' }); } }}>
+              <input className="campo est-nueva-cat" value={nuevo[f.id] || ''} onChange={(e) => setNuevo({ ...nuevo, [f.id]: e.target.value })} placeholder="+ Añadir" maxLength={30} />
+            </form>
+          </div>
+        </div>
+      ))}
+      {error && <div className="aviso error">{error}</div>}
     </div>
   );
 }
@@ -96,13 +193,11 @@ function Semana({ lunes, data, onClose, recargarAnio }) {
     setOcupado('');
   };
   const crearPiezas = async () => {
-    const huecos = [];
-    fechas.forEach((_, i) => data.filas.forEach((fl) => { if (filas[fl.id][i]) huecos.push({ dia: i, fila: fl.id }); }));
     setOcupado('piezas'); setAviso(null);
     try {
-      await guardar();
-      const x = await api(`/api/estrategia/semana/${s.lunes}/piezas`, { method: 'POST', body: { huecos } });
-      setAviso({ tipo: 'ok', texto: x.creadas ? `${x.creadas} ${x.creadas === 1 ? 'idea creada' : 'ideas creadas'} en Contenido, cada una en su día.` : 'Ya estaban todas creadas.' });
+      await guardar(celdas ? { celdas, tipo } : {});
+      const x = await api(`/api/estrategia/semana/${s.lunes}/piezas`, { method: 'POST', body: {} });
+      setAviso({ tipo: 'ok', texto: x.creadas ? `${x.creadas} ${x.creadas === 1 ? 'hueco pasado' : 'huecos pasados'} al calendario de Contenido, cada uno en su día. Ábrelos allí para ir metiendo el contenido.` : 'Ya estaba todo en el calendario (los días que ya han pasado no se pasan).' });
       recargar();
     } catch (err) { setAviso({ tipo: 'error', texto: err.message }); }
     setOcupado('');
@@ -169,7 +264,7 @@ function Semana({ lunes, data, onClose, recargarAnio }) {
           )}
         </div>
       </div>
-      <Tabla filas={filas} nombresFilas={data.filas} dias={data.dias} editable={Boolean(celdas)} onCambio={setCeldas} fechas={fechas} piezas={piezas} color={e.color} />
+      <Tabla filas={filas} nombresFilas={data.filas} dias={data.dias} editable={Boolean(celdas)} onCambio={setCeldas} fechas={fechas} piezas={piezas} color={e.color} categorias={data.categorias} />
       {e.pasos?.length > 0 && <ol className="est-pasos">{e.pasos.map((p) => <li key={p}>{p}</li>)}</ol>}
 
       {r.planificando && <div className="aviso">JARVIS está planificando esta semana: las piezas irán apareciendo en Contenido, cada una en su día.</div>}
@@ -179,8 +274,8 @@ function Semana({ lunes, data, onClose, recargarAnio }) {
         <button type="button" className="btn" onClick={conJarvis} disabled={Boolean(ocupado) || r.planificando}><Icon name="sparkle" size={14} />{ocupado === 'jarvis' ? 'Enviando…' : 'Que JARVIS proponga los temas'}</button>
       </div>
       <div className="modal-pie">
-        <button type="button" className="btn btn-sec" onClick={crearPiezas} disabled={Boolean(ocupado)} title="Una idea en Contenido por cada hueco, con su día y lo que toca como título">
-          <Icon name="plus" size={14} />{ocupado === 'piezas' ? 'Creando…' : 'Crear las ideas de la semana'}
+        <button type="button" className="btn btn-sec" onClick={crearPiezas} disabled={Boolean(ocupado)} title="Cada botón pasa al calendario de Contenido como un hueco en su día, para ir metiendo el contenido">
+          <Icon name="calendar" size={14} />{ocupado === 'piezas' ? 'Pasando…' : 'Pasar al calendario'}
         </button>
         <div className="est-semana-btns">
           {!s.porDefecto && <button type="button" className="link-btn" onClick={async () => { await api(`/api/estrategia/semana/${s.lunes}`, { method: 'DELETE' }); recargarAnio(); onClose(); }}>Vaciar la semana</button>}
@@ -219,7 +314,7 @@ function Estructura({ e, data, recargar }) {
           <label className="est-campo"><span className="label">Posts</span>{campo('posts', 'Nivel de conciencia alto (4-5)')}</label>
           <label className="est-campo"><span className="label">Stories</span>{campo('stories', 'Storytelling a nivel 4-5')}</label>
         </div>
-        <Tabla filas={editando.filas} nombresFilas={data.filas} dias={data.dias} editable onCambio={(filas) => setEditando({ ...editando, filas })} color={e.color} />
+        <Tabla filas={editando.filas} nombresFilas={data.filas} dias={data.dias} editable onCambio={(filas) => setEditando({ ...editando, filas })} color={e.color} categorias={data.categorias} />
         <div className="est-editar">
           <label className="est-campo est-ancho"><span className="label">Tipos de contenido (uno por línea, «Nombre: qué es»)</span><textarea className="campo" rows={5} value={editando.tiposTxt} onChange={(ev) => setEditando({ ...editando, tiposTxt: ev.target.value })} /></label>
           <label className="est-campo est-ancho"><span className="label">Cómo prepararla (un paso por línea)</span><textarea className="campo" rows={3} value={editando.pasosTxt} onChange={(ev) => setEditando({ ...editando, pasosTxt: ev.target.value })} /></label>
@@ -261,6 +356,18 @@ export default function Estrategia() {
   const [data, recargar, error] = useRecurso(`/api/estrategia?anio=${anio}`, null);
   const [abierta, setAbierta] = useState(null);
   const [verEstructura, setVerEstructura] = useState('atraer');
+  const [aviso, setAviso] = useState(null);
+  const [pasando, setPasando] = useState(null);
+  // «Pasar al calendario» todo un mes: cada botón de cada día pasa a Contenido como un hueco
+  const pasarMes = async (m) => {
+    if (!window.confirm(`¿Pasar ${MESES[m].toLowerCase()} al calendario de Contenido? Cada botón de cada día (desde hoy) será un hueco en su día para ir metiendo el contenido. Lo que ya esté pasado no se repite.`)) return;
+    setPasando(m); setAviso(null);
+    try {
+      const r = await api('/api/estrategia/mes', { method: 'POST', body: { anio, mes: m + 1 } });
+      setAviso({ tipo: 'ok', texto: r.creadas ? `${MESES[m]}: ${r.creadas} ${r.creadas === 1 ? 'hueco pasado' : 'huecos pasados'} al calendario de Contenido.` : `${MESES[m]} ya estaba en el calendario (los días que ya han pasado no se pasan).` });
+    } catch (e) { setAviso({ tipo: 'error', texto: e.message }); }
+    setPasando(null);
+  };
   const porMes = useMemo(() => {
     const m = Array.from({ length: 12 }, () => []);
     for (const s of data?.semanas || []) {
@@ -304,10 +411,14 @@ export default function Estrategia() {
           </div>
           <div className="est-leyenda">{Object.values(est).map((e) => <span key={e.id}><i style={{ background: e.color }} />{e.nombre}</span>)}</div>
         </div>
+        {aviso && <div className={`aviso ${aviso.tipo}`} style={{ marginBottom: 10 }}>{aviso.texto}<button className="link-btn" onClick={() => setAviso(null)}>Cerrar</button></div>}
         <div className="est-meses">
           {porMes.map((semanas, m) => (
             <div key={MESES[m]} className="est-mes">
-              <div className="est-mes-nombre">{MESES[m]}</div>
+              <div className="est-mes-nombre">
+                <span>{MESES[m]}</span>
+                {semanas.length > 0 && <button type="button" className="link-btn" onClick={() => pasarMes(m)} disabled={pasando != null}><Icon name="calendar" size={11} /> {pasando === m ? 'Pasando…' : 'Pasar al calendario'}</button>}
+              </div>
               {semanas.map((s, i) => {
                 const e = est[s.tipo];
                 return (
@@ -333,6 +444,8 @@ export default function Estrategia() {
             {Object.values(est).map((e) => <button key={e.id} type="button" className={verEstructura === e.id ? 'on' : ''} onClick={() => setVerEstructura(e.id)}>{e.nombre}</button>)}
           </div>
         </div>
+        <div className="est-botones-titulo"><span className="label">Botones que puedes poner</span><span className="ayuda">Los tipos de contenido de cada fila. Añade los tuyos o quita los que no uses.</span></div>
+        <Categorias data={data} recargar={recargar} />
         <Estructura key={verEstructura + (est[verEstructura].cambiada ? '-c' : '')} e={est[verEstructura]} data={data} recargar={recargar} />
       </section>
 

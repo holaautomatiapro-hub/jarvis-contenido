@@ -50,6 +50,7 @@ export function buildServer(jarvis, { origen = 'claude', avisar = () => {}, inst
     objetivo: z.enum(OBJETIVOS).optional().describe('atraer (alcance, gente nueva), nutrir (confianza) o convertir (ventas, leads)'),
     gancho: z.string().optional().describe('El gancho: la primera frase o el texto del primer segundo'),
     cta: z.string().optional().describe('La llamada a la acción (p. ej. «comenta GUÍA»)'),
+    categoria: z.string().optional().describe('El botón de la estrategia que cubre: LM, Viral, Testimonio, Educar, Conexión (posts) o Educar, LM, Testimonio, Q&A, Comunidad, Personal (stories). Mira ver_estrategia'),
   };
 
   tool('capturar_idea', 'Guarda una idea de contenido: crea una nota en 01-Ideas y una tarjeta en la columna Idea del pipeline.',
