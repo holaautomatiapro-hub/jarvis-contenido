@@ -1,3 +1,4 @@
+import { randomUUID } from 'node:crypto';
 import { ajustes, row, rows } from './db.js';
 
 // Estrategia: qué tipo de contenido toca cada día según la semana sea para atraer audiencia, educar (preparar la
@@ -157,9 +158,9 @@ export function createEstrategia({ db, jarvis = null, hoy = () => iso(new Date()
   const q = {
     una: db.prepare('SELECT * FROM estrategia_semanas WHERE lunes = ?'),
     rango: db.prepare('SELECT * FROM estrategia_semanas WHERE lunes BETWEEN ? AND ? ORDER BY lunes'),
-    guardar: db.prepare(`INSERT INTO estrategia_semanas (lunes, tipo, objetivo, detalle, tactica, campana, celdas, notas) VALUES (@lunes, @tipo, @objetivo, @detalle, @tactica, @campana, @celdas, @notas)
+    guardar: db.prepare(`INSERT INTO estrategia_semanas (lunes, tipo, objetivo, detalle, tactica, campana, celdas, notas, plantilla) VALUES (@lunes, @tipo, @objetivo, @detalle, @tactica, @campana, @celdas, @notas, @plantilla)
       ON CONFLICT(lunes) DO UPDATE SET tipo = excluded.tipo, objetivo = excluded.objetivo, detalle = excluded.detalle, tactica = excluded.tactica, campana = excluded.campana,
-        celdas = excluded.celdas, notas = excluded.notas, actualizado = datetime('now','localtime')`),
+        celdas = excluded.celdas, notas = excluded.notas, plantilla = excluded.plantilla, actualizado = datetime('now','localtime')`),
     borrar: db.prepare('DELETE FROM estrategia_semanas WHERE lunes = ?'),
   };
 
@@ -228,7 +229,7 @@ export function createEstrategia({ db, jarvis = null, hoy = () => iso(new Date()
     return {
       lunes, domingo: masDias(lunes, 6), tipo, porDefecto: !r?.tipo && !r?.objetivo,
       objetivo: r?.objetivo || null, detalle: r?.detalle || null, tactica: r?.tactica || null, campana: r?.campana || null, notas: r?.notas || null,
-      propia: Boolean(celdas), filas: celdas ? filasValidas(celdas) : est[tipo].filas,
+      plantilla: r?.plantilla || null, propia: Boolean(celdas), filas: celdas ? filasValidas(celdas) : est[tipo].filas,
     };
   }
   function semana(lunes) {
@@ -257,7 +258,9 @@ export function createEstrategia({ db, jarvis = null, hoy = () => iso(new Date()
     // Al elegir el objetivo sin decir la estructura, va la que le toca
     if ('objetivo' in d && !('tipo' in d) && objetivo) tipo = tipoDeObjetivo(objetivo);
     const celdas = 'celdas' in d ? (d.celdas ? JSON.stringify(filasValidas(d.celdas)) : null) : actual.celdas ?? null;
-    q.guardar.run({ lunes: l, tipo, objetivo, detalle: v('detalle', 120), tactica: v('tactica', 160), campana: v('campana', 120), celdas, notas: v('notas', 2000) });
+    // La plantilla puesta se olvida si la semana vuelve a ser la de su estructura
+    const plantilla = 'plantilla' in d ? texto(d.plantilla, 60) : celdas ? actual.plantilla ?? null : null;
+    q.guardar.run({ lunes: l, tipo, objetivo, detalle: v('detalle', 120), tactica: v('tactica', 160), campana: v('campana', 120), celdas, notas: v('notas', 2000), plantilla });
     return semana(l);
   }
   // Varias semanas de golpe (p. ej. una campaña: educativa, anuncio y venta)
@@ -269,6 +272,36 @@ export function createEstrategia({ db, jarvis = null, hoy = () => iso(new Date()
     if (!esFecha(lunes)) throw new EstrategiaError('Fecha no válida');
     q.borrar.run(lunesDe(lunes));
     return semana(lunes);
+  }
+
+  // ---------- Plantillas de semana: una semana ya configurada, guardada para ponerla en cualquier otra ----------
+  const CAMPOS_PLANTILLA = ['detalle', 'tactica', 'campana', 'notas'];
+  function plantillas() {
+    const l = aj.leer('estrategia_plantillas', []);
+    return Array.isArray(l) ? l.map((p) => ({ ...p, tipo: TIPOS_SEMANA.includes(p.tipo) ? p.tipo : 'atraer', filas: filasValidas(p.filas) })) : [];
+  }
+  // Guarda la semana tal como está (estructura, días y textos). Con el mismo nombre que otra, la cambia.
+  function guardarPlantilla({ nombre, lunes } = {}) {
+    const n = texto(nombre, 60);
+    if (!n) throw new EstrategiaError('Ponle un nombre a la plantilla');
+    const s = semana(lunes);
+    const lista = plantillas();
+    const previa = lista.find((p) => p.nombre.toLowerCase() === n.toLowerCase());
+    if (!previa && lista.length >= 50) throw new EstrategiaError('Ya tienes 50 plantillas: borra alguna');
+    const p = { id: previa?.id || randomUUID().slice(0, 8), nombre: n, tipo: s.tipo, filas: s.filas, ...Object.fromEntries(CAMPOS_PLANTILLA.map((k) => [k, s[k] || null])), creada: hoy() };
+    aj.guardar('estrategia_plantillas', previa ? lista.map((x) => (x.id === previa.id ? p : x)) : [...lista, p]);
+    return plantillas();
+  }
+  function borrarPlantilla(id) {
+    aj.guardar('estrategia_plantillas', plantillas().filter((p) => p.id !== id));
+    return plantillas();
+  }
+  // Pone la plantilla en esas semanas: su estructura y sus días; sus textos, solo los que tenga escritos
+  function aplicarPlantilla(id, semanas) {
+    const p = plantillas().find((x) => x.id === id);
+    if (!p) throw new EstrategiaError('Esa plantilla ya no existe');
+    const textos = Object.fromEntries(CAMPOS_PLANTILLA.filter((k) => p[k]).map((k) => [k, p[k]]));
+    return lista(semanas).map((l) => guardarSemana(l, { tipo: p.tipo, celdas: p.filas, plantilla: p.nombre, ...textos }));
   }
 
   // ---------- El plan de cada día ----------
@@ -368,5 +401,5 @@ Cómo hacerlo:
   const pasarSemanas = (l) => ({ creadas: lista(l).reduce((n, x) => n + crearPiezas(x).creadas, 0) });
   const vaciarSemanas = (l) => { for (const x of lista(l)) q.borrar.run(x); return { ok: true }; };
 
-  return { estructuras, guardarEstructura, restaurarEstructura, categorias, guardarCategorias, semana, anio, guardarSemana, guardarSemanas, borrarSemana, plan, crearPiezas, pasarMes, pasarSemanas, vaciarSemanas, promptSemana };
+  return { estructuras, guardarEstructura, restaurarEstructura, categorias, guardarCategorias, plantillas, guardarPlantilla, borrarPlantilla, aplicarPlantilla, semana, anio, guardarSemana, guardarSemanas, borrarSemana, plan, crearPiezas, pasarMes, pasarSemanas, vaciarSemanas, promptSemana };
 }

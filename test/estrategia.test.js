@@ -167,4 +167,58 @@ describe('estrategia de contenido', () => {
       assert.ok(v.estructuras.educar.tipos.length > 0);
     } finally { limpiar(); }
   });
+
+  test('plantillas de semana: guardar una semana configurada y ponerla en otras', async () => {
+    const { estrategia, jarvis, limpiar } = nuevo();
+    const server = http.createServer();
+    try {
+      const dias = estrategia.estructuras().vender.filas;
+      dias.post[0] = [{ c: 'Testimonio', n: 'De Laura' }, { c: 'LM' }];
+      estrategia.guardarSemana('2026-11-02', { tipo: 'vender', celdas: dias, campana: 'Black Friday', notas: 'Objeción: precio' });
+      assert.throws(() => estrategia.guardarPlantilla({ nombre: '  ', lunes: '2026-11-02' }), /nombre/);
+      const [p] = estrategia.guardarPlantilla({ nombre: 'Semana de venta BF', lunes: '2026-11-04' });
+      assert.equal(p.tipo, 'vender');
+      assert.deepEqual(p.filas.post[0], [{ c: 'Testimonio', n: 'De Laura' }, { c: 'LM' }]);
+      assert.equal(p.campana, 'Black Friday');
+
+      // En una semana con su propio detalle: se quedan los textos que la plantilla no tiene
+      estrategia.guardarSemana('2026-11-16', { detalle: 'Mi detalle' });
+      const puestas = estrategia.aplicarPlantilla(p.id, ['2026-11-11', '2026-11-18', '2026-11-19']);
+      assert.deepEqual(puestas.map((s) => s.lunes), ['2026-11-09', '2026-11-16']);
+      const s = estrategia.semana('2026-11-16');
+      assert.equal(s.tipo, 'vender');
+      assert.equal(s.plantilla, 'Semana de venta BF');
+      assert.equal(s.detalle, 'Mi detalle');
+      assert.equal(s.notas, 'Objeción: precio');
+      assert.deepEqual(s.filas.post[0], [{ c: 'Testimonio', n: 'De Laura' }, { c: 'LM' }]);
+      // Al volver a la estructura, ya no es la de la plantilla
+      assert.equal(estrategia.guardarSemana('2026-11-16', { celdas: null }).plantilla, null);
+
+      // Con el mismo nombre la cambia, no la repite
+      estrategia.guardarPlantilla({ nombre: 'semana de venta bf', lunes: '2026-10-05' });
+      assert.equal(estrategia.plantillas().length, 1);
+      assert.equal(estrategia.plantillas()[0].tipo, 'atraer');
+
+      await new Promise((ok) => server.listen(0, '127.0.0.1', ok));
+      server.on('request', createApp({ jarvis, estrategia, port: server.address().port, status: async () => [] }));
+      const base = `http://127.0.0.1:${server.address().port}`;
+      const pedir = (ruta, metodo = 'GET', body) => fetch(base + ruta, { method: metodo, headers: { 'content-type': 'application/json' }, body: body && JSON.stringify(body) }).then(async (r) => ({ status: r.status, json: await r.json() }));
+      assert.equal((await pedir('/api/estrategia?anio=2026')).json.plantillas.length, 1);
+      const nueva = (await pedir('/api/estrategia/plantillas', 'POST', { nombre: 'Educativa', lunes: '2026-11-02' })).json.find((x) => x.nombre === 'Educativa');
+      const ap = await pedir(`/api/estrategia/plantillas/${nueva.id}/aplicar`, 'POST', { lunes: ['2026-12-07'] });
+      assert.equal(ap.status, 200);
+      assert.equal(ap.json[0].plantilla, 'Educativa');
+      assert.equal((await pedir('/api/estrategia/plantillas/nada/aplicar', 'POST', { lunes: ['2026-12-07'] })).status, 400);
+      assert.equal((await pedir(`/api/estrategia/plantillas/${nueva.id}`, 'DELETE')).json.length, 1);
+
+      const [a, b] = InMemoryTransport.createLinkedPair();
+      await buildServer(jarvis, { calendario: estrategia }).connect(a);
+      const client = new Client({ name: 't', version: '1' });
+      await client.connect(b);
+      const v = JSON.parse((await client.callTool({ name: 'ver_estrategia', arguments: { desde: '2026-12-07', dias: 1 } })).content[0].text);
+      assert.equal(v.plantillas[0].nombre, 'semana de venta bf');
+      const m = await client.callTool({ name: 'poner_plantilla_semana', arguments: { plantilla: v.plantillas[0].id, fechas: ['2026-12-14'] } });
+      assert.equal(JSON.parse(m.content[0].text)[0].plantilla, 'semana de venta bf');
+    } finally { server.close(); limpiar(); }
+  });
 });

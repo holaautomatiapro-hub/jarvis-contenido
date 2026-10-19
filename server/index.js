@@ -595,7 +595,7 @@ export function createApp({ jarvis, archivos, miniaturas = null, estrategia = nu
         .map((p) => ({ id: p.id, titulo: p.titulo, fecha: p.fecha, estado: p.estado, formato: p.formato, categoria: p.categoria, origen_ref: p.origen_ref }));
     };
     app.get('/api/estrategia', h((req) => ({
-      estructuras: estrategia.estructuras(), categorias: estrategia.categorias(), semanas: estrategia.anio(req.query.anio), objetivos: OBJETIVOS_SEMANA, tacticas: TACTICAS, principios: PRINCIPIOS,
+      estructuras: estrategia.estructuras(), categorias: estrategia.categorias(), plantillas: estrategia.plantillas(), semanas: estrategia.anio(req.query.anio), objetivos: OBJETIVOS_SEMANA, tacticas: TACTICAS, principios: PRINCIPIOS,
       dias: DIAS, filas: FILAS, estaSemana: lunesDe(new Date().toLocaleDateString('sv-SE')), planificando: planificando(),
     })));
     app.get('/api/estrategia/plan', h((req) => estrategia.plan({ desde: req.query.desde || undefined, dias: req.query.dias })));
@@ -612,6 +612,10 @@ export function createApp({ jarvis, archivos, miniaturas = null, estrategia = nu
     app.post('/api/estrategia/mes', h((req) => estrategia.pasarMes(req.body?.anio, req.body?.mes), true));
     app.post('/api/estrategia/semanas/piezas', h((req) => estrategia.pasarSemanas(req.body?.lunes), true));
     app.post('/api/estrategia/semanas/vaciar', h((req) => estrategia.vaciarSemanas(req.body?.lunes), true));
+    app.get('/api/estrategia/plantillas', h(() => estrategia.plantillas()));
+    app.post('/api/estrategia/plantillas', h((req) => estrategia.guardarPlantilla(req.body || {}), true));
+    app.delete('/api/estrategia/plantillas/:id', h((req) => estrategia.borrarPlantilla(req.params.id), true));
+    app.post('/api/estrategia/plantillas/:id/aplicar', h((req) => estrategia.aplicarPlantilla(req.params.id, req.body?.lunes), true));
     app.get('/api/estrategia/categorias', h(() => estrategia.categorias()));
     app.put('/api/estrategia/categorias', h((req) => estrategia.guardarCategorias(req.body || {}), true));
     app.post('/api/estrategia/semana/:lunes/jarvis', h((req) => {

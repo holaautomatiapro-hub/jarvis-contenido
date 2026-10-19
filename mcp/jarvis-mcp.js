@@ -202,7 +202,14 @@ export function buildServer(jarvis, { origen = 'claude', avisar = () => {}, inst
       ({ desde, dias }) => ({
         dias: calendario.plan({ desde, dias }),
         estructuras: Object.fromEntries(Object.entries(calendario.estructuras()).map(([k, e]) => [k, { nombre: e.nombre, etiqueta: e.etiqueta, resumen: e.resumen, posts: e.posts, stories: e.stories, tipos: e.tipos, pasos: e.pasos }])),
+        plantillas: calendario.plantillas().map((p) => ({ id: p.id, nombre: p.nombre, tipo: p.tipo })),
       }));
+    tool('poner_plantilla_semana', 'Pone una de las plantillas de semana de la persona (las que ha guardado en Estrategia; mira ver_estrategia) en una o varias semanas: su estructura, qué toca cada día y sus textos. Solo cuando la persona lo pida.',
+      {
+        plantilla: z.string().describe('El id de la plantilla (de ver_estrategia)'),
+        fechas: z.array(z.string()).min(1).max(60).describe('Un día cualquiera de cada semana, AAAA-MM-DD'),
+      },
+      ({ plantilla, fechas }) => calendario.aplicarPlantilla(plantilla, fechas), true);
     tool('marcar_semana_estrategia', 'Apunta en el calendario de marketing qué es una semana: su estructura (atraer, educar o vender), su objetivo, su táctica y su campaña. Solo cuando la persona lo pida o lo confirme (p. ej. al planificar un lanzamiento: semanas educativas, anuncio de la oferta y venta).',
       {
         fecha: z.string().describe('Cualquier día de esa semana, AAAA-MM-DD'),
