@@ -279,6 +279,8 @@ export function openDb(file) {
   migrar('ALTER TABLE piezas ADD COLUMN guion_nota TEXT');
   // El botón de la estrategia que cubre la pieza (LM, Viral, Educar, Testimonio…)
   migrar('ALTER TABLE piezas ADD COLUMN categoria TEXT');
+  // La plantilla de semana que se puso en esa semana (su nombre)
+  migrar('ALTER TABLE estrategia_semanas ADD COLUMN plantilla TEXT');
   db.exec('CREATE INDEX IF NOT EXISTS piezas_padre ON piezas(padre_id); CREATE INDEX IF NOT EXISTS piezas_origen_ref ON piezas(origen_ref);');
   // Windsor: todas las métricas de cada publicación (JSON) e historias
   migrar('ALTER TABLE ig_media ADD COLUMN extra TEXT');
