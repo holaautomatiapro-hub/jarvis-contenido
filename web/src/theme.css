@@ -1025,6 +1025,14 @@ input.filtro-select { padding-right: 10px; }
 .bib-tipo { position: absolute; top: 8px; right: 8px; font-size: 10px; background: color-mix(in srgb, var(--hondo) 75%, transparent); border-radius: 6px; padding: 2px 7px; }
 .bib-n { position: absolute; right: 8px; bottom: 64px; font-size: 10px; background: color-mix(in srgb, var(--hondo) 75%, transparent); border-radius: 6px; padding: 2px 7px; }
 .bib-pie { padding: 8px 10px 10px; display: flex; flex-direction: column; gap: 8px; }
+.editor-elegir-bib { width: 100%; justify-content: center; margin-top: 8px; }
+.elegir-bib-barra { display: flex; gap: 8px; flex-wrap: wrap; align-items: center; margin-bottom: 6px; }
+.elegir-bib-barra .campo { width: auto; flex: 1 1 180px; }
+.elegir-bib-grid { max-height: min(56vh, 560px); overflow-y: auto; margin-top: 10px; padding: 2px; }
+.elegir-bib-grid .bib-card { cursor: pointer; }
+.elegir-bib-grid .bib-img { cursor: pointer; }
+.elegir-check { opacity: 1; display: grid; place-items: center; }
+.elegir-bib-grid .marcada .elegir-check { background: var(--accent); border-color: var(--accent); }
 .bib-prog { height: 28px; font-size: 11px; }
 .carpeta-lista { max-height: 42vh; overflow-y: auto; display: flex; flex-direction: column; gap: 4px; margin-bottom: 12px; }
 .carpeta-fila { display: flex; align-items: center; gap: 8px; padding: 5px 6px; border: 1px solid var(--border-soft); border-radius: 9px; background: color-mix(in srgb, var(--hondo) 40%, transparent); }

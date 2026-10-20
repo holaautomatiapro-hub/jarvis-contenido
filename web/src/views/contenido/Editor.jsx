@@ -11,6 +11,7 @@ import { NOMBRE_TIPO_IG, planDePublicacion } from '../../lib/planIg.js';
 import { CampoLeadMagnet, OBJETIVOS, OpcionesCarpetas, useFases, MAX_CAPTION, Miniatura, Modal, TIPOS, borrarArchivo, esMedio, esStory, esVideo, subirArchivo, tamanoLegible, tipoDe } from './comun.jsx';
 import { GenerarLeadMagnet, OtraVersion } from './Generar.jsx';
 import CajaGuion from './Guion.jsx';
+import ElegirBiblioteca from './ElegirBiblioteca.jsx';
 
 // Caption con IA: JARVIS lo escribe con tu voz a partir de lo que tenga la pieza (título, guion, lead magnet…)
 const crearCaption = async (datos) => {
@@ -153,6 +154,8 @@ export function EditorContenido({ pieza, carpetas, ig, onClose, onGuardado, onVi
   const [error, setError] = useState('');
   const [sobre, setSobre] = useState(false);
   const [fichaCompleta, setFichaCompleta] = useState(false);
+  const [eligiendo, setEligiendo] = useState(false);
+  const [deBiblioteca, setDeBiblioteca] = useState([]); // piezas de la biblioteca elegidas aquí: al guardar, salen de ella
   const input = useRef(null);
   const titulo = useRef(null);
   const guion = useRef(null);
@@ -180,6 +183,25 @@ export function EditorContenido({ pieza, carpetas, ig, onClose, onGuardado, onVi
       } catch (e) { setError((x) => (x ? `${x}\n` : '') + e.message); }
       setSubiendo((n) => n - 1);
     }
+  };
+  // Lo elegido de la biblioteca: sus archivos se añaden (sin repetir) y, si aquí faltan, su caption, portada y lead magnet
+  const elegirDeBiblioteca = (elegidas) => {
+    setEligiendo(false);
+    const nuevos = elegidas.flatMap(({ pieza: p }) => p.archivos);
+    setArchivos((x) => [...x, ...nuevos.filter((a, i) => !x.some((y) => y.path === a.path) && nuevos.findIndex((b) => b.path === a.path) === i)]);
+    const conCaption = elegidas.find(({ pieza: p }) => p.caption)?.pieza;
+    const conLm = elegidas.find(({ pieza: p }) => p.leadmagnet)?.pieza;
+    // Si aún no tenía nada, toma también el tipo de lo elegido (un carrusel sigue siendo carrusel)
+    const tipo = !archivos.length && elegidas.length === 1 ? tipoDe(elegidas[0].pieza.formato)?.id : null;
+    setD((x) => ({
+      ...x,
+      ...(tipo ? { formato: tipo } : {}),
+      ...(!x.caption.trim() && conCaption ? { caption: conCaption.caption } : {}),
+      ...(!x.leadmagnet && conLm ? { leadmagnet: true, leadmagnet_url: conLm.leadmagnet_url || '' } : {}),
+    }));
+    const conPortada = elegidas.find(({ pieza: p }) => p.portada)?.pieza;
+    if (!portada && conPortada) setPortada(conPortada.portada);
+    setDeBiblioteca((l) => [...new Set([...l, ...elegidas.filter((e) => e.mover).map((e) => e.pieza.id)])]);
   };
   const quitar = (a) => {
     setArchivos((x) => x.filter((y) => y !== a));
@@ -238,6 +260,12 @@ export function EditorContenido({ pieza, carpetas, ig, onClose, onGuardado, onVi
       const r = nueva ? await api('/api/piezas', { method: 'POST', body }) : await api(`/api/piezas/${pieza.id}`, { method: 'PATCH', body });
       subidos.current.clear();
       for (const a of quitados) borrarArchivo(a);
+      // Lo que se trajo de la biblioteca ya está en esta pieza: sale de la biblioteca (si se quitó todo, se queda)
+      const usadas = new Set([...archivos, ...(portada ? [portada] : [])].map((a) => a.path));
+      for (const id of deBiblioteca) {
+        const b = piezas.find((p) => p.id === id);
+        if (b && id !== r.id && b.archivos.some((a) => usadas.has(a.path))) await api(`/api/piezas/${id}`, { method: 'DELETE' }).catch(() => {});
+      }
       if (ahora) await api(`/api/piezas/${r.id}/instagram/ahora`, { method: 'POST' });
       onGuardado(); onClose();
     } catch (err) { setError(err.message); setGuardando(false); }
@@ -351,6 +379,8 @@ export function EditorContenido({ pieza, carpetas, ig, onClose, onGuardado, onVi
             <span>{subiendo ? `Subiendo ${subiendo}…` : 'Arrastra aquí o pulsa para subir'}</span>
             <input ref={input} type="file" accept="image/*,video/*" multiple hidden onChange={(e) => { subir(e.target.files); e.target.value = ''; }} />
           </div>
+          <button type="button" className="btn btn-sec editor-elegir-bib" onClick={() => setEligiendo(true)} disabled={ocupado}><Icon name="book" size={14} />Elegir de la biblioteca</button>
+          {eligiendo && <ElegirBiblioteca piezas={piezas} carpetas={carpetas} excluir={[pieza.id, ...deBiblioteca].filter(Boolean)} onElegir={elegirDeBiblioteca} onClose={() => setEligiendo(false)} />}
           {portada && esFormatoVideo(d.formato) && (
             <div className="portada-actual">
               <div className="archivo" title={portada.nombre}>
