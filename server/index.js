@@ -34,6 +34,7 @@ import { createRecordatorios } from './recordatorios.js';
 import { promptAdaptarAnuncio, promptReplicarCompetencia, promptReplicarPropia, promptGuionPieza, normalizarFormatos, seDisena } from './replicar.js';
 import { createReferencias } from './referencias.js';
 import { createMiniaturas } from './miniaturas.js';
+import { createFotogramas } from './fotograma.js';
 import { createEstrategia, DIAS, FILAS, OBJETIVOS_SEMANA, PRINCIPIOS, TACTICAS, lunesDe } from './estrategia.js';
 import { createLaboratorio, carpetaPorDefecto } from './laboratorio.js';
 import { promptCaption, limpiarCaption, createContextoCaption } from './caption.js';
@@ -484,6 +485,17 @@ export function createApp({ jarvis, archivos, miniaturas = null, estrategia = nu
   if (archivos) {
     // El navegador manda el archivo tal cual (sin JSON ni formularios) y se escribe al disco por trozos
     app.post('/api/contenido/archivos', h((req) => archivos.guardar(req, { nombre: String(req.query.nombre || ''), mime: String(req.query.mime || '') })));
+    // La portada de un reel: un fotograma del vídeo, en el segundo elegido
+    const fotogramas = createFotogramas({ archivos });
+    app.post('/api/contenido/fotograma', h((req) => fotogramas.comoPortada(String(req.body?.path || ''), req.body?.segundo)));
+    // Para elegir el momento aunque el navegador no sepa abrir el vídeo: cuánto dura y cómo se ve cada momento
+    app.get('/api/contenido/fotograma/duracion', h(async (req) => ({ duracion: await fotogramas.duracion(String(req.query.ruta || '')) })));
+    app.get('/api/contenido/fotograma/previa', async (req, res) => {
+      try {
+        const jpg = await fotogramas.vistaPrevia(String(req.query.ruta || ''), req.query.s);
+        res.set({ 'content-type': 'image/jpeg', 'cache-control': 'private, max-age=3600' }).send(jpg);
+      } catch (e) { res.status(e.publico || e instanceof ArchivoError ? 400 : 500).json({ error: e.publico || e instanceof ArchivoError ? e.message : 'No se pudo sacar el fotograma' }); }
+    });
     // La miniatura (JPG pequeño) de una foto o un vídeo, para las tarjetas
     const minis = miniaturas || createMiniaturas({ dir: path.join(archivos.dir, '.miniaturas'), resolver: archivos.ruta });
     app.get('/api/contenido/miniatura/:mes/:fichero', async (req, res) => {
