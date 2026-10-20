@@ -37,7 +37,9 @@ export function planDePublicacion(p, { conFecha = true } = {}) {
   if (tipo === 'CAROUSEL' && archivos.length && archivos.length < 2) problemas.push('Un carrusel necesita al menos 2 archivos.');
   if (tipo === 'CAROUSEL' && archivos.length > 10) problemas.push('Un carrusel admite como mucho 10 archivos.');
   if (tipo === 'REELS') {
-    if (archivos.length > 1) problemas.push(f === 'post' || !f ? 'Un post lleva un solo archivo. Si son varios, cámbialo a carrusel.' : 'Un reel lleva un solo vídeo.');
+    const fotos = archivos.filter((a) => !esVideo(a)).length;
+    if (archivos.length > 1 && f !== 'post' && f && fotos === archivos.length - 1) problemas.push('Un reel lleva un solo vídeo: si la foto es la portada, pulsa 🖼 sobre ella para ponerla de portada.');
+    else if (archivos.length > 1) problemas.push(f === 'post' || !f ? 'Un post lleva un solo archivo. Si son varios, cámbialo a carrusel.' : 'Un reel lleva un solo vídeo.');
     else if (archivos[0] && !esVideo(archivos[0])) problemas.push('Un reel necesita un vídeo.');
   }
   if (tipo === 'IMAGE' && archivos.length > 1) problemas.push('Un post lleva un solo archivo. Si son varios, cámbialo a carrusel.');

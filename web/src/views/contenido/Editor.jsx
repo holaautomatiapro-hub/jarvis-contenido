@@ -12,6 +12,7 @@ import { CampoLeadMagnet, OBJETIVOS, OpcionesCarpetas, useFases, MAX_CAPTION, Mi
 import { GenerarLeadMagnet, OtraVersion } from './Generar.jsx';
 import CajaGuion from './Guion.jsx';
 import ElegirBiblioteca from './ElegirBiblioteca.jsx';
+import PortadaReel from './PortadaReel.jsx';
 
 // Caption con IA: JARVIS lo escribe con tu voz a partir de lo que tenga la pieza (título, guion, lead magnet…)
 const crearCaption = async (datos) => {
@@ -203,6 +204,15 @@ export function EditorContenido({ pieza, carpetas, ig, onClose, onGuardado, onVi
     if (!portada && conPortada) setPortada(conPortada.portada);
     setDeBiblioteca((l) => [...new Set([...l, ...elegidas.filter((e) => e.mover).map((e) => e.pieza.id)])]);
   };
+  // Cambiar la portada del reel: la de antes se borra (ya, si se subió ahora; al guardar, si ya estaba guardada)
+  const cambiarPortada = (a) => {
+    if (portada && portada.path !== a?.path && !archivos.some((x) => x.path === portada.path)) {
+      if (subidos.current.has(portada.path)) { subidos.current.delete(portada.path); borrarArchivo(portada); } else setQuitados((x) => [...x, portada]);
+    }
+    setPortada(a);
+  };
+  // Una foto subida con el vídeo pasa a ser su portada (en un reel no puede ir como archivo)
+  const usarDePortada = (a) => { setArchivos((x) => x.filter((y) => y !== a)); cambiarPortada(a); };
   const quitar = (a) => {
     setArchivos((x) => x.filter((y) => y !== a));
     if (subidos.current.has(a.path)) { subidos.current.delete(a.path); borrarArchivo(a); }
@@ -352,7 +362,7 @@ export function EditorContenido({ pieza, carpetas, ig, onClose, onGuardado, onVi
           {/* Programar y publicar en Instagram se hace desde «Programar» (biblioteca o calendario); aquí solo se ve cómo está */}
           <CajaInstagram ig={ig} pieza={pieza} plan={plan} marcado={d.publicar_ig} onMarcar={marcarIg} ocupado={ocupado} onAhora={conIg ? () => guardar(null, { ahora: true }) : null} onConvertir={convertirAJpg} onRepublicar={!nueva && onRepublicar ? () => { cerrar(); onRepublicar(pieza); } : null} />
           <div className="generar-botones">
-            {d.formato !== 'Story' && <button type="button" className="btn btn-sec" onClick={() => setGenerandoPortada(true)} disabled={ocupado} title={esFormatoVideo(d.formato) ? 'Con tu sistema de diseño; queda como portada del reel' : 'Con tu sistema de diseño; entra como primera imagen'}><Icon name="sparkle" size={14} />Generar portada</button>}
+            {d.formato !== 'Story' && !esFormatoVideo(d.formato) && <button type="button" className="btn btn-sec" onClick={() => setGenerandoPortada(true)} disabled={ocupado} title={esFormatoVideo(d.formato) ? 'Con tu sistema de diseño; queda como portada del reel' : 'Con tu sistema de diseño; entra como primera imagen'}><Icon name="sparkle" size={14} />Generar portada</button>}
             <button type="button" className="btn btn-sec" onClick={() => setGenerando('leadmagnet')} disabled={ocupado || nueva} title={nueva ? 'Guarda la pieza primero' : 'JARVIS hace el lead magnet de esta pieza'}><Icon name="target" size={14} />Generar lead magnet</button>
             {conFotos && <button type="button" className="btn btn-sec" onClick={() => setGenerando('video')} disabled={ocupado || nueva || version?.estado === 'haciendo'} title={nueva ? 'Guarda la pieza primero' : 'Saca la versión en vídeo y añade a la pieza los que elijas'}><Icon name="play" size={14} />Generar vídeo</button>}
             {conVideos && <button type="button" className="btn btn-sec" onClick={() => setGenerando('imagen')} disabled={ocupado || nueva || version?.estado === 'haciendo'} title={nueva ? 'Guarda la pieza primero' : 'Saca la versión en imagen y añade a la pieza las que elijas'}><Icon name="eye" size={14} />Generar imagen</button>}
@@ -381,15 +391,6 @@ export function EditorContenido({ pieza, carpetas, ig, onClose, onGuardado, onVi
           </div>
           <button type="button" className="btn btn-sec editor-elegir-bib" onClick={() => setEligiendo(true)} disabled={ocupado}><Icon name="book" size={14} />Elegir de la biblioteca</button>
           {eligiendo && <ElegirBiblioteca piezas={piezas} carpetas={carpetas} excluir={[pieza.id, ...deBiblioteca].filter(Boolean)} onElegir={elegirDeBiblioteca} onClose={() => setEligiendo(false)} />}
-          {portada && esFormatoVideo(d.formato) && (
-            <div className="portada-actual">
-              <div className="archivo" title={portada.nombre}>
-                <Miniatura p={{ archivos: [portada] }} onClick={() => onVisor([portada], 0)} />
-                <span className="archivo-n">Portada</span>
-                <div className="archivo-acciones"><button type="button" onClick={() => setPortada(null)} aria-label="Quitar la portada">✕</button></div>
-              </div>
-            </div>
-          )}
           <div className="archivos-grid">
             {archivos.map((a, i) => (
               <div key={a.path || a.url} className="archivo" title={`${a.nombre} · ${tamanoLegible(a.tamano)}`}>
@@ -398,12 +399,16 @@ export function EditorContenido({ pieza, carpetas, ig, onClose, onGuardado, onVi
                 <div className="archivo-acciones">
                   <button type="button" onClick={() => moverArchivo(i, -1)} disabled={i === 0} aria-label="Mover antes">←</button>
                   <button type="button" onClick={() => moverArchivo(i, 1)} disabled={i === archivos.length - 1} aria-label="Mover después">→</button>
+                  {esFormatoVideo(d.formato) && /^image\//.test(a.mime) && <button type="button" onClick={() => usarDePortada(a)} aria-label="Usar como portada" title="Usar como portada del reel">🖼</button>}
                   <button type="button" onClick={() => quitar(a)} aria-label="Quitar">✕</button>
                 </div>
               </div>
             ))}
           </div>
           {!archivos.length && <div className="ayuda">Se guardan en tu PC, en la carpeta data\contenido de JARVIS.</div>}
+          {esFormatoVideo(d.formato) && (
+            <PortadaReel archivos={archivos} portada={portada} onCambio={cambiarPortada} onSubida={(a) => subidos.current.add(a.path)} onGenerar={() => setGenerandoPortada(true)} onVisor={onVisor} ocupado={ocupado} />
+          )}
         </div>
         )}
       </form>

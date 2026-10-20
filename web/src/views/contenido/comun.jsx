@@ -115,7 +115,8 @@ function ImagenMini({ a }) {
 }
 
 export function Miniatura({ p, className = '', onClick }) {
-  const a = p.archivos?.[0];
+  // Un reel con portada se ve con su portada (como en Instagram)
+  const a = (p.portada && esVideo(p.archivos?.[0]) ? p.portada : null) || p.archivos?.[0];
   return (
     <div className={`miniatura-c ${className}`} onClick={onClick}>
       {a ? <ImagenMini key={a.url} a={a} />
