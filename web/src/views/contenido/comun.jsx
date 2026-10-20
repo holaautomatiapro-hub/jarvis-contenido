@@ -1,5 +1,6 @@
 import { useEffect, useState } from 'react';
 import Icon from '../../components/Icon.jsx';
+import { useRecurso } from '../../lib/api.js';
 
 // Fases del pipeline (las mismas que usan Hermes y Claude Code por el MCP). Se pueden configurar:
 // las carga App desde /api/pipeline y cualquier vista las lee con useFases().
@@ -157,12 +158,22 @@ export function BotonCopiar({ texto, etiqueta = 'Copiar', className = 'btn btn-s
 
 // ¿Lleva lead magnet? Casilla y, si sí, su enlace con botón para copiarlo
 export function CampoLeadMagnet({ activo, url, onCambio }) {
+  // Tus lead magnets (los de la biblioteca): se elige uno y se pone su enlace
+  const [lms] = useRecurso(activo ? '/api/laboratorio/leadmagnets' : null, null);
+  const conEnlace = (lms?.leadmagnets || []).filter((x) => x.url).sort((x, y) => String(y.mod || y.creado || '').localeCompare(String(x.mod || x.creado || '')));
+  const elegido = conEnlace.find((x) => x.url === url);
   return (
     <div className="campo-lm">
       <label className="lm-check">
         <input type="checkbox" checked={activo} onChange={(e) => onCambio({ leadmagnet: e.target.checked, leadmagnet_url: e.target.checked ? url : '' })} />
         <Icon name="target" size={13} />Lleva lead magnet
       </label>
+      {activo && conEnlace.length > 0 && (
+        <select className="campo" value={elegido?.slug || ''} onChange={(e) => { const x = conEnlace.find((y) => y.slug === e.target.value); if (x) onCambio({ leadmagnet: true, leadmagnet_url: x.url }); }} aria-label="Elegir uno de tus lead magnets">
+          <option value="">{url ? 'Otro enlace (escrito a mano)' : 'Elige uno de tus lead magnets…'}</option>
+          {conEnlace.map((x) => <option key={x.slug} value={x.slug}>{x.titulo}</option>)}
+        </select>
+      )}
       {activo && (
         <div className="fila" style={{ marginBottom: 0 }}>
           <input className="campo" value={url} onChange={(e) => onCambio({ leadmagnet: true, leadmagnet_url: e.target.value })} placeholder="https://… (el enlace que mandas a quien comenta o escribe)" aria-label="Enlace del lead magnet" />
