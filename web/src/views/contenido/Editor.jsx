@@ -294,7 +294,7 @@ export function EditorContenido({ pieza, carpetas, ig, onClose, onGuardado, onVi
   // Una story solo lleva título, fecha, tipo de contenido y guion (el resto, con «Ver todos los campos»)
   const soloStory = d.formato === 'Story' && !fichaCompleta;
   return (
-    <Modal titulo={nueva ? 'Nuevo contenido' : soloStory ? 'Story' : 'Editar contenido'} onClose={cerrar} ancho={soloStory ? 680 : 960} cerrarFuera={false} clase="editor-c">
+    <Modal titulo={nueva ? 'Nuevo contenido' : soloStory ? 'Story' : 'Editar contenido'} onClose={cerrar} ancho={soloStory ? 860 : 960} cerrarFuera={false} clase="editor-c">
       <form className={`editor-grid${soloStory ? ' solo-story' : ''}`} onSubmit={guardar}>
         <div className="editor-datos">
           <label className="campo-et">Título</label>
@@ -333,12 +333,10 @@ export function EditorContenido({ pieza, carpetas, ig, onClose, onGuardado, onVi
               <label className="campo-et">Fecha de publicación</label>
               <input type="date" className="campo" value={d.fecha} onChange={cambia('fecha')} />
             </div>
-            {!soloStory && (
-              <div>
-                <label className="campo-et">Hora (opcional)</label>
-                <input type="time" className="campo" value={d.hora} onChange={cambia('hora')} />
-              </div>
-            )}
+            <div>
+              <label className="campo-et">Hora (opcional)</label>
+              <input type="time" className="campo" value={d.hora} onChange={cambia('hora')} />
+            </div>
           </div>
           {!d.fecha && <div className="ayuda">Sin fecha se queda en la biblioteca hasta que la programes.</div>}
           {!soloStory && (
@@ -356,6 +354,8 @@ export function EditorContenido({ pieza, carpetas, ig, onClose, onGuardado, onVi
           <CampoCategoria valor={d.categoria} story={d.formato === 'Story'} onCambio={(v) => setD((x) => ({ ...x, categoria: v }))} />
           <label className="campo-et">Guion</label>
           {nueva ? <div className="ayuda">Guarda la pieza y vuelve a abrirla para escribir su guion (a mano o con IA).</div> : <CajaGuion ref={guion} pieza={pieza} />}
+          {/* Una story también se sube y se programa: su archivo va a la derecha y aquí, publicarla sola en Instagram */}
+          {soloStory && <CajaInstagram ig={ig} pieza={pieza} plan={plan} marcado={d.publicar_ig} onMarcar={marcarIg} ocupado={ocupado} onAhora={conIg ? () => guardar(null, { ahora: true }) : null} onConvertir={convertirAJpg} onRepublicar={null} />}
           {!soloStory && (
           <>
           <label className="campo-et">Caption <span className={`contador${largo ? ' pasado' : ''}`}>{d.caption.length} / {MAX_CAPTION}</span></label>
@@ -375,9 +375,9 @@ export function EditorContenido({ pieza, carpetas, ig, onClose, onGuardado, onVi
           )}
         </div>
 
-        {!soloStory && (
+        {(
         <div className="editor-archivos">
-          <label className="campo-et">Contenido (vídeos y fotos)</label>
+          <label className="campo-et">{soloStory ? 'La story (foto o vídeo)' : 'Contenido (vídeos y fotos)'}</label>
           <div
             className={`soltar${sobre ? ' sobre' : ''}`}
             onClick={() => !ocupado && input.current?.click()}

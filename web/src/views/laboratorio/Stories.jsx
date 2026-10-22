@@ -5,6 +5,7 @@ import { api, useMensajes, useRecurso } from '../../lib/api.js';
 import { diaCorto } from '../../lib/fechas.js';
 import { Modal } from '../contenido/comun.jsx';
 import { DetalleDiseno } from '../contenido/Diseno.jsx';
+import ProgramarStories from '../contenido/ProgramarStories.jsx';
 
 // Stories: de un carrusel, un reel o un tema, JARVIS escribe el guion de la secuencia de stories (lo cambias a mano o
 // se lo pides de nuevo) y, con el guion listo, Claude las diseña con tu sistema de diseño. Se ajustan en el chat y se
@@ -212,8 +213,35 @@ function DisenoStories({ id, piezas, ig, onVisor, onAbrir, onProgramar, onAviso,
   const [kit] = useRecurso('/api/disenos', null);
   const [progreso, setProgreso] = useState(null);
   useMensajes('diseno', (m) => { if (m.id !== id) return; if (m.progreso != null) setProgreso(m.progreso); else recargar(); });
+  const [programando, setProgramando] = useState(false);
+  const [hecho, setHecho] = useState('');
   if (!d) return <div className="t-dim">Cargando el diseño…</div>;
-  return <DetalleDiseno d={d} kit={kit?.kit} piezas={piezas} ig={ig} progreso={progreso} onVisor={onVisor} onAbrir={onAbrir} onProgramar={onProgramar} onAviso={onAviso} onBorrado={onBorrado} recargar={recargar} />;
+  // Las stories exportadas (una pieza cada una, en orden): se programan y se publican solas en Instagram
+  const exportadas = (d.exportado?.piezas || []).map((pid) => piezas.find((p) => p.id === pid)).filter(Boolean);
+  const conDia = exportadas.filter((p) => p.fecha && p.hora);
+  const enIg = exportadas.filter((p) => p.publicar_ig || p.ig_estado);
+  const publicadas = exportadas.filter((p) => p.ig_estado === 'publicado');
+  const cuando = (p) => `${diaCorto(p.fecha)} · ${p.hora}`;
+  return (
+    <>
+      <DetalleDiseno d={d} kit={kit?.kit} piezas={piezas} ig={ig} progreso={progreso} onVisor={onVisor} onAbrir={onAbrir} onProgramar={onProgramar} onAviso={onAviso} onBorrado={onBorrado} recargar={recargar} />
+      {exportadas.length > 0 && (
+        <div className="stories-programar">
+          <div>
+            <b><Icon name="instagram" size={14} /> Publicar en Instagram</b>
+            <small>
+              {publicadas.length === exportadas.length ? `Publicadas en Instagram (${publicadas.length}).`
+                : conDia.length ? `${conDia.length === exportadas.length ? 'Programadas' : `${conDia.length} de ${exportadas.length} programadas`}: ${cuando(conDia[0])}${conDia.length > 1 && cuando(conDia.at(-1)) !== cuando(conDia[0]) ? ` → ${cuando(conDia.at(-1))}` : ''}${enIg.length ? ` · ${enIg.length === exportadas.length ? 'se publican solas' : `${enIg.length} se publican solas`}` : ' · sin publicar solas en Instagram'}${publicadas.length ? ` · ${publicadas.length} ya publicadas` : ''}.`
+                  : `Las ${exportadas.length} stories están en la biblioteca: elige el día y la hora y JARVIS las publica solas, en orden.`}
+            </small>
+            {hecho && <small className="t-ok">{hecho}</small>}
+          </div>
+          {publicadas.length < exportadas.length && <button type="button" className="btn" onClick={() => setProgramando(true)}><Icon name="calendar" size={14} />{conDia.length ? 'Cambiar día y hora' : `Programar las ${exportadas.length} stories`}</button>}
+        </div>
+      )}
+      {programando && <ProgramarStories piezas={exportadas} ig={ig} titulo={d.titulo} onClose={() => setProgramando(false)} onHecho={(n, conErrores) => { setHecho(`✓ ${n} ${n === 1 ? 'story programada' : 'stories programadas'}.`); if (!conErrores) setProgramando(false); }} />}
+    </>
+  );
 }
 
 function Detalle({ g, data, piezas, ig, onVisor, onAbrir, onProgramar, recargar, onBorrado }) {
@@ -316,6 +344,8 @@ export default function Stories({ piezas, ig, onAbrir, onProgramar, onVisor }) {
   const [data, recargar, error] = useRecurso('/api/stories', null);
   const [sel, setSel] = useState(() => { try { return Number(localStorage.getItem('stories_sel')) || null; } catch { return null; } });
   const [nuevo, setNuevo] = useState(null); // { pieza } | {}
+  const [subiendo, setSubiendo] = useState(false);
+  const [aviso, setAviso] = useState('');
   const [viendoEstilo, setViendoEstilo] = useState(false);
   const elegir = (id) => { setSel(id); try { localStorage.setItem('stories_sel', String(id || '')); } catch { /* sin localStorage */ } };
   // Desde la ficha de una pieza: «Guion de stories»
@@ -332,6 +362,8 @@ export default function Stories({ piezas, ig, onAbrir, onProgramar, onVisor }) {
     <div className={`stories-grid${actual?.diseno ? ' con-chat' : ''}`}>
       <div className="panel panel-pad diseno-lista">
         <button type="button" className="btn stories-nuevo" onClick={() => setNuevo({})}><Icon name="plus" size={14} />Nuevo guion de stories</button>
+        <button type="button" className="btn btn-sec stories-nuevo" style={{ marginTop: 8 }} onClick={() => setSubiendo(true)} title="Sube tus stories (fotos o vídeos) y prográmalas para que se publiquen solas en Instagram"><Icon name="calendar" size={14} />Subir y programar stories</button>
+        {aviso && <div className="aviso ok" style={{ marginTop: 8 }}>{aviso}</div>}
         <button type="button" className={`stories-estilo${data.estilo?.texto.trim() || data.ejemplos?.length ? ' hecho' : ''}`} onClick={() => setViendoEstilo(true)} title="Tu CLAUDE.md y tus stories de ejemplo: JARVIS los sigue al escribir y al diseñar">
           <Icon name="doc" size={14} />
           <span><b>Tu estilo · CLAUDE.md y ejemplos</b><small>{[data.estilo?.texto.trim() && '✓ CLAUDE.md', data.ejemplos?.length && `✓ ${data.ejemplos.length} ${data.ejemplos.length === 1 ? 'ejemplo' : 'ejemplos'}`].filter(Boolean).join(' · ') || 'Añádelos para que replique tu estilo'}</small></span>
@@ -365,6 +397,7 @@ export default function Stories({ piezas, ig, onAbrir, onProgramar, onVisor }) {
         />
       )}
       {viendoEstilo && <EstiloStories estilo={data.estilo || { texto: '', ruta: 'Stories/CLAUDE.md', modificado: null }} ejemplos={data.ejemplos || []} onEjemplos={recargar} onClose={() => setViendoEstilo(false)} onGuardado={() => { setViendoEstilo(false); recargar(); }} />}
+      {subiendo && <ProgramarStories ig={ig} titulo="Stories" onClose={() => setSubiendo(false)} onHecho={(n, conErrores) => { setAviso(`✓ ${n} ${n === 1 ? 'story programada' : 'stories programadas'}: las tienes en el calendario de Contenido.`); if (!conErrores) setSubiendo(false); }} />}
       {nuevo && <NuevoGuion data={data} piezas={piezas} inicial={nuevo.pieza || null} onClose={() => setNuevo(null)} onCreado={(g) => { setNuevo(null); elegir(g.id); recargar(); }} />}
     </div>
   );
