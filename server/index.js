@@ -485,9 +485,13 @@ export function createApp({ jarvis, archivos, miniaturas = null, estrategia = nu
 
   if (archivos) {
     // El navegador manda el archivo tal cual (sin JSON ni formularios) y se escribe al disco por trozos
-    app.post('/api/contenido/archivos', h((req) => archivos.guardar(req, { nombre: String(req.query.nombre || ''), mime: String(req.query.mime || '') })));
-    // La portada de un reel: un fotograma del vídeo, en el segundo elegido
+    // Con ?jpg=1, una imagen que no sea JPG se pasa a JPG (lo usa el conector de Claude Code: Instagram solo publica JPG)
     const fotogramas = createFotogramas({ archivos });
+    app.post('/api/contenido/archivos', h(async (req) => {
+      const a = await archivos.guardar(req, { nombre: String(req.query.nombre || ''), mime: String(req.query.mime || '') });
+      return req.query.jpg === '1' ? fotogramas.aJpg(a) : a;
+    }));
+    // La portada de un reel: un fotograma del vídeo, en el segundo elegido
     app.post('/api/contenido/fotograma', h((req) => fotogramas.comoPortada(String(req.body?.path || ''), req.body?.segundo)));
     // Para elegir el momento aunque el navegador no sepa abrir el vídeo: cuánto dura y cómo se ve cada momento
     app.get('/api/contenido/fotograma/duracion', h(async (req) => ({ duracion: await fotogramas.duracion(String(req.query.ruta || '')) })));
@@ -810,6 +814,15 @@ export function createApp({ jarvis, archivos, miniaturas = null, estrategia = nu
   app.post('/api/avisar', (_req, res) => { onChange(); res.json({ ok: true }); });
 
   app.use('/api', (_req, res) => res.status(404).json({ error: 'No existe' }));
+
+  // El conector de JARVIS para Claude Code (en el ordenador de la persona): se descarga desde aquí (Inicio lo explica)
+  // ?url=… deja dentro la dirección de este JARVIS (así no hace falta pasársela al instalarlo)
+  app.get('/puente/jarvis-puente.mjs', (req, res) => {
+    let codigo = readFileSync(path.join(ROOT, 'puente', 'jarvis-puente.mjs'), 'utf8');
+    const url = String(req.query.url || '').replace(/\/+$/, '');
+    if (/^https?:\/\/[\w.-]+(:\d+)?$/.test(url)) codigo = codigo.replace("'http://localhost:3333'", JSON.stringify(url));
+    res.set({ 'Cache-Control': 'no-cache', 'Content-Disposition': 'attachment; filename="jarvis-puente.mjs"' }).type('text/javascript').send(codigo);
+  });
 
   if (existsSync(DIST)) {
     // El código de la interfaz (assets/, con su huella en el nombre) se guarda en el navegador para siempre y va

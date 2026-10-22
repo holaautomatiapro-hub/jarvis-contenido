@@ -8,6 +8,7 @@ import { BotonCopiar } from './contenido/comun.jsx';
 import { redDe } from '../lib/redes.js';
 import { ParaProducir, TuSemana } from './inicio/Semana.jsx';
 import Actualizar from '../components/Actualizar.jsx';
+import ConectarClaudeCode from '../components/ConectarClaudeCode.jsx';
 
 function Kpi({ k, ir }) {
   const up = k.delta >= 0;
@@ -339,6 +340,7 @@ export default function Inicio({ data, onAsk, acciones = {}, recargar = () => {}
   return (
     <>
       <Actualizar />
+      <ConectarClaudeCode />
       <section className="home">
         <div className="col">
           {data.kpis.map((k) => <Kpi key={k.id} k={k} ir={acciones.ir} />)}
