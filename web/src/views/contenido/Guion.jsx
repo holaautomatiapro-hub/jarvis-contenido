@@ -59,6 +59,8 @@ const CajaGuion = forwardRef(function CajaGuion({ pieza, sinReferencia = false }
 
   if (!g) return error ? <div className="aviso error">{error}</div> : null;
   const vacio = !texto.trim();
+  // En una story, el guion es una secuencia de stories (con tu estilo de Laboratorio → Stories)
+  const story = pieza.formato === 'Story';
   return (
     <div className="caja-guion">
       {g.referencia && !sinReferencia && (
@@ -72,19 +74,19 @@ const CajaGuion = forwardRef(function CajaGuion({ pieza, sinReferencia = false }
         <div className="diseno-progreso"><span>JARVIS está escribiendo el guion… (lo verás aquí al terminar)</span></div>
       ) : (
         <textarea className="campo" rows={vacio ? 4 : 12} value={texto} onChange={(e) => setTexto(e.target.value)}
-          placeholder={g.referencia ? 'Escribe aquí el guion, o pídeselo a JARVIS: lo escribe a partir de la idea de arriba.' : 'Escribe aquí el guion: gancho, desarrollo y CTA (o slide a slide).'} />
+          placeholder={story ? 'Escribe aquí el guion de las stories (## Story 1 · texto / Texto en pantalla / Visual / Sticker), o pídeselo a JARVIS: lo escribe con tu estilo y lo que toca ese día.' : g.referencia ? 'Escribe aquí el guion, o pídeselo a JARVIS: lo escribe a partir de la idea de arriba.' : 'Escribe aquí el guion: gancho, desarrollo y CTA (o slide a slide).'} />
       )}
       {pidiendo && !g.escribiendo && (
         <div className="guion-ia">
           <input className="campo" autoFocus value={indicaciones} onChange={(e) => setIndicaciones(e.target.value)} onKeyDown={(e) => { if (e.key === 'Enter') { e.preventDefault(); conIA(); } }}
-            placeholder={vacio ? 'Opcional: ángulo, duración, a quién va… (vacío = lo escribe completo)' : 'Qué quieres cambiar: «gancho más fuerte», «más corto», «termina con CTA a la guía»…'} />
+            placeholder={vacio ? (story ? 'Opcional: de qué van, cuántas, qué sticker… (vacío = lo escribe completo)' : 'Opcional: ángulo, duración, a quién va… (vacío = lo escribe completo)') : 'Qué quieres cambiar: «gancho más fuerte», «más corto», «termina con CTA a la guía»…'} />
           <button type="button" className="btn" onClick={conIA}><Icon name="sparkle" size={14} />{vacio ? 'Escribirlo' : 'Cambiarlo'}</button>
           <button type="button" className="link-btn" onClick={() => setPidiendo(false)}>Cancelar</button>
         </div>
       )}
       {!g.escribiendo && (
         <div className="guion-acciones">
-          {!pidiendo && <button type="button" className="btn btn-sec" onClick={() => setPidiendo(true)}><Icon name="sparkle" size={14} />{vacio ? 'Escribir con IA' : 'Cambiar con IA'}</button>}
+          {!pidiendo && <button type="button" className="btn btn-sec" onClick={() => setPidiendo(true)}><Icon name="sparkle" size={14} />{vacio ? (story ? 'Escribir el guion de stories con IA' : 'Escribir con IA') : 'Cambiar con IA'}</button>}
           {cambiado && <button type="button" className="btn btn-sec" onClick={guardarYa} disabled={guardando}>{guardando ? 'Guardando…' : 'Guardar guion'}</button>}
           {g.ruta && <small className="ayuda">En tu vault: {g.ruta}</small>}
         </div>

@@ -1,15 +1,13 @@
 import { useEffect, useMemo, useRef, useState } from 'react';
 import Icon from '../../components/Icon.jsx';
-import ChatJarvis from '../../components/ChatJarvis.jsx';
-import { api, useMensajes, useRecurso } from '../../lib/api.js';
+import { api, useRecurso } from '../../lib/api.js';
 import { diaCorto } from '../../lib/fechas.js';
 import { Modal } from '../contenido/comun.jsx';
-import { DetalleDiseno } from '../contenido/Diseno.jsx';
 import ProgramarStories from '../contenido/ProgramarStories.jsx';
 
 // Stories: de un carrusel, un reel o un tema, JARVIS escribe el guion de la secuencia de stories (lo cambias a mano o
-// se lo pides de nuevo) y, con el guion listo, Claude las diseña con tu sistema de diseño. Se ajustan en el chat y se
-// exportan a la biblioteca, una pieza por story, para programarlas.
+// se lo pides de nuevo), con tu CLAUDE.md y tus ejemplos. Las stories las haces tú y aquí las subes y las programas
+// para que se publiquen solas en Instagram.
 
 const ORIGENES = ['Carrusel', 'Reel', 'Short', 'Reel split', 'B-roll', 'Post'];
 const nStories = (g) => (g.match(/^##\s*Story/gim) || []).length;
@@ -72,7 +70,7 @@ function EjemplosStories({ ejemplos, onCambio }) {
   return (
     <div className="estilo-ejemplos">
       <div className="estilo-ejemplos-cab">
-        <div><b>Stories de ejemplo</b><span className="ayuda"> · capturas de tus stories (hasta 12). Claude las mira antes de diseñar para que las nuevas parezcan tuyas.</span></div>
+        <div><b>Stories de ejemplo</b><span className="ayuda"> · capturas de tus stories (hasta 12). JARVIS las mira al escribir los guiones para que suenen y se estructuren como las tuyas.</span></div>
         <button type="button" className="btn btn-sec" onClick={() => input.current?.click()} disabled={subiendo > 0 || lista.length >= 12}><Icon name="plus" size={14} />{subiendo ? `Subiendo ${subiendo}…` : 'Añadir'}</button>
         <input ref={input} type="file" accept="image/jpeg,image/png,image/webp" multiple hidden onChange={(e) => { subir(e.target.files); e.target.value = ''; }} />
       </div>
@@ -109,7 +107,7 @@ function EstiloStories({ estilo, ejemplos, onClose, onGuardado, onEjemplos }) {
     <Modal titulo={<><Icon name="doc" size={14} />Tu estilo de stories</>} onClose={onClose} ancho={760} cerrarFuera={false}>
       <EjemplosStories ejemplos={ejemplos} onCambio={onEjemplos} />
       <div className="estilo-ejemplos-cab" style={{ marginTop: 14 }}><b>CLAUDE.md</b></div>
-      <p className="ayuda">Cuéntale a JARVIS cómo son tus stories: tono, estructura, textos, diseño, stickers y CTA. Lo sigue al escribir cada guion y Claude al diseñarlas. Se guarda en tu vault, en <b>{estilo.ruta}</b> (también puedes editarlo en Obsidian); los ejemplos, en Stories/ejemplos.</p>
+      <p className="ayuda">Cuéntale a JARVIS cómo son tus stories: tono, estructura, textos, diseño, stickers y CTA. Lo sigue al escribir cada guion de stories (aquí y en la ficha de cada story). Se guarda en tu vault, en <b>{estilo.ruta}</b> (también puedes editarlo en Obsidian); los ejemplos, en Stories/ejemplos.</p>
       <div className="estilo-barra">
         <button type="button" className="btn btn-sec" onClick={() => input.current?.click()}><Icon name="share" size={14} />Subir un .md</button>
         {!texto.trim() && <button type="button" className="btn btn-sec" onClick={() => setTexto(PLANTILLA_ESTILO)}><Icon name="doc" size={14} />Empezar con una plantilla</button>}
@@ -207,48 +205,11 @@ function NuevoGuion({ data, piezas, inicial, onClose, onCreado }) {
   );
 }
 
-// El diseño de las stories, como en Diseño (vista previa, avisos, exportar), con su chat al lado
-function DisenoStories({ id, piezas, ig, onVisor, onAbrir, onProgramar, onAviso, onBorrado }) {
-  const [d, recargar] = useRecurso(`/api/disenos/${id}`, null);
-  const [kit] = useRecurso('/api/disenos', null);
-  const [progreso, setProgreso] = useState(null);
-  useMensajes('diseno', (m) => { if (m.id !== id) return; if (m.progreso != null) setProgreso(m.progreso); else recargar(); });
-  const [programando, setProgramando] = useState(false);
-  const [hecho, setHecho] = useState('');
-  if (!d) return <div className="t-dim">Cargando el diseño…</div>;
-  // Las stories exportadas (una pieza cada una, en orden): se programan y se publican solas en Instagram
-  const exportadas = (d.exportado?.piezas || []).map((pid) => piezas.find((p) => p.id === pid)).filter(Boolean);
-  const conDia = exportadas.filter((p) => p.fecha && p.hora);
-  const enIg = exportadas.filter((p) => p.publicar_ig || p.ig_estado);
-  const publicadas = exportadas.filter((p) => p.ig_estado === 'publicado');
-  const cuando = (p) => `${diaCorto(p.fecha)} · ${p.hora}`;
-  return (
-    <>
-      <DetalleDiseno d={d} kit={kit?.kit} piezas={piezas} ig={ig} progreso={progreso} onVisor={onVisor} onAbrir={onAbrir} onProgramar={onProgramar} onAviso={onAviso} onBorrado={onBorrado} recargar={recargar} />
-      {exportadas.length > 0 && (
-        <div className="stories-programar">
-          <div>
-            <b><Icon name="instagram" size={14} /> Publicar en Instagram</b>
-            <small>
-              {publicadas.length === exportadas.length ? `Publicadas en Instagram (${publicadas.length}).`
-                : conDia.length ? `${conDia.length === exportadas.length ? 'Programadas' : `${conDia.length} de ${exportadas.length} programadas`}: ${cuando(conDia[0])}${conDia.length > 1 && cuando(conDia.at(-1)) !== cuando(conDia[0]) ? ` → ${cuando(conDia.at(-1))}` : ''}${enIg.length ? ` · ${enIg.length === exportadas.length ? 'se publican solas' : `${enIg.length} se publican solas`}` : ' · sin publicar solas en Instagram'}${publicadas.length ? ` · ${publicadas.length} ya publicadas` : ''}.`
-                  : `Las ${exportadas.length} stories están en la biblioteca: elige el día y la hora y JARVIS las publica solas, en orden.`}
-            </small>
-            {hecho && <small className="t-ok">{hecho}</small>}
-          </div>
-          {publicadas.length < exportadas.length && <button type="button" className="btn" onClick={() => setProgramando(true)}><Icon name="calendar" size={14} />{conDia.length ? 'Cambiar día y hora' : `Programar las ${exportadas.length} stories`}</button>}
-        </div>
-      )}
-      {programando && <ProgramarStories piezas={exportadas} ig={ig} titulo={d.titulo} onClose={() => setProgramando(false)} onHecho={(n, conErrores) => { setHecho(`✓ ${n} ${n === 1 ? 'story programada' : 'stories programadas'}.`); if (!conErrores) setProgramando(false); }} />}
-    </>
-  );
-}
-
-function Detalle({ g, data, piezas, ig, onVisor, onAbrir, onProgramar, recargar, onBorrado }) {
+function Detalle({ g, piezas, ig, onAbrir, recargar, onBorrado }) {
   const [texto, setTexto] = useState(g.guion);
   const [pedido, setPedido] = useState('');
-  const [plantilla, setPlantilla] = useState(data.plantillas[0]?.id || '');
-  const [extra, setExtra] = useState('');
+  const [programando, setProgramando] = useState(false);
+  const [hecho, setHecho] = useState('');
   const [ocupado, setOcupado] = useState('');
   const [aviso, setAviso] = useState('');
   // Lo que llega de JARVIS sustituye a lo de la caja si no lo estás cambiando
@@ -267,12 +228,8 @@ function Detalle({ g, data, piezas, ig, onVisor, onAbrir, onProgramar, recargar,
     await api(`/api/stories/${g.id}/escribir`, { method: 'POST', body: { indicaciones: pedido } });
     setPedido('');
   });
-  const disenar = () => hacer('disenar', async () => {
-    if (cambiado) await api(`/api/stories/${g.id}`, { method: 'PUT', body: { guion: texto } });
-    await api(`/api/stories/${g.id}/disenar`, { method: 'POST', body: { plantilla, indicaciones: extra } });
-  });
   const borrar = () => {
-    if (!window.confirm(`¿Borrar el guion «${g.titulo}»?${g.diseno ? ' Su diseño se queda en Diseño (y lo exportado, en la biblioteca).' : ''}`)) return;
+    if (!window.confirm(`¿Borrar el guion «${g.titulo}»? Las stories que ya subiste se quedan en el calendario.`)) return;
     hacer('borrar', async () => { await api(`/api/stories/${g.id}`, { method: 'DELETE' }); onBorrado(); });
   };
   const n = nStories(texto);
@@ -307,40 +264,23 @@ function Detalle({ g, data, piezas, ig, onVisor, onAbrir, onProgramar, recargar,
           <button type="button" className="btn btn-sec" onClick={pedir} disabled={escribiendo || Boolean(ocupado) || (Boolean(g.guion) && !pedido.trim())}><Icon name="sparkle" size={14} />{ocupado === 'jarvis' ? 'Enviando…' : g.guion ? 'Cambiar con JARVIS' : 'Escribir con JARVIS'}</button>
         </div>
 
-        <div className="stories-paso"><span className="stories-n">2</span><b>Diseño</b><span className="t-dim">con tu sistema de diseño</span></div>
-        {!g.diseno ? (
-          data.plantillas.length ? (
-            <div className="stories-disenar">
-              {data.plantillas.length > 1 && (
-                <div className="diseno-plantillas">
-                  {data.plantillas.map((p) => <button key={p.id} type="button" className={`modo${plantilla === p.id ? ' on' : ''}`} onClick={() => setPlantilla(p.id)}><b>{p.nombre}</b>{p.descripcion && <small>{p.descripcion}</small>}</button>)}
-                </div>
-              )}
-              <div className="est-jarvis">
-                <input className="campo" value={extra} onChange={(e) => setExtra(e.target.value)} placeholder="Opcional: «usa mi foto de la biblioteca en la 1», «fondo claro»…" />
-                <button type="button" className="btn" onClick={disenar} disabled={escribiendo || !texto.trim() || Boolean(ocupado)} title={!texto.trim() ? 'Primero el guion' : ''}><Icon name="palette" size={14} />{ocupado === 'disenar' ? 'Enviando…' : 'Diseñar las stories'}</button>
-              </div>
-              <p className="ayuda">Claude las diseña con tu sistema (una por cada «## Story») y JARVIS revisa que todo quepa. Tarda unos minutos; luego las ajustas en el chat y las exportas a la biblioteca.</p>
-            </div>
-          ) : <div className="aviso">Tu sistema de diseño no tiene ninguna plantilla de stories. Añádela en tu kit (Diseño → Cambiar sistema) para diseñarlas aquí.</div>
-        ) : (
-          <>
-          {g.diseno.guionCambiado && !cambiado && (
-            <div className="aviso stories-redisenar">
-              El guion ha cambiado desde que se diseñaron.
-              <button type="button" className="btn btn-sec" onClick={() => { if (window.confirm('Claude las diseña de nuevo con el guion de ahora (el diseño anterior se queda en Diseño). ¿Seguir?')) disenar(); }} disabled={escribiendo || Boolean(ocupado) || ['generando', 'renderizando', 'exportando'].includes(g.diseno.estado)}><Icon name="palette" size={14} />{ocupado === 'disenar' ? 'Enviando…' : 'Diseñarlas con el guion nuevo'}</button>
-            </div>
-          )}
-          <DisenoStories key={g.diseno.id} id={g.diseno.id} piezas={piezas} ig={ig} onVisor={onVisor} onAbrir={onAbrir} onProgramar={onProgramar} onAviso={setAviso} onBorrado={recargar} />
-          </>
-        )}
+        <div className="stories-paso"><span className="stories-n">2</span><b>Subir y programar</b><span className="t-dim">cuando las tengas hechas</span></div>
+        <div className="stories-programar">
+          <div>
+            <b><Icon name="instagram" size={14} /> Publicar en Instagram</b>
+            <small>Haz las stories con este guion, súbelas aquí en orden y elige el día y la hora: JARVIS las publica solas, una tras otra.</small>
+            {hecho && <small className="t-ok">{hecho}</small>}
+          </div>
+          <button type="button" className="btn" onClick={() => setProgramando(true)} disabled={escribiendo}><Icon name="calendar" size={14} />Subir y programar</button>
+        </div>
+        {programando && <ProgramarStories ig={ig} titulo={g.titulo} onClose={() => setProgramando(false)} onHecho={(nn, conErrores) => { setHecho(`✓ ${nn} ${nn === 1 ? 'story programada' : 'stories programadas'}: las tienes en el calendario de Contenido.`); if (!conErrores) setProgramando(false); }} />}
         {aviso && <div className="caja-error">{aviso}</div>}
       </div>
     </div>
   );
 }
 
-export default function Stories({ piezas, ig, onAbrir, onProgramar, onVisor }) {
+export default function Stories({ piezas, ig, onAbrir }) {
   const [data, recargar, error] = useRecurso('/api/stories', null);
   const [sel, setSel] = useState(() => { try { return Number(localStorage.getItem('stories_sel')) || null; } catch { return null; } });
   const [nuevo, setNuevo] = useState(null); // { pieza } | {}
@@ -355,47 +295,34 @@ export default function Stories({ piezas, ig, onAbrir, onProgramar, onVisor }) {
     window.addEventListener('jarvis:stories-de', abrir);
     return () => window.removeEventListener('jarvis:stories-de', abrir);
   }, []);
-  useMensajes('diseno', () => recargar());
   if (!data) return <div className="panel panel-pad vacio">{error ? `No se han podido cargar las stories: ${error}` : 'Cargando…'}</div>;
   const actual = data.guiones.find((g) => g.id === sel) || data.guiones[0] || null;
   return (
-    <div className={`stories-grid${actual?.diseno ? ' con-chat' : ''}`}>
+    <div className="stories-grid">
       <div className="panel panel-pad diseno-lista">
         <button type="button" className="btn stories-nuevo" onClick={() => setNuevo({})}><Icon name="plus" size={14} />Nuevo guion de stories</button>
         <button type="button" className="btn btn-sec stories-nuevo" style={{ marginTop: 8 }} onClick={() => setSubiendo(true)} title="Sube tus stories (fotos o vídeos) y prográmalas para que se publiquen solas en Instagram"><Icon name="calendar" size={14} />Subir y programar stories</button>
         {aviso && <div className="aviso ok" style={{ marginTop: 8 }}>{aviso}</div>}
-        <button type="button" className={`stories-estilo${data.estilo?.texto.trim() || data.ejemplos?.length ? ' hecho' : ''}`} onClick={() => setViendoEstilo(true)} title="Tu CLAUDE.md y tus stories de ejemplo: JARVIS los sigue al escribir y al diseñar">
+        <button type="button" className={`stories-estilo${data.estilo?.texto.trim() || data.ejemplos?.length ? ' hecho' : ''}`} onClick={() => setViendoEstilo(true)} title="Tu CLAUDE.md y tus stories de ejemplo: JARVIS los sigue al escribir los guiones">
           <Icon name="doc" size={14} />
           <span><b>Tu estilo · CLAUDE.md y ejemplos</b><small>{[data.estilo?.texto.trim() && '✓ CLAUDE.md', data.ejemplos?.length && `✓ ${data.ejemplos.length} ${data.ejemplos.length === 1 ? 'ejemplo' : 'ejemplos'}`].filter(Boolean).join(' · ') || 'Añádelos para que replique tu estilo'}</small></span>
         </button>
         <div className="label" style={{ margin: '12px 0 8px' }}>Tus stories</div>
-        {!data.guiones.length && <p className="ayuda">Aún no hay ninguna. Crea el guion de stories de un carrusel o un reel (o de un tema) y luego diséñalas con tu sistema.</p>}
+        {!data.guiones.length && <p className="ayuda">Aún no hay ninguna. Crea el guion de stories de un carrusel o un reel (o de un tema).</p>}
         {data.guiones.map((g) => (
           <button key={g.id} type="button" className={`diseno-item${actual?.id === g.id ? ' on' : ''}`} onClick={() => elegir(g.id)}>
-            <span className="diseno-mini story" style={g.diseno?.previa ? { backgroundImage: `url("${g.diseno.previa}")` } : undefined}>{!g.diseno?.previa && <Icon name="layers" size={14} />}</span>
+            <span className="diseno-mini story"><Icon name="layers" size={14} /></span>
             <span className="diseno-item-txt">
               <b>{g.titulo}</b>
               <small>{g.pieza ? `De ${g.pieza.formato.toLowerCase()}` : g.tema ? 'De un tema' : 'A mano'} · {nStories(g.guion) || g.cantidad} stories</small>
-              <small className={g.estado === 'error' ? 't-err' : ''}>{g.estado === 'escribiendo' ? 'JARVIS escribiendo el guion…' : g.estado === 'error' ? 'Con error' : g.diseno ? (g.diseno.estado === 'listo' ? 'Diseñadas' : 'Diseñando…') : g.guion ? 'Guion listo' : 'Sin guion'}</small>
+              <small className={g.estado === 'error' ? 't-err' : ''}>{g.estado === 'escribiendo' ? 'JARVIS escribiendo el guion…' : g.estado === 'error' ? 'Con error' : g.guion ? 'Guion listo' : 'Sin guion'}</small>
             </span>
           </button>
         ))}
       </div>
       {actual
-        ? <Detalle key={actual.id} g={actual} data={data} piezas={piezas} ig={ig} onVisor={(v) => onVisor(v.archivos, v.inicio)} onAbrir={onAbrir} onProgramar={onProgramar} recargar={recargar} onBorrado={() => { elegir(null); recargar(); }} />
-        : <div className="panel panel-pad diseno-vacio"><Icon name="layers" size={22} /><p>De cada carrusel o reel, JARVIS te escribe el guion de stories para moverlo; cuando el guion está, Claude las diseña con tu sistema de diseño y las exportas a la biblioteca.</p><button className="btn" onClick={() => setNuevo({})}><Icon name="plus" size={14} />Nuevo guion de stories</button></div>}
-      {actual?.diseno && (
-        <ChatJarvis
-          conversacion="diseno"
-          titulo="Ajustar con Claude"
-          subtitulo={`Sobre las stories «${actual.titulo}»`}
-          placeholder="Ej.: en la 2 pon la encuesta más abajo y cambia el color del titular"
-          intro="Pídele cambios en el diseño de las stories: textos, orden, colores, otra composición… Claude lo vuelve a dibujar y revisa que todo quepa."
-          prefijo={`[Diseño #${actual.diseno.id}]`}
-          mostrarPregunta={(t) => (/^Diseña el diseño #\d+/.test(t) ? `Diseñar «${(/Título: (.*)/.exec(t) || [])[1] || 'las stories'}»` : t.replace(/^\[Diseño #\d+\]\s*/, ''))}
-          conGuardarGuion={false}
-        />
-      )}
+        ? <Detalle key={actual.id} g={actual} piezas={piezas} ig={ig} onAbrir={onAbrir} recargar={recargar} onBorrado={() => { elegir(null); recargar(); }} />
+        : <div className="panel panel-pad diseno-vacio"><Icon name="layers" size={22} /><p>De cada carrusel o reel (o de un tema), JARVIS te escribe el guion de stories con tu estilo. Cuando las tengas hechas, las subes y las programas aquí.</p><button className="btn" onClick={() => setNuevo({})}><Icon name="plus" size={14} />Nuevo guion de stories</button></div>}
       {viendoEstilo && <EstiloStories estilo={data.estilo || { texto: '', ruta: 'Stories/CLAUDE.md', modificado: null }} ejemplos={data.ejemplos || []} onEjemplos={recargar} onClose={() => setViendoEstilo(false)} onGuardado={() => { setViendoEstilo(false); recargar(); }} />}
       {subiendo && <ProgramarStories ig={ig} titulo="Stories" onClose={() => setSubiendo(false)} onHecho={(n, conErrores) => { setAviso(`✓ ${n} ${n === 1 ? 'story programada' : 'stories programadas'}: las tienes en el calendario de Contenido.`); if (!conErrores) setSubiendo(false); }} />}
       {nuevo && <NuevoGuion data={data} piezas={piezas} inicial={nuevo.pieza || null} onClose={() => setNuevo(null)} onCreado={(g) => { setNuevo(null); elegir(g.id); recargar(); }} />}

@@ -17,7 +17,7 @@ import { useIr } from '../lib/ir.js';
 const SECCIONES = [
   { id: 'replicar', label: 'Replicar', icon: 'link', ayuda: 'Pega el enlace de un post o un reel y JARVIS hace tu versión, con tu voz y tu diseño' },
   { id: 'diseno', label: 'Diseño', icon: 'palette', ayuda: 'Carruseles y stories con tu sistema de diseño' },
-  { id: 'stories', label: 'Stories', icon: 'layers', ayuda: 'El guion de stories de cada carrusel o reel (o de un tema) y, con el guion listo, las stories con tu diseño' },
+  { id: 'stories', label: 'Stories', icon: 'layers', ayuda: 'El guion de stories de cada carrusel o reel (o de un tema), con tu estilo; y subirlas y programarlas' },
   { id: 'testimonios', label: 'Testimonios', icon: 'users', ayuda: 'De la entrevista a clips, stories, carrusel, portada y captions' },
   { id: 'reels', label: 'Reels', icon: 'play', ayuda: 'Tus vídeos: mejores momentos, subtítulos y sin muletillas' },
   { id: 'leadmagnets', label: 'Lead magnets', icon: 'target', ayuda: 'Guías, checklists y tests en una página web, publicados con un enlace' },
@@ -60,7 +60,7 @@ export default function Laboratorio() {
 
       {seccion === 'replicar' && <DesdeEnlace />}
       {seccion === 'diseno' && <Diseno piezas={piezas} ig={contenido?.instagram} onAbrir={setEditando} onProgramar={(p) => setProgramando({ p })} />}
-      {seccion === 'stories' && <Stories piezas={piezas} ig={contenido?.instagram} onAbrir={setEditando} onProgramar={(p) => setProgramando({ p })} onVisor={abrirVisor} />}
+      {seccion === 'stories' && <Stories piezas={piezas} ig={contenido?.instagram} onAbrir={setEditando} />}
       {(seccion === 'testimonios' || seccion === 'reels') && (!lab ? (
         <div className="panel panel-pad vacio">
           {errorLab ? <>No se ha podido cargar el Laboratorio: {errorLab}.<br />Si acabas de actualizar JARVIS en el VPS, espera a que termine el instalador y recarga la página.</> : 'Cargando…'}

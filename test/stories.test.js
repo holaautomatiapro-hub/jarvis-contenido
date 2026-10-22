@@ -22,15 +22,13 @@ const nuevo = () => {
   const preguntas = [];
   let ocupado = false;
   const asistente = { preguntar: (b) => { preguntas.push(b); ocupado = true; return { id: preguntas.length }; }, estado: () => ({ ocupado, ocupadoAqui: ocupado }), acabar: () => { ocupado = false; } };
-  const creados = [];
-  const disenos = { crear: (d) => { creados.push(d); return { id: 7 }; }, obtener: (id) => ({ id, estado: 'generando', diapositivas: 0, previas: [] }) };
-  const stories = createStories({ db, jarvis, asistente, disenos });
-  return { db, jarvis, asistente, preguntas, creados, stories, limpiar: () => rmSync(dir, { recursive: true, force: true }) };
+  const stories = createStories({ db, jarvis, asistente });
+  return { db, jarvis, asistente, preguntas, stories, limpiar: () => rmSync(dir, { recursive: true, force: true }) };
 };
 
 describe('guiones de stories', () => {
-  test('de un carrusel: JARVIS escribe el guion, lo guarda con su herramienta y después se diseña', async () => {
-    const { jarvis, asistente, preguntas, creados, stories, limpiar } = nuevo();
+  test('de un carrusel: JARVIS escribe el guion y lo guarda con su herramienta', async () => {
+    const { jarvis, asistente, preguntas, stories, limpiar } = nuevo();
     try {
       const p = jarvis.crearPieza({ titulo: 'Deja de contestar DMs a mano', formato: 'Carrusel', caption: 'Comenta SETTER y te lo mando' });
       jarvis.guardarGuion(p.id, { texto: 'Slide 1: el problema\nSlide 2: la solución' });
@@ -41,8 +39,6 @@ describe('guiones de stories', () => {
       assert.equal(s.pieza.formato, 'Carrusel');
       assert.equal(preguntas[0].conversacion, 'guiones');
       assert.match(preguntas[0].texto, /secuencia de 4 stories[\s\S]*Slide 1: el problema[\s\S]*Comenta SETTER[\s\S]*Llevar tráfico[\s\S]*guardar_guion_stories \(id 1\)/);
-      // Mientras escribe no se puede diseñar
-      assert.throws(() => stories.disenar(s.id, {}), /Primero escribe|Espera/);
 
       // JARVIS lo guarda por el MCP
       const [a, b] = InMemoryTransport.createLinkedPair();
@@ -57,14 +53,6 @@ describe('guiones de stories', () => {
       assert.equal(listo.estado, 'listo');
       assert.equal(listo.titulo, 'DMs en piloto automático');
       assert.equal(listo.error, null);
-
-      // Diseñar: un diseño de stories con el guion y enlazado a la pieza
-      const d = stories.disenar(s.id, { plantilla: 'story-1', indicaciones: 'fondo oscuro' });
-      assert.equal(d.diseno.id, 7);
-      assert.equal(creados[0].formato, 'story');
-      assert.equal(creados[0].pieza_id, p.id);
-      assert.match(creados[0].guion, /Story 2 · encuesta/);
-      assert.match(creados[0].indicaciones, /una diapositiva por cada «## Story»[\s\S]*fondo oscuro/);
 
       // Pedir un cambio: va con el guion actual
       stories.escribir(s.id, { indicaciones: 'más corto' });
@@ -108,6 +96,26 @@ describe('guiones de stories', () => {
       disenos.crear({ formato: 'carrusel', guion: 'Slide 1' });
       assert.doesNotMatch(textos[1], /stories de ejemplo|Stories\/CLAUDE/);
     } finally { limpiar(); }
+  });
+
+  test('desde la ficha de una story, «Escribir con IA» escribe su guion de stories (con tu guía y lo que toca ese día)', async () => {
+    const { jarvis, stories, preguntas, limpiar } = nuevo();
+    const server = http.createServer();
+    try {
+      stories.guardarEstilo({ texto: '# Mi estilo\n- Siempre una encuesta' });
+      const st = jarvis.crearPieza({ titulo: 'Stories · Personal · Mostrar cómo trabajamos', formato: 'Story', fecha: '2026-10-23', categoria: 'Personal' });
+      const reel = jarvis.crearPieza({ titulo: 'Un reel', formato: 'Reel' });
+      const asistente = { preguntar: (b) => { preguntas.push(b); return { id: 9 }; }, estado: () => ({ ocupado: false, ocupadoAqui: false }), cancelar() {}, nuevaSesion() {}, enMarcha: () => [] };
+      await new Promise((ok) => server.listen(0, '127.0.0.1', ok));
+      server.on('request', createApp({ jarvis, stories, asistente, port: server.address().port, status: async () => [] }));
+      const base = `http://127.0.0.1:${server.address().port}`;
+      const r = await fetch(`${base}/api/piezas/${st.id}/guion/ia`, { method: 'POST', headers: { 'content-type': 'application/json' }, body: '{"indicaciones":"que salga el equipo"}' }).then((x) => x.json());
+      assert.match(preguntas[0].texto, /^Escribe el GUION DE STORIES de mi pieza «Stories · Personal · Mostrar cómo trabajamos»[\s\S]*para el 2026-10-23 · tipo de contenido: Personal[\s\S]*Siempre una encuesta[\s\S]*que salga el equipo[\s\S]*ver_estrategia qué stories tocan el 2026-10-23[\s\S]*## Story 1 ·[\s\S]*editar_nota en «/);
+      assert.ok(preguntas[0].texto.includes(r.ruta));
+      // A un reel le sigue escribiendo su guion de reel
+      await fetch(`${base}/api/piezas/${reel.id}/guion/ia`, { method: 'POST', headers: { 'content-type': 'application/json' }, body: '{}' });
+      assert.doesNotMatch(preguntas[1].texto, /GUION DE STORIES/);
+    } finally { server.close(); limpiar(); }
   });
 
   test('API: desde un tema o escrito a mano, y se cambia a mano', async () => {

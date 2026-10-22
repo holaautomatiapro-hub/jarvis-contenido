@@ -37,10 +37,30 @@ export function ejemplosStories(vault) {
       .map((f) => ({ fichero: f, ruta: path.join(dir, f), tamano: statSync(path.join(dir, f)).size }));
   } catch { return []; }
 }
+// El guion de stories de una pieza de tipo Story (desde su ficha): se guarda en su nota de guion, como el de
+// cualquier pieza, pero escrito como una secuencia de stories, con tu guía, tus ejemplos y lo que toca ese día.
+export function promptGuionStory(p, { ruta, vacio, referencia = null, indicaciones = '', vault }) {
+  const estilo = leerEstiloStories(vault).texto.trim();
+  const ejemplos = ejemplosStories(vault);
+  const datos = [p.fecha && `para el ${p.fecha}${p.hora ? ` a las ${p.hora}` : ''}`, p.categoria && `tipo de contenido: ${p.categoria}`, p.objetivo && `objetivo: ${p.objetivo}`, p.pilar && `pilar: ${p.pilar}`].filter(Boolean).join(' · ');
+  return `${vacio ? 'Escribe' : 'Cambia'} el GUION DE STORIES de mi pieza «${p.titulo}» (#${p.id}, Story${datos ? ` · ${datos}` : ''}).
+${vacio ? `Su nota de guion está vacía: «${ruta}».` : `El guion actual está en la nota «${ruta}»: léelo con leer_nota${'. Si te pido un cambio concreto, cambia solo eso'}.`}
+${referencia ? `Sale de esta idea o referencia: léela con leer_nota en «${referencia}» y úsala como base (con mi voz, nunca frases literales de otros).\n` : ''}${estilo ? `Mi guía de estilo de stories (${ESTILO_STORIES}): síguela en todo, por encima de las reglas generales de abajo:\n"""\n${estilo.slice(0, 12_000)}\n"""\n` : ''}${ejemplos.length ? `Mis stories de ejemplo (míralas con Read para captar mi tono, cuánto texto pongo y cómo estructuro una secuencia): ${ejemplos.map((e) => e.ruta).join(', ')}\n` : ''}${indicaciones ? `Lo que quiero (manda sobre todo lo demás): ${String(indicaciones).slice(0, 1500)}\n` : ''}
+Cómo hacerlo:
+1. Lee _voz.md y CLAUDE.md (mi oferta, mi cliente) y escribe con MI voz.${p.fecha ? ` Mira con ver_estrategia qué stories tocan el ${p.fecha} y que encaje con eso${p.categoria ? ` (sobre todo con «${p.categoria}»)` : ''}.` : ''} Si hay una skill de stories en .claude/skills, síguela.
+2. Una secuencia de 3-7 stories con hilo: la 1 engancha, las del medio desarrollan con una idea por story, donde encaje una interacción (encuesta, caja de preguntas, quiz o deslizador) y la última cierra con un CTA claro.
+3. Textos cortos para leer en 3-5 segundos. Escribe cada story así:
+## Story 1 · <tipo: texto, encuesta, pregunta, quiz, vídeo selfie, captura, enlace…>
+Texto en pantalla: <lo que se lee>
+Visual: <qué se ve: fondo, foto, captura, tu cara…>
+Sticker: <encuesta con sus opciones, caja de preguntas, enlace… (si lleva)>
+4. Guárdalo con editar_nota en «${ruta}» (léela antes con leer_nota): deja el frontmatter y el título (# …) tal cual y pon debajo el guion completo. No le cambies el título a la nota, no crees notas ni piezas y no publiques nada.
+5. Responde en una o dos líneas qué has escrito.`;
+}
 const FORMATOS_ORIGEN = { Carrusel: 'carrusel', Reel: 'reel', Short: 'reel', 'Reel split': 'reel', 'B-roll': 'reel', Post: 'post' };
 const texto = (v, max) => (v == null ? '' : String(v).trim().slice(0, max));
 
-export function createStories({ db, jarvis, asistente = null, disenos = null, alCambiar = () => {} }) {
+export function createStories({ db, jarvis, asistente = null, alCambiar = () => {} }) {
   const q = {
     get: db.prepare('SELECT * FROM stories_guiones WHERE id = ?'),
     lista: db.prepare('SELECT * FROM stories_guiones ORDER BY actualizado DESC, id DESC LIMIT 200'),
@@ -62,8 +82,6 @@ export function createStories({ db, jarvis, asistente = null, disenos = null, al
 
   function vista(r) {
     const pieza = r.pieza_origen ? jarvis.listarPiezas().find((p) => p.id === r.pieza_origen) : null;
-    let diseno = null;
-    if (r.diseno_id && disenos) { try { diseno = disenos.obtener(r.diseno_id); } catch { /* lo borraron en Diseño */ } }
     // Se quedó «escribiendo» pero JARVIS ya no está con él (se cerró a medias): vuelve a estar disponible
     const cortado = r.estado === 'escribiendo' && !escribiendo(r);
     const estado = cortado ? (r.guion.trim() ? 'listo' : 'error') : r.estado;
@@ -71,7 +89,6 @@ export function createStories({ db, jarvis, asistente = null, disenos = null, al
       id: r.id, titulo: r.titulo, tema: r.tema || '', objetivo: r.objetivo || null, cantidad: r.cantidad, indicaciones: r.indicaciones || '',
       guion: r.guion, estado, error: cortado && !r.guion.trim() ? 'Se cortó antes de terminar. Vuelve a pedírselo a JARVIS.' : r.error, creado: r.creado, actualizado: r.actualizado,
       pieza: pieza ? { id: pieza.id, titulo: pieza.titulo, formato: pieza.formato } : null,
-      diseno: diseno ? { id: diseno.id, estado: diseno.estado, diapositivas: diseno.diapositivas, previa: diseno.previas[0] || null, guionCambiado: diseno.guion != null && diseno.guion.trim() !== r.guion.trim() } : null,
     };
   }
   const listar = () => rows(q.lista).map(vista);
@@ -97,7 +114,7 @@ ${estilo ? `Mi guía de estilo de stories (${ESTILO_STORIES}): síguela en todo 
 Cómo hacerlo:
 1. Lee _voz.md y CLAUDE.md (mi oferta, mi cliente) y escribe con MI voz. Mira con ver_estrategia qué stories tocan estos días por si encaja. Si hay una skill de stories en .claude/skills, síguela.
 2. ${r.cantidad} stories con hilo: la 1 engancha (que no pasen), las del medio desarrollan con una idea por story, al menos una lleva interacción (encuesta, caja de preguntas, quiz o deslizador) y la última cierra con un CTA claro (responder con una palabra clave, ir al post o al reel, o el enlace).
-3. Textos cortos para leer en 3-5 segundos. Escribe cada story así, para que después se pueda diseñar:
+3. Textos cortos para leer en 3-5 segundos. Escribe cada story así:
 ## Story 1 · <tipo: texto, encuesta, pregunta, quiz, vídeo selfie, captura, enlace…>
 Texto en pantalla: <lo que se lee>
 Visual: <qué se ve: fondo, foto, captura, tu cara…>
@@ -159,18 +176,6 @@ Sticker: <encuesta con sus opciones, caja de preguntas, enlace… (si lleva)>
     alCambiar();
   }
 
-  // Con el guion listo: Claude diseña las stories con tu sistema de diseño (un diseño de formato story)
-  function disenar(id, { plantilla, indicaciones } = {}) {
-    if (!disenos) throw new StoriesError('El diseño no está disponible');
-    const r = leer(id);
-    if (!r.guion.trim()) throw new StoriesError('Primero escribe el guion de las stories');
-    if (escribiendo(r)) throw new StoriesError('Espera a que JARVIS termine el guion');
-    const d = disenos.crear({ formato: 'story', plantilla, titulo: r.titulo, guion: r.guion, pieza_id: r.pieza_origen || undefined, indicaciones: [`Son ${r.cantidad} stories: una diapositiva por cada «## Story» del guion, en ese orden. Donde el guion pida un sticker (encuesta, pregunta, enlace…), deja libre su hueco: el sticker se pone en Instagram.`, texto(indicaciones, 1500)].filter(Boolean).join(' ') });
-    actualizar(r.id, { diseno_id: d.id });
-    alCambiar();
-    return obtener(r.id);
-  }
-
   function borrar(id) {
     const r = leer(id);
     if (escribiendo(r)) throw new StoriesError('Espera a que JARVIS termine el guion');
@@ -214,5 +219,5 @@ Sticker: <encuesta con sus opciones, caja de preguntas, enlace… (si lleva)>
     return ejemplos();
   }
 
-  return { listar, obtener, crear, estilo, guardarEstilo, ejemplos, subirEjemplo, borrarEjemplo, rutaEjemplo, escribir, guardarGuion, disenar, borrar, alEventoClaude, prompt };
+  return { listar, obtener, crear, estilo, guardarEstilo, ejemplos, subirEjemplo, borrarEjemplo, rutaEjemplo, escribir, guardarGuion, borrar, alEventoClaude, prompt };
 }
