@@ -65,5 +65,17 @@ export function createFotogramas({ archivos, ffmpeg = rutaFfmpeg, ejecutar = spa
     const m = String(err).match(/Duration:\s*(\d+):(\d+):(\d+(?:\.\d+)?)/);
     return m ? Number(m[1]) * 3600 + Number(m[2]) * 60 + Number(m[3]) : null;
   };
-  return { comoPortada, vistaPrevia, duracion };
+  // Una imagen que no es JPG (PNG, WebP, HEIC…) pasa a JPG: Instagram solo publica JPG. La de antes se borra.
+  // (El navegador ya las convierte al subirlas; esto es para lo que llega de fuera, p. ej. desde Claude Code.)
+  const aJpg = (a) => conTmp(async (tmp) => {
+    if (!/^image\//.test(a.mime || '') || /^image\/jpe?g$/.test(a.mime)) return a;
+    const destino = path.join(tmp, 'imagen.jpg');
+    const bin = await ffmpeg();
+    await correr(bin, ['-v', 'error', '-y', '-i', archivos.ruta(a.path), '-frames:v', '1', '-q:v', '2', destino], ejecutar).catch(() => {});
+    if (!existsSync(destino) || !statSync(destino).size) throw publico(`No he podido pasar «${a.nombre}» a JPG (Instagram solo publica JPG)`);
+    const nuevo = await archivos.guardar(createReadStream(destino), { nombre: `${String(a.nombre).replace(/\.[^.]*$/, '')}.jpg`, mime: 'image/jpeg' });
+    archivos.borrar(a.path);
+    return nuevo;
+  });
+  return { comoPortada, vistaPrevia, duracion, aJpg };
 }
