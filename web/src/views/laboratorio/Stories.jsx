@@ -44,7 +44,52 @@ const PLANTILLA_ESTILO = `# Mi estilo de stories
 
 // Tu guía de estilo de stories (Stories/CLAUDE.md en tu vault): JARVIS la sigue al escribir los guiones y Claude al
 // diseñarlas. Se escribe aquí, se sube un .md o se edita en Obsidian.
-function EstiloStories({ estilo, onClose, onGuardado }) {
+// Tus stories de ejemplo: se suben al momento (no hace falta Guardar) y Claude las mira antes de diseñar
+function EjemplosStories({ ejemplos, onCambio }) {
+  const [lista, setLista] = useState(ejemplos);
+  const [subiendo, setSubiendo] = useState(0);
+  const [error, setError] = useState('');
+  const input = useRef(null);
+  const subir = async (files) => {
+    const imgs = [...files].filter((f) => /^image\/(jpeg|png|webp)$/.test(f.type) || /\.(jpe?g|png|webp)$/i.test(f.name));
+    if (!imgs.length) return setError('Sube imágenes (JPG, PNG o WebP). Si tu story es un vídeo, haz una captura.');
+    setError('');
+    for (const f of imgs) {
+      setSubiendo((n) => n + 1);
+      try {
+        const r = await fetch(`/api/stories/ejemplos?nombre=${encodeURIComponent(f.name)}`, { method: 'POST', headers: { 'content-type': 'application/octet-stream' }, body: f });
+        const j = await r.json().catch(() => ({}));
+        if (!r.ok) throw new Error(j.error || `No se pudo subir «${f.name}»`);
+        setLista(j); onCambio();
+      } catch (e) { setError((x) => (x ? `${x}\n` : '') + e.message); }
+      setSubiendo((n) => n - 1);
+    }
+  };
+  const borrar = async (e) => {
+    try { setLista(await api(`/api/stories/ejemplos/${encodeURIComponent(e.fichero)}`, { method: 'DELETE' })); onCambio(); } catch (err) { setError(err.message); }
+  };
+  return (
+    <div className="estilo-ejemplos">
+      <div className="estilo-ejemplos-cab">
+        <div><b>Stories de ejemplo</b><span className="ayuda"> · capturas de tus stories (hasta 12). Claude las mira antes de diseñar para que las nuevas parezcan tuyas.</span></div>
+        <button type="button" className="btn btn-sec" onClick={() => input.current?.click()} disabled={subiendo > 0 || lista.length >= 12}><Icon name="plus" size={14} />{subiendo ? `Subiendo ${subiendo}…` : 'Añadir'}</button>
+        <input ref={input} type="file" accept="image/jpeg,image/png,image/webp" multiple hidden onChange={(e) => { subir(e.target.files); e.target.value = ''; }} />
+      </div>
+      <div className="estilo-ejemplos-grid" onDragOver={(e) => e.preventDefault()} onDrop={(e) => { e.preventDefault(); subir(e.dataTransfer.files); }}>
+        {lista.map((e) => (
+          <div key={e.fichero} className="estilo-ejemplo">
+            <img src={e.url} alt="" loading="lazy" />
+            <button type="button" onClick={() => borrar(e)} aria-label="Quitar este ejemplo" title="Quitar este ejemplo">✕</button>
+          </div>
+        ))}
+        {!lista.length && <button type="button" className="estilo-ejemplo-vacio" onClick={() => input.current?.click()}>Arrastra aquí capturas de tus stories o pulsa para elegirlas</button>}
+      </div>
+      {error && <div className="caja-error">{error}</div>}
+    </div>
+  );
+}
+
+function EstiloStories({ estilo, ejemplos, onClose, onGuardado, onEjemplos }) {
   const [texto, setTexto] = useState(estilo.texto);
   const [error, setError] = useState('');
   const [guardando, setGuardando] = useState(false);
@@ -60,20 +105,22 @@ function EstiloStories({ estilo, onClose, onGuardado }) {
     catch (e) { setError(e.message); setGuardando(false); }
   };
   return (
-    <Modal titulo={<><Icon name="doc" size={14} />Tu estilo de stories · CLAUDE.md</>} onClose={onClose} ancho={760} cerrarFuera={false}>
-      <p className="ayuda">Cuéntale a JARVIS cómo son tus stories: tono, estructura, textos, diseño, stickers y CTA. Lo sigue al escribir cada guion y Claude al diseñarlas. Se guarda en tu vault, en <b>{estilo.ruta}</b> (también puedes editarlo en Obsidian).</p>
+    <Modal titulo={<><Icon name="doc" size={14} />Tu estilo de stories</>} onClose={onClose} ancho={760} cerrarFuera={false}>
+      <EjemplosStories ejemplos={ejemplos} onCambio={onEjemplos} />
+      <div className="estilo-ejemplos-cab" style={{ marginTop: 14 }}><b>CLAUDE.md</b></div>
+      <p className="ayuda">Cuéntale a JARVIS cómo son tus stories: tono, estructura, textos, diseño, stickers y CTA. Lo sigue al escribir cada guion y Claude al diseñarlas. Se guarda en tu vault, en <b>{estilo.ruta}</b> (también puedes editarlo en Obsidian); los ejemplos, en Stories/ejemplos.</p>
       <div className="estilo-barra">
         <button type="button" className="btn btn-sec" onClick={() => input.current?.click()}><Icon name="share" size={14} />Subir un .md</button>
         {!texto.trim() && <button type="button" className="btn btn-sec" onClick={() => setTexto(PLANTILLA_ESTILO)}><Icon name="doc" size={14} />Empezar con una plantilla</button>}
         <input ref={input} type="file" accept=".md,.markdown,.txt,text/markdown,text/plain" hidden onChange={(e) => { subir(e.target.files?.[0]); e.target.value = ''; }} />
       </div>
-      <textarea className="campo stories-guion" rows={20} value={texto} onChange={(e) => setTexto(e.target.value)} placeholder="# Mi estilo de stories&#10;- Máximo 12 palabras por story&#10;- Fondo con foto mía y texto en blanco arriba&#10;- Siempre cierro con «responde YO»…" />
+      <textarea className="campo stories-guion" rows={14} value={texto} onChange={(e) => setTexto(e.target.value)} placeholder="# Mi estilo de stories&#10;- Máximo 12 palabras por story&#10;- Fondo con foto mía y texto en blanco arriba&#10;- Siempre cierro con «responde YO»…" />
       {error && <div className="caja-error">{error}</div>}
       <div className="modal-pie">
         <span className="ayuda">{texto.length.toLocaleString('es-ES')} caracteres</span>
         <div style={{ display: 'flex', gap: 8 }}>
           <button type="button" className="btn btn-sec" onClick={onClose}>Cancelar</button>
-          <button type="button" className="btn" onClick={guardar} disabled={guardando || texto === estilo.texto}>{guardando ? 'Guardando…' : 'Guardar'}</button>
+          <button type="button" className="btn" onClick={texto === estilo.texto ? onClose : guardar} disabled={guardando}>{guardando ? 'Guardando…' : texto === estilo.texto ? 'Listo' : 'Guardar'}</button>
         </div>
       </div>
     </Modal>
@@ -285,9 +332,9 @@ export default function Stories({ piezas, ig, onAbrir, onProgramar, onVisor }) {
     <div className={`stories-grid${actual?.diseno ? ' con-chat' : ''}`}>
       <div className="panel panel-pad diseno-lista">
         <button type="button" className="btn stories-nuevo" onClick={() => setNuevo({})}><Icon name="plus" size={14} />Nuevo guion de stories</button>
-        <button type="button" className={`stories-estilo${data.estilo?.texto.trim() ? ' hecho' : ''}`} onClick={() => setViendoEstilo(true)} title="Tu guía de estilo de stories: JARVIS la sigue al escribir y al diseñar">
+        <button type="button" className={`stories-estilo${data.estilo?.texto.trim() || data.ejemplos?.length ? ' hecho' : ''}`} onClick={() => setViendoEstilo(true)} title="Tu CLAUDE.md y tus stories de ejemplo: JARVIS los sigue al escribir y al diseñar">
           <Icon name="doc" size={14} />
-          <span><b>Tu estilo · CLAUDE.md</b><small>{data.estilo?.texto.trim() ? '✓ JARVIS replica tu estilo' : 'Añádelo para que replique tu estilo'}</small></span>
+          <span><b>Tu estilo · CLAUDE.md y ejemplos</b><small>{[data.estilo?.texto.trim() && '✓ CLAUDE.md', data.ejemplos?.length && `✓ ${data.ejemplos.length} ${data.ejemplos.length === 1 ? 'ejemplo' : 'ejemplos'}`].filter(Boolean).join(' · ') || 'Añádelos para que replique tu estilo'}</small></span>
         </button>
         <div className="label" style={{ margin: '12px 0 8px' }}>Tus stories</div>
         {!data.guiones.length && <p className="ayuda">Aún no hay ninguna. Crea el guion de stories de un carrusel o un reel (o de un tema) y luego diséñalas con tu sistema.</p>}
@@ -317,7 +364,7 @@ export default function Stories({ piezas, ig, onAbrir, onProgramar, onVisor }) {
           conGuardarGuion={false}
         />
       )}
-      {viendoEstilo && <EstiloStories estilo={data.estilo || { texto: '', ruta: 'Stories/CLAUDE.md', modificado: null }} onClose={() => setViendoEstilo(false)} onGuardado={() => { setViendoEstilo(false); recargar(); }} />}
+      {viendoEstilo && <EstiloStories estilo={data.estilo || { texto: '', ruta: 'Stories/CLAUDE.md', modificado: null }} ejemplos={data.ejemplos || []} onEjemplos={recargar} onClose={() => setViendoEstilo(false)} onGuardado={() => { setViendoEstilo(false); recargar(); }} />}
       {nuevo && <NuevoGuion data={data} piezas={piezas} inicial={nuevo.pieza || null} onClose={() => setNuevo(null)} onCreado={(g) => { setNuevo(null); elegir(g.id); recargar(); }} />}
     </div>
   );

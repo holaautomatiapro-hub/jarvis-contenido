@@ -8,7 +8,7 @@ import { Readable } from 'node:stream';
 import { ajustes, row, rows } from '../db.js';
 import { FORMATOS } from './kit.js';
 import { normalizarDiseno } from './motor.js';
-import { ESTILO_STORIES } from '../stories.js';
+import { ESTILO_STORIES, ejemplosStories } from '../stories.js';
 
 export class DisenoError extends Error {
   constructor(m) { super(m); this.publico = true; }
@@ -162,7 +162,7 @@ export function createDisenos({ db, jarvis, kit, motor, archivos = null, previas
 - Formato: ${f.nombre.toLowerCase()} (${f.ancho}×${f.alto} px)
 - Plantilla: ${pl?.nombre || r.plantilla} (id "${r.plantilla}")
 - Título: ${r.titulo}
-${indicaciones ? `- Indicaciones de la persona: ${String(indicaciones).slice(0, 2000)}\n` : ''}${r.formato === 'story' && tieneEstiloStories() ? `- Mi guía de estilo de stories está en ${ESTILO_STORIES}: léela con Read antes de diseñar y síguela en lo visual (colores, letras, composición, dónde va cada cosa); manda sobre el ejemplo de la plantilla.\n` : ''}- Guion${r.nota ? ` (nota ${r.nota})` : ''}:
+${indicaciones ? `- Indicaciones de la persona: ${String(indicaciones).slice(0, 2000)}\n` : ''}${r.formato === 'story' && tieneEstiloStories() ? `- Mi guía de estilo de stories está en ${ESTILO_STORIES}: léela con Read antes de diseñar y síguela en lo visual (colores, letras, composición, dónde va cada cosa); manda sobre el ejemplo de la plantilla.\n` : ''}${r.formato === 'story' && ejemplosStories(jarvis.vault).length ? `- Mis stories de ejemplo (míralas TODAS con Read antes de diseñar y copia su estilo visual: composición, tipografías, tamaños, colores, fondos, dónde va el texto, cómo uso fotos y stickers; que las nuevas parezcan de la misma cuenta): ${ejemplosStories(jarvis.vault).map((e) => e.ruta).join(', ')}\n` : ''}- Guion${r.nota ? ` (nota ${r.nota})` : ''}:
 """
 ${r.guion}
 """

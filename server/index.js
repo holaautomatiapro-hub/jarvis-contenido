@@ -662,10 +662,17 @@ export function createApp({ jarvis, archivos, miniaturas = null, estrategia = nu
   // Laboratorio → Stories: guiones de stories (de un carrusel, un reel o un tema) que después se diseñan con el kit
   if (stories) {
     app.get('/api/stories', h(() => ({
-      guiones: stories.listar(), objetivos: OBJETIVOS_STORIES, estilo: stories.estilo(),
+      guiones: stories.listar(), objetivos: OBJETIVOS_STORIES, estilo: stories.estilo(), ejemplos: stories.ejemplos(),
       plantillas: (() => { try { return kit.leer().plantillas.filter((p) => p.formatos.includes('story')).map(({ id, nombre, descripcion }) => ({ id, nombre, descripcion })); } catch { return []; } })(),
     })));
     app.get('/api/stories/estilo', h(() => stories.estilo()));
+    app.get('/api/stories/ejemplos', h(() => stories.ejemplos()));
+    app.post('/api/stories/ejemplos', express.raw({ type: () => true, limit: '16mb' }), h((req) => stories.subirEjemplo({ nombre: String(req.query.nombre || ''), datos: req.body }), true));
+    app.delete('/api/stories/ejemplos/:fichero', h((req) => stories.borrarEjemplo(req.params.fichero), true));
+    app.get('/api/stories/ejemplos/:fichero', (req, res) => {
+      const r = stories.rutaEjemplo(req.params.fichero);
+      return r ? res.set('Cache-Control', 'private, max-age=86400').sendFile(r) : res.status(404).end();
+    });
     app.put('/api/stories/estilo', h((req) => stories.guardarEstilo(req.body || {}), true));
     app.get('/api/stories/:id', h((req) => stories.obtener(req.params.id)));
     app.post('/api/stories', h((req) => stories.crear(req.body || {}), true));
