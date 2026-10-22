@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState } from 'react';
+import { useEffect, useMemo, useRef, useState } from 'react';
 import Icon from '../../components/Icon.jsx';
 import ChatJarvis from '../../components/ChatJarvis.jsx';
 import { api, useMensajes, useRecurso } from '../../lib/api.js';
@@ -16,6 +16,69 @@ const nStories = (g) => (g.match(/^##\s*Story/gim) || []).length;
 // «Guion de stories» desde la ficha de una pieza: se abre aquí con esa pieza elegida
 let piezaPendiente = null;
 export const storiesDePieza = (id) => { piezaPendiente = id; window.dispatchEvent(new CustomEvent('jarvis:stories-de')); };
+
+const PLANTILLA_ESTILO = `# Mi estilo de stories
+
+## Voz y tono
+- Cómo hablo en stories (cercano, directo, con humor…), cómo me dirijo a quien me ve.
+
+## Estructura de una secuencia
+- Cuántas stories suelo hacer y qué hace cada una (gancho, desarrollo, prueba, CTA).
+
+## Textos en pantalla
+- Cuántas palabras como mucho, mayúsculas o no, emojis sí o no, palabras que resalto.
+
+## Diseño visual
+- Fondo (foto mía, color liso, captura…), colores, tipografías, dónde va el texto y a qué tamaño.
+- Si salgo yo: cómo (cara a cámara, recortado, foto pequeña en una esquina…).
+
+## Stickers e interacción
+- Qué stickers uso (encuestas, cajas de preguntas, quiz…) y cómo los formulo.
+
+## CTA y palabras clave
+- Cómo cierro (responde con una palabra, enlace, ir al post) y mis palabras clave.
+
+## Lo que nunca hago
+- …
+`;
+
+// Tu guía de estilo de stories (Stories/CLAUDE.md en tu vault): JARVIS la sigue al escribir los guiones y Claude al
+// diseñarlas. Se escribe aquí, se sube un .md o se edita en Obsidian.
+function EstiloStories({ estilo, onClose, onGuardado }) {
+  const [texto, setTexto] = useState(estilo.texto);
+  const [error, setError] = useState('');
+  const [guardando, setGuardando] = useState(false);
+  const input = useRef(null);
+  const subir = async (f) => {
+    if (!f) return;
+    if (f.size > 200_000) return setError('Ese archivo es demasiado grande para una guía de estilo.');
+    setTexto(await f.text()); setError('');
+  };
+  const guardar = async () => {
+    setGuardando(true); setError('');
+    try { onGuardado(await api('/api/stories/estilo', { method: 'PUT', body: { texto, modificado: estilo.modificado } })); }
+    catch (e) { setError(e.message); setGuardando(false); }
+  };
+  return (
+    <Modal titulo={<><Icon name="doc" size={14} />Tu estilo de stories · CLAUDE.md</>} onClose={onClose} ancho={760} cerrarFuera={false}>
+      <p className="ayuda">Cuéntale a JARVIS cómo son tus stories: tono, estructura, textos, diseño, stickers y CTA. Lo sigue al escribir cada guion y Claude al diseñarlas. Se guarda en tu vault, en <b>{estilo.ruta}</b> (también puedes editarlo en Obsidian).</p>
+      <div className="estilo-barra">
+        <button type="button" className="btn btn-sec" onClick={() => input.current?.click()}><Icon name="share" size={14} />Subir un .md</button>
+        {!texto.trim() && <button type="button" className="btn btn-sec" onClick={() => setTexto(PLANTILLA_ESTILO)}><Icon name="doc" size={14} />Empezar con una plantilla</button>}
+        <input ref={input} type="file" accept=".md,.markdown,.txt,text/markdown,text/plain" hidden onChange={(e) => { subir(e.target.files?.[0]); e.target.value = ''; }} />
+      </div>
+      <textarea className="campo stories-guion" rows={20} value={texto} onChange={(e) => setTexto(e.target.value)} placeholder="# Mi estilo de stories&#10;- Máximo 12 palabras por story&#10;- Fondo con foto mía y texto en blanco arriba&#10;- Siempre cierro con «responde YO»…" />
+      {error && <div className="caja-error">{error}</div>}
+      <div className="modal-pie">
+        <span className="ayuda">{texto.length.toLocaleString('es-ES')} caracteres</span>
+        <div style={{ display: 'flex', gap: 8 }}>
+          <button type="button" className="btn btn-sec" onClick={onClose}>Cancelar</button>
+          <button type="button" className="btn" onClick={guardar} disabled={guardando || texto === estilo.texto}>{guardando ? 'Guardando…' : 'Guardar'}</button>
+        </div>
+      </div>
+    </Modal>
+  );
+}
 
 function NuevoGuion({ data, piezas, inicial, onClose, onCreado }) {
   const candidatas = useMemo(() => piezas.filter((p) => ORIGENES.includes(p.formato))
@@ -206,6 +269,7 @@ export default function Stories({ piezas, ig, onAbrir, onProgramar, onVisor }) {
   const [data, recargar, error] = useRecurso('/api/stories', null);
   const [sel, setSel] = useState(() => { try { return Number(localStorage.getItem('stories_sel')) || null; } catch { return null; } });
   const [nuevo, setNuevo] = useState(null); // { pieza } | {}
+  const [viendoEstilo, setViendoEstilo] = useState(false);
   const elegir = (id) => { setSel(id); try { localStorage.setItem('stories_sel', String(id || '')); } catch { /* sin localStorage */ } };
   // Desde la ficha de una pieza: «Guion de stories»
   useEffect(() => {
@@ -221,6 +285,10 @@ export default function Stories({ piezas, ig, onAbrir, onProgramar, onVisor }) {
     <div className={`stories-grid${actual?.diseno ? ' con-chat' : ''}`}>
       <div className="panel panel-pad diseno-lista">
         <button type="button" className="btn stories-nuevo" onClick={() => setNuevo({})}><Icon name="plus" size={14} />Nuevo guion de stories</button>
+        <button type="button" className={`stories-estilo${data.estilo?.texto.trim() ? ' hecho' : ''}`} onClick={() => setViendoEstilo(true)} title="Tu guía de estilo de stories: JARVIS la sigue al escribir y al diseñar">
+          <Icon name="doc" size={14} />
+          <span><b>Tu estilo · CLAUDE.md</b><small>{data.estilo?.texto.trim() ? '✓ JARVIS replica tu estilo' : 'Añádelo para que replique tu estilo'}</small></span>
+        </button>
         <div className="label" style={{ margin: '12px 0 8px' }}>Tus stories</div>
         {!data.guiones.length && <p className="ayuda">Aún no hay ninguna. Crea el guion de stories de un carrusel o un reel (o de un tema) y luego diséñalas con tu sistema.</p>}
         {data.guiones.map((g) => (
@@ -249,6 +317,7 @@ export default function Stories({ piezas, ig, onAbrir, onProgramar, onVisor }) {
           conGuardarGuion={false}
         />
       )}
+      {viendoEstilo && <EstiloStories estilo={data.estilo || { texto: '', ruta: 'Stories/CLAUDE.md', modificado: null }} onClose={() => setViendoEstilo(false)} onGuardado={() => { setViendoEstilo(false); recargar(); }} />}
       {nuevo && <NuevoGuion data={data} piezas={piezas} inicial={nuevo.pieza || null} onClose={() => setNuevo(null)} onCreado={(g) => { setNuevo(null); elegir(g.id); recargar(); }} />}
     </div>
   );

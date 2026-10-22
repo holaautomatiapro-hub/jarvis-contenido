@@ -8,6 +8,7 @@ import { Readable } from 'node:stream';
 import { ajustes, row, rows } from '../db.js';
 import { FORMATOS } from './kit.js';
 import { normalizarDiseno } from './motor.js';
+import { ESTILO_STORIES } from '../stories.js';
 
 export class DisenoError extends Error {
   constructor(m) { super(m); this.publico = true; }
@@ -161,7 +162,7 @@ export function createDisenos({ db, jarvis, kit, motor, archivos = null, previas
 - Formato: ${f.nombre.toLowerCase()} (${f.ancho}×${f.alto} px)
 - Plantilla: ${pl?.nombre || r.plantilla} (id "${r.plantilla}")
 - Título: ${r.titulo}
-${indicaciones ? `- Indicaciones de la persona: ${String(indicaciones).slice(0, 2000)}\n` : ''}- Guion${r.nota ? ` (nota ${r.nota})` : ''}:
+${indicaciones ? `- Indicaciones de la persona: ${String(indicaciones).slice(0, 2000)}\n` : ''}${r.formato === 'story' && tieneEstiloStories() ? `- Mi guía de estilo de stories está en ${ESTILO_STORIES}: léela con Read antes de diseñar y síguela en lo visual (colores, letras, composición, dónde va cada cosa); manda sobre el ejemplo de la plantilla.\n` : ''}- Guion${r.nota ? ` (nota ${r.nota})` : ''}:
 """
 ${r.guion}
 """
@@ -171,6 +172,7 @@ Pasos: 1) ver_kit_diseno; 2) lee con Read la guía del kit y el ejemplo de esta 
 6) termina con un resumen de 2-3 líneas: qué hay en cada diapositiva y si queda algún aviso.`;
   }
 
+  const tieneEstiloStories = () => { try { return Boolean(jarvis.vault.read(ESTILO_STORIES).contenido.trim()); } catch { return false; } };
   function generarConClaude(id, { indicaciones, prompt } = {}) {
     if (!asistente) throw new DisenoError('El chat con Claude no está disponible');
     // Antes de borrar la sesión del chat de Diseño: si JARVIS está ocupado, no se toca nada
