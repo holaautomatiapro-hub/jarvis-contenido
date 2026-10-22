@@ -281,6 +281,22 @@ export function openDb(file) {
   migrar('ALTER TABLE piezas ADD COLUMN categoria TEXT');
   // La plantilla de semana que se puso en esa semana (su nombre)
   migrar('ALTER TABLE estrategia_semanas ADD COLUMN plantilla TEXT');
+  // Guiones de stories (Laboratorio → Stories): de un carrusel, un reel o un tema; después se diseñan con el kit
+  db.exec(`CREATE TABLE IF NOT EXISTS stories_guiones (
+    id INTEGER PRIMARY KEY,
+    titulo TEXT NOT NULL,
+    pieza_origen INTEGER,
+    tema TEXT,
+    objetivo TEXT,
+    cantidad INTEGER NOT NULL DEFAULT 5,
+    indicaciones TEXT,
+    guion TEXT NOT NULL DEFAULT '',
+    estado TEXT NOT NULL DEFAULT 'listo',
+    error TEXT,
+    diseno_id INTEGER,
+    creado TEXT NOT NULL DEFAULT (datetime('now','localtime')),
+    actualizado TEXT NOT NULL DEFAULT (datetime('now','localtime'))
+  )`);
   db.exec('CREATE INDEX IF NOT EXISTS piezas_padre ON piezas(padre_id); CREATE INDEX IF NOT EXISTS piezas_origen_ref ON piezas(origen_ref);');
   // Windsor: todas las métricas de cada publicación (JSON) e historias
   migrar('ALTER TABLE ig_media ADD COLUMN extra TEXT');

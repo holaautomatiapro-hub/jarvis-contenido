@@ -226,7 +226,7 @@ export function Diseno({ piezas, ig, onAbrir, onProgramar }) {
   );
 }
 
-function DetalleDiseno({ d, kit, piezas, ig, progreso, onVisor, onAbrir, onProgramar, onAviso, onBorrado, recargar }) {
+export function DetalleDiseno({ d, kit, piezas, ig, progreso, onVisor, onAbrir, onProgramar, onAviso, onBorrado, recargar }) {
   const [ocupado, setOcupado] = useState('');
   const plantilla = kit?.plantillas.find((p) => p.id === d.plantilla);
   const trabajando = ['generando', 'renderizando', 'exportando'].includes(d.estado);

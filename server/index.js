@@ -35,6 +35,7 @@ import { promptAdaptarAnuncio, promptReplicarCompetencia, promptReplicarPropia, 
 import { createReferencias } from './referencias.js';
 import { createMiniaturas } from './miniaturas.js';
 import { createFotogramas } from './fotograma.js';
+import { createStories, OBJETIVOS_STORIES } from './stories.js';
 import { createEstrategia, DIAS, FILAS, OBJETIVOS_SEMANA, PRINCIPIOS, TACTICAS, lunesDe } from './estrategia.js';
 import { createLaboratorio, carpetaPorDefecto } from './laboratorio.js';
 import { promptCaption, limpiarCaption, createContextoCaption } from './caption.js';
@@ -52,7 +53,7 @@ const DIST = path.join(ROOT, 'web', 'dist');
 // Replicar con diseño de carruseles o stories: lo hace Opus, como en Diseño
 const modeloReplicar = (formatos, disenar) => { try { return seDisena(normalizarFormatos(formatos), disenar) ? 'opus' : undefined; } catch { return undefined; } };
 
-export function createApp({ jarvis, archivos, miniaturas = null, estrategia = null, publicadorIg, asistente, instagram, competencia, ads, publicar, hermes, jobs, kit, disenos, recordatorios, laboratorio, resultados, adjuntos, preferencias, actualizar, conversiones, port, onChange = () => {}, status, tts = sintetizar }) {
+export function createApp({ jarvis, archivos, miniaturas = null, estrategia = null, stories = null, publicadorIg, asistente, instagram, competencia, ads, publicar, hermes, jobs, kit, disenos, recordatorios, laboratorio, resultados, adjuntos, preferencias, actualizar, conversiones, port, onChange = () => {}, status, tts = sintetizar }) {
   const estadoSistema = status || (() => systemStatus({ vaultPath: jarvis.vault.base, instagram: Boolean(instagram?.estado().conectado), ads: Boolean(ads?.estado().conectado && ads?.estado().cuenta), hermes: Boolean(hermes?.estado().gateway.online) }));
   const app = express();
 
@@ -658,6 +659,19 @@ export function createApp({ jarvis, archivos, miniaturas = null, estrategia = nu
     return m?.media_url ? res.redirect(m.media_url) : res.status(404).end();
   });
   app.post('/api/ideas/referencia', h((req) => referencias.guardarComoIdea({ fuente: req.body?.fuente, id: String(req.body?.id || ''), conTranscripcion: req.body?.conTranscripcion === true }), true));
+  // Laboratorio → Stories: guiones de stories (de un carrusel, un reel o un tema) que después se diseñan con el kit
+  if (stories) {
+    app.get('/api/stories', h(() => ({
+      guiones: stories.listar(), objetivos: OBJETIVOS_STORIES,
+      plantillas: (() => { try { return kit.leer().plantillas.filter((p) => p.formatos.includes('story')).map(({ id, nombre, descripcion }) => ({ id, nombre, descripcion })); } catch { return []; } })(),
+    })));
+    app.get('/api/stories/:id', h((req) => stories.obtener(req.params.id)));
+    app.post('/api/stories', h((req) => stories.crear(req.body || {}), true));
+    app.put('/api/stories/:id', h((req) => stories.guardarGuion(req.params.id, req.body || {}), true));
+    app.post('/api/stories/:id/escribir', h((req) => stories.escribir(req.params.id, { indicaciones: req.body?.indicaciones }), true));
+    app.post('/api/stories/:id/disenar', h((req) => stories.disenar(req.params.id, { plantilla: req.body?.plantilla, indicaciones: req.body?.indicaciones }), true));
+    app.delete('/api/stories/:id', h((req) => stories.borrar(req.params.id), true));
+  }
   // El guion de una pieza (su nota de 02-Guiones): verlo y cambiarlo a mano desde la ficha, o pedírselo a JARVIS
   let guionEnMarcha = null; // { pieza, peticion }
   const escribiendoGuion = (id) => Boolean(asistente && guionEnMarcha?.pieza === Number(id) && asistente.estado({ conversacion: 'guiones' }).ocupadoAqui);
@@ -826,6 +840,7 @@ function main() {
   const onChange = () => emitir({ type: 'cambio', at: Date.now() });
   // Cuando JARVIS termina, el resto del dashboard se refresca (puede haber guardado ideas, tareas…)
   let disenos = null;
+  let stories = null;
   const laboratorio = createLaboratorio({ dir: carpetaPorDefecto(), archivos, jarvis, vaultPath: cfg.vaultPath, log: (m) => console.log(`  [Laboratorio] ${m}`) });
   try { laboratorio.iniciar(); } catch (e) { console.warn(`  [Laboratorio] ${e.message}`); }
   // Lo aprendido de la persona va en las instrucciones de cada mensaje de las conversaciones que crean contenido
@@ -837,7 +852,7 @@ function main() {
     replicar: conPreferencias(['diseno', 'escritura']),
     diseno: conPreferencias(['diseno']),
     guiones: conPreferencias(['escritura']),
-  }, emitir: (e) => { emitir(e); if (e.tipo === 'fin') onChange(); disenos?.alEventoClaude(e); } });
+  }, emitir: (e) => { emitir(e); if (e.tipo === 'fin') onChange(); disenos?.alEventoClaude(e); stories?.alEventoClaude(e); } });
   const instagram = createInstagram({ db, vault: jarvis.vault, alCambiar: onChange });
   const competencia = createCompetencia({ db, instagram, vault: jarvis.vault, alCambiar: onChange });
   // La vista previa de los anuncios de la competencia se abre con el navegador de Diseño (motor, más abajo)
@@ -868,7 +883,8 @@ function main() {
     }, 60_000).unref();
   }
   const estrategia = createEstrategia({ db, jarvis });
-  const server = createServer(createApp({ jarvis, archivos, miniaturas, estrategia, publicadorIg, asistente, instagram, competencia, ads, publicar, hermes, jobs, kit, disenos, recordatorios, laboratorio, resultados, adjuntos, preferencias, actualizar, conversiones, port: cfg.port, onChange }));
+  stories = createStories({ db, jarvis, asistente, disenos, alCambiar: onChange });
+  const server = createServer(createApp({ jarvis, archivos, miniaturas, estrategia, stories, publicadorIg, asistente, instagram, competencia, ads, publicar, hermes, jobs, kit, disenos, recordatorios, laboratorio, resultados, adjuntos, preferencias, actualizar, conversiones, port: cfg.port, onChange }));
   // Solo el propio dashboard puede escuchar los eventos (otra web abierta en el navegador, no)
   const local = hostsPermitidos(cfg.port);
   wss = new WebSocketServer({ server, path: '/ws', verifyClient: ({ origin, req }) => local.has(req.headers.host) && (!origin || local.has(origin.replace(/^https?:\/\//, ''))) });
