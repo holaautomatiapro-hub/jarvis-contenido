@@ -17,6 +17,7 @@ import { createCompetencia } from '../server/integrations/competencia.js';
 import { createAds } from '../server/integrations/ads.js';
 import { createPublicar, REDES } from '../server/publicar.js';
 import { createResultados } from '../server/resultados.js';
+import { createStories } from '../server/stories.js';
 import { createEstrategia } from '../server/estrategia.js';
 import { PIEZAS_TESTIMONIO, PLANTILLAS_REEL } from '../server/laboratorio.js';
 import { TIPOS_LM } from '../server/leadmagnets.js';
@@ -30,7 +31,7 @@ import { Readable } from 'node:stream';
 
 dotenv.config({ path: path.join(ROOT, '.env'), quiet: true });
 
-export function buildServer(jarvis, { origen = 'claude', avisar = () => {}, instagram = null, competencia = null, ads = null, publicar = null, diseno = null, recordatorios = null, resultados = null, laboratorio = null, preferencias = null, calendario = null } = {}) {
+export function buildServer(jarvis, { origen = 'claude', avisar = () => {}, instagram = null, competencia = null, ads = null, publicar = null, diseno = null, recordatorios = null, resultados = null, laboratorio = null, preferencias = null, calendario = null, stories = null } = {}) {
   const server = new McpServer({ name: 'jarvis', version: '0.2.0' });
 
   const tool = (name, description, inputSchema, fn, escribe = false) =>
@@ -194,6 +195,17 @@ export function buildServer(jarvis, { origen = 'claude', avisar = () => {}, inst
   tool('tareas_de_hoy', 'Devuelve las tareas que vencen hoy o caen en esta semana/mes, y las atrasadas.', {}, () => jarvis.tareas());
 
   tool('resumen_del_dia', 'Resumen del día: tareas, estado del pipeline, piezas previstas para hoy e ideas recientes.', {}, () => jarvis.resumenDelDia());
+
+  // Guiones de stories (Laboratorio → Stories): JARVIS los escribe y la persona los diseña después
+  if (stories) {
+    tool('guardar_guion_stories', 'Guarda el guion de una secuencia de stories del Laboratorio (Stories): una sección «## Story N · tipo» por story, con su «Texto en pantalla», «Visual» y «Sticker» si lleva. Sustituye el guion que hubiera. No crea piezas ni diseños.',
+      {
+        id: z.number().int().describe('El id del guion de stories (te lo da la petición)'),
+        guion: z.string().min(10).describe('El guion completo, en markdown'),
+        titulo: z.string().max(120).optional().describe('Un título corto para la secuencia'),
+      },
+      ({ id, guion, titulo }) => { const r = stories.guardarGuion(id, { guion, titulo }); return { ok: true, id: r.id, titulo: r.titulo, stories: (r.guion.match(/^##\s*Story/gim) || []).length }; }, true);
+  }
 
   // Estrategia: qué tipo de contenido toca cada día (semana para atraer, educar o vender)
   if (calendario) {
@@ -574,7 +586,7 @@ async function main() {
     if (!res.ok) throw new Error(j.error || `Error ${res.status}`);
     return j;
   };
-  await buildServer(jarvis, { origen, avisar, instagram, competencia, ads, publicar, diseno, recordatorios, resultados, laboratorio: { servidor, subir }, preferencias: createPreferencias({ db }), calendario: createEstrategia({ db, jarvis }) }).connect(new StdioServerTransport());
+  await buildServer(jarvis, { origen, avisar, instagram, competencia, ads, publicar, diseno, recordatorios, resultados, laboratorio: { servidor, subir }, preferencias: createPreferencias({ db }), calendario: createEstrategia({ db, jarvis }), stories: createStories({ db, jarvis }) }).connect(new StdioServerTransport());
 }
 
 const esPrincipal = process.argv[1] && path.resolve(process.argv[1]) === fileURLToPath(import.meta.url);

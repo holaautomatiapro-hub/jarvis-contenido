@@ -9,6 +9,7 @@ import Reels from './laboratorio/Reels.jsx';
 import LeadMagnets from './laboratorio/LeadMagnets.jsx';
 import Imagenes from './laboratorio/Imagenes.jsx';
 import DesdeEnlace from './laboratorio/DesdeEnlace.jsx';
+import Stories, { storiesDePieza } from './laboratorio/Stories.jsx';
 import { useIr } from '../lib/ir.js';
 
 // Laboratorio: donde se crea lo visual. Replicar desde un enlace, Diseño (carruseles y stories), clips de testimonios,
@@ -16,6 +17,7 @@ import { useIr } from '../lib/ir.js';
 const SECCIONES = [
   { id: 'replicar', label: 'Replicar', icon: 'link', ayuda: 'Pega el enlace de un post o un reel y JARVIS hace tu versión, con tu voz y tu diseño' },
   { id: 'diseno', label: 'Diseño', icon: 'palette', ayuda: 'Carruseles y stories con tu sistema de diseño' },
+  { id: 'stories', label: 'Stories', icon: 'layers', ayuda: 'El guion de stories de cada carrusel o reel (o de un tema) y, con el guion listo, las stories con tu diseño' },
   { id: 'testimonios', label: 'Testimonios', icon: 'users', ayuda: 'De la entrevista a clips, stories, carrusel, portada y captions' },
   { id: 'reels', label: 'Reels', icon: 'play', ayuda: 'Tus vídeos: mejores momentos, subtítulos y sin muletillas' },
   { id: 'leadmagnets', label: 'Lead magnets', icon: 'target', ayuda: 'Guías, checklists y tests en una página web, publicados con un enlace' },
@@ -31,10 +33,11 @@ export default function Laboratorio() {
     if (d.tab !== 'laboratorio') return false;
     if (d.diseno) { try { localStorage.setItem('diseno_sel', String(d.diseno)); } catch { /* sin localStorage */ } window.dispatchEvent(new CustomEvent('jarvis:diseno', { detail: d.diseno })); }
     if (d.seccion && SECCIONES.some((x) => x.id === d.seccion)) setSeccion(d.seccion);
+    if (d.storiesDe) storiesDePieza(d.storiesDe);
     return true;
   });
   const [lab, recargarLab, errorLab] = useRecurso(['testimonios', 'reels', 'leadmagnets', 'imagenes'].includes(seccion) ? '/api/laboratorio' : null, null);
-  const [contenido, recargarContenido] = useRecurso(seccion === 'diseno' ? '/api/contenido' : null, null);
+  const [contenido, recargarContenido] = useRecurso(seccion === 'diseno' || seccion === 'stories' ? '/api/contenido' : null, null);
   const [editando, setEditando] = useState(null);
   const [programando, setProgramando] = useState(null);
   const [visor, setVisor] = useState(null);
@@ -57,6 +60,7 @@ export default function Laboratorio() {
 
       {seccion === 'replicar' && <DesdeEnlace />}
       {seccion === 'diseno' && <Diseno piezas={piezas} ig={contenido?.instagram} onAbrir={setEditando} onProgramar={(p) => setProgramando({ p })} />}
+      {seccion === 'stories' && <Stories piezas={piezas} ig={contenido?.instagram} onAbrir={setEditando} onProgramar={(p) => setProgramando({ p })} onVisor={abrirVisor} />}
       {(seccion === 'testimonios' || seccion === 'reels') && (!lab ? (
         <div className="panel panel-pad vacio">
           {errorLab ? <>No se ha podido cargar el Laboratorio: {errorLab}.<br />Si acabas de actualizar JARVIS en el VPS, espera a que termine el instalador y recarga la página.</> : 'Cargando…'}

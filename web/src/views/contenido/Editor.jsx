@@ -12,6 +12,7 @@ import { CampoLeadMagnet, OBJETIVOS, OpcionesCarpetas, useFases, MAX_CAPTION, Mi
 import { GenerarLeadMagnet, OtraVersion } from './Generar.jsx';
 import CajaGuion from './Guion.jsx';
 import ElegirBiblioteca from './ElegirBiblioteca.jsx';
+import { pedirIr } from '../../lib/ir.js';
 import PortadaReel from './PortadaReel.jsx';
 
 // Caption con IA: JARVIS lo escribe con tu voz a partir de lo que tenga la pieza (título, guion, lead magnet…)
@@ -324,6 +325,7 @@ export function EditorContenido({ pieza, carpetas, ig, onClose, onGuardado, onVi
                 <span>De aquí {derivadas.length === 1 ? 'sale' : 'salen'}: {derivadas.map((x, i) => <span key={x.id}>{i ? ', ' : ''}<button type="button" className="link-btn" onClick={() => onAbrir?.(x)}>«{x.titulo}»</button></span>)}</span>
               )}
               {!nueva && onDerivada && <button type="button" className="link-btn" onClick={() => onDerivada({ titulo: '', estado: 'idea', archivos: [], padre_id: pieza.id, pilar: d.pilar, objetivo: d.objetivo, carpeta: d.carpeta })}>+ Sacar otra pieza de esta</button>}
+              {!nueva && ['Carrusel', 'Reel', 'Short', 'Reel split', 'B-roll', 'Post'].includes(d.formato) && <button type="button" className="link-btn" onClick={() => { cerrar(); window.location.hash = 'laboratorio'; pedirIr({ tab: 'laboratorio', seccion: 'stories', storiesDe: pieza.id }); }} title="JARVIS escribe la secuencia de stories de esta pieza y luego la diseñas">+ Guion de stories</button>}
             </div>
           )}
           <div className="dos-col">
