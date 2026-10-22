@@ -1,10 +1,10 @@
 import { useCallback, useEffect, useMemo, useState } from 'react';
 import Icon from '../components/Icon.jsx';
-import { api, normaliza, useRecurso } from '../lib/api.js';
+import { api, useRecurso } from '../lib/api.js';
 import { hoyIso } from '../lib/fechas.js';
 import { useIr } from '../lib/ir.js';
-import { OBJETIVOS, TIPOS, tipoDe, useFases } from './contenido/comun.jsx';
-import { BancoIdeas, Calendario, Lista, Pipeline } from './contenido/Vistas.jsx';
+import { useFases } from './contenido/comun.jsx';
+import { BancoIdeas, Calendario, Pipeline } from './contenido/Vistas.jsx';
 import { Biblioteca } from './contenido/Biblioteca.jsx';
 import { EditorContenido, ProgramarContenido, Visor } from './contenido/Editor.jsx';
 import { FichaReferencia, esReferencia } from './contenido/FichaReferencia.jsx';
@@ -12,7 +12,6 @@ import { LeadMagnetsBiblioteca } from './contenido/LeadMagnetsBiblioteca.jsx';
 
 const VISTAS = [
   { id: 'calendario', label: 'Calendario', icon: 'calendar' },
-  { id: 'lista', label: 'Lista', icon: 'tasks' },
   { id: 'biblioteca', label: 'Biblioteca', icon: 'book' },
   { id: 'ideas', label: 'Ideas', icon: 'bulb' },
   { id: 'pipeline', label: 'Pipeline', icon: 'skills' },
@@ -25,7 +24,6 @@ export default function Contenido({ onCaptura }) {
   const [data, recargar, errorCarga, setData] = useRecurso('/api/contenido', null);
   const [vista, setVistaEstado] = useState(vistaGuardada);
   const [dia, setDia] = useState(hoyIso);
-  const [filtro, setFiltro] = useState({ estado: '', tipo: '', texto: '', pilar: '', objetivo: '' });
   const [editando, setEditando] = useState(null);
   const [programando, setProgramando] = useState(null);
   const [visor, setVisor] = useState(null);
@@ -71,18 +69,6 @@ export default function Contenido({ onCaptura }) {
   const nuevo = (fecha = vista === 'calendario' ? dia : '') => setEditando({ fecha, estado: 'idea', archivos: [] });
   const abrirVisor = useCallback((archivos, inicio) => setVisor({ archivos, inicio }), []);
 
-  const filtradas = useMemo(() => {
-    const t = normaliza(filtro.texto.trim());
-    return piezas.filter((p) =>
-      (!filtro.estado || p.estado === filtro.estado) &&
-      (!filtro.tipo || tipoDe(p.formato)?.id === filtro.tipo) &&
-      (!filtro.pilar || (filtro.pilar === '-' ? !p.pilar : p.pilar === filtro.pilar)) &&
-      (!filtro.objetivo || (filtro.objetivo === '-' ? !p.objetivo : p.objetivo === filtro.objetivo)) &&
-      (!t || normaliza(`${p.titulo}\n${p.caption || ''}\n${p.gancho || ''}`).includes(t)));
-  }, [piezas, filtro]);
-
-  useEffect(() => { if (vista !== 'lista' && filtro.estado) setFiltro((f) => ({ ...f, estado: '' })); }, [vista]); // eslint-disable-line react-hooks/exhaustive-deps
-
   return (
     <section className="contenido-vista">
       <div className="panel panel-pad contenido-cabecera">
@@ -104,14 +90,13 @@ export default function Contenido({ onCaptura }) {
 
       <div className="estados-kpis">
         {ESTADOS.map((e) => {
-          const on = filtro.estado === e.id;
           return (
             <button
               key={e.id}
-              className={`estado-kpi${on ? ' on' : ''}${filtro.estado && !on ? ' apagado' : ''}`}
+              className="estado-kpi"
               style={{ '--c': e.color }}
-              onClick={() => { setFiltro((f) => ({ ...f, estado: on ? '' : e.id })); setVista('lista'); }}
-              title={`Ver solo ${e.label.toLowerCase()}`}
+              onClick={() => setVista('pipeline')}
+              title="Ver en el pipeline"
             >
               <div className="estado-kpi-top"><span className="kpi-icon peque" style={{ background: `color-mix(in srgb, ${e.color} 16%, transparent)` }}><Icon name={e.icon} size={14} color={e.color} /></span>{e.label}</div>
               <b>{data ? cuenta(e.id) : '—'}</b>
@@ -129,33 +114,9 @@ export default function Contenido({ onCaptura }) {
             </button>
           ))}
         </div>
-        {vista === 'lista' && (
-          <div className="contenido-filtros">
-            <div className="buscar-mini"><Icon name="search" size={13} /><input placeholder="Buscar título o caption" value={filtro.texto} onChange={(e) => setFiltro({ ...filtro, texto: e.target.value })} /></div>
-            <select className="campo" value={filtro.tipo} onChange={(e) => setFiltro({ ...filtro, tipo: e.target.value })} aria-label="Tipo">
-              <option value="">Todos los tipos</option>
-              {TIPOS.map((t) => <option key={t.id} value={t.id}>{t.id}</option>)}
-            </select>
-            <select className="campo" value={filtro.pilar} onChange={(e) => setFiltro({ ...filtro, pilar: e.target.value })} aria-label="Pilar">
-              <option value="">Todos los pilares</option>
-              {(data?.pilares || []).map((p) => <option key={p.nombre} value={p.nombre}>{p.nombre}</option>)}
-              <option value="-">Sin pilar</option>
-            </select>
-            <select className="campo" value={filtro.objetivo} onChange={(e) => setFiltro({ ...filtro, objetivo: e.target.value })} aria-label="Objetivo">
-              <option value="">Todos los objetivos</option>
-              {OBJETIVOS.map((o) => <option key={o.id} value={o.id}>{o.label}</option>)}
-              <option value="-">Sin objetivo</option>
-            </select>
-            <select className="campo" value={filtro.estado} onChange={(e) => setFiltro({ ...filtro, estado: e.target.value })} aria-label="Estado">
-              <option value="">Todos los estados</option>
-              {ESTADOS.map((e) => <option key={e.id} value={e.id}>{e.label}</option>)}
-            </select>
-          </div>
-        )}
       </div>
 
       {vista === 'calendario' && <Calendario piezas={piezas} versiones={data?.versiones || []} carpetas={carpetas} dia={dia} setDia={setDia} onAbrir={setEditando} onNuevo={nuevo} onMover={mover} onProgramar={(p, f) => setProgramando({ p, f })} />}
-      {vista === 'lista' && <Lista piezas={filtradas} metricas={data?.metricas || {}} cargando={!data} onAbrir={setEditando} onMover={mover} />}
       {vista === 'biblioteca' && <Biblioteca piezas={biblioteca} publicados={publicados} carpetas={carpetas} onAbrir={setEditando} onProgramar={(p) => setProgramando({ p })} onRepublicar={republicar} recargar={recargar} />}
       {vista === 'biblioteca' && <LeadMagnetsBiblioteca />}
       {vista === 'ideas' && <BancoIdeas piezas={piezas} onAbrir={setEditando} onMover={mover} onNuevaIdea={() => onCaptura('idea')} />}
