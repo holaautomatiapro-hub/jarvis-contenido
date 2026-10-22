@@ -35,7 +35,7 @@ import { promptAdaptarAnuncio, promptReplicarCompetencia, promptReplicarPropia, 
 import { createReferencias } from './referencias.js';
 import { createMiniaturas } from './miniaturas.js';
 import { createFotogramas } from './fotograma.js';
-import { createStories, OBJETIVOS_STORIES } from './stories.js';
+import { createStories, OBJETIVOS_STORIES, promptGuionStory } from './stories.js';
 import { createEstrategia, DIAS, FILAS, OBJETIVOS_SEMANA, PRINCIPIOS, TACTICAS, lunesDe } from './estrategia.js';
 import { createLaboratorio, carpetaPorDefecto } from './laboratorio.js';
 import { promptCaption, limpiarCaption, createContextoCaption } from './caption.js';
@@ -663,7 +663,6 @@ export function createApp({ jarvis, archivos, miniaturas = null, estrategia = nu
   if (stories) {
     app.get('/api/stories', h(() => ({
       guiones: stories.listar(), objetivos: OBJETIVOS_STORIES, estilo: stories.estilo(), ejemplos: stories.ejemplos(),
-      plantillas: (() => { try { return kit.leer().plantillas.filter((p) => p.formatos.includes('story')).map(({ id, nombre, descripcion }) => ({ id, nombre, descripcion })); } catch { return []; } })(),
     })));
     app.get('/api/stories/estilo', h(() => stories.estilo()));
     app.get('/api/stories/ejemplos', h(() => stories.ejemplos()));
@@ -678,7 +677,6 @@ export function createApp({ jarvis, archivos, miniaturas = null, estrategia = nu
     app.post('/api/stories', h((req) => stories.crear(req.body || {}), true));
     app.put('/api/stories/:id', h((req) => stories.guardarGuion(req.params.id, req.body || {}), true));
     app.post('/api/stories/:id/escribir', h((req) => stories.escribir(req.params.id, { indicaciones: req.body?.indicaciones }), true));
-    app.post('/api/stories/:id/disenar', h((req) => stories.disenar(req.params.id, { plantilla: req.body?.plantilla, indicaciones: req.body?.indicaciones }), true));
     app.delete('/api/stories/:id', h((req) => stories.borrar(req.params.id), true));
   }
   // El guion de una pieza (su nota de 02-Guiones): verlo y cambiarlo a mano desde la ficha, o pedírselo a JARVIS
@@ -692,7 +690,9 @@ export function createApp({ jarvis, archivos, miniaturas = null, estrategia = nu
     const p = jarvis.leerPieza(req.params.id);
     const antes = jarvis.guionDePieza(p.id);
     const ruta = jarvis.notaGuion(p.id);
-    const texto = promptGuionPieza(jarvis.leerPieza(p.id), { ruta, vacio: !antes.texto.trim(), referencia: antes.referencia?.ruta || null, indicaciones: String(req.body?.indicaciones || '').trim() });
+    const datos = { ruta, vacio: !antes.texto.trim(), referencia: antes.referencia?.ruta || null, indicaciones: String(req.body?.indicaciones || '').trim() };
+    // Una story: su guion es una secuencia de stories, con tu guía y tus ejemplos de stories
+    const texto = p.formato === 'Story' ? promptGuionStory(jarvis.leerPieza(p.id), { ...datos, vault: jarvis.vault }) : promptGuionPieza(jarvis.leerPieza(p.id), datos);
     const r = asistente.preguntar({ conversacion: 'guiones', texto });
     guionEnMarcha = { pieza: p.id, peticion: r.id };
     return { ok: true, peticion: r.id, ruta };
@@ -892,7 +892,7 @@ function main() {
     }, 60_000).unref();
   }
   const estrategia = createEstrategia({ db, jarvis });
-  stories = createStories({ db, jarvis, asistente, disenos, alCambiar: onChange });
+  stories = createStories({ db, jarvis, asistente, alCambiar: onChange });
   const server = createServer(createApp({ jarvis, archivos, miniaturas, estrategia, stories, publicadorIg, asistente, instagram, competencia, ads, publicar, hermes, jobs, kit, disenos, recordatorios, laboratorio, resultados, adjuntos, preferencias, actualizar, conversiones, port: cfg.port, onChange }));
   // Solo el propio dashboard puede escuchar los eventos (otra web abierta en el navegador, no)
   const local = hostsPermitidos(cfg.port);
