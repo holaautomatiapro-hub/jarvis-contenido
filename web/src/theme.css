@@ -1169,6 +1169,14 @@ button.portada-muestra { padding: 0; border: 0; width: 100%; cursor: pointer; fo
 .stories-grid.con-chat { grid-template-columns: 260px minmax(0, 1fr) 380px; }
 .stories-grid .chat { height: calc(100vh - 140px); position: sticky; top: 12px; }
 .stories-nuevo { width: 100%; justify-content: center; }
+.stories-estilo { display: flex; gap: 10px; align-items: center; width: 100%; margin-top: 8px; padding: 9px 11px; border-radius: 10px; border: 1px dashed var(--border); background: none; color: var(--text); text-align: left; cursor: pointer; }
+.stories-estilo span { display: flex; flex-direction: column; gap: 2px; min-width: 0; }
+.stories-estilo b { font-size: 12.5px; }
+.stories-estilo small { font-size: 11px; color: var(--muted); }
+.stories-estilo.hecho { border-style: solid; border-color: color-mix(in srgb, var(--green) 45%, transparent); }
+.stories-estilo.hecho small { color: var(--green); }
+.stories-estilo:hover { background: color-mix(in srgb, var(--accent) 8%, transparent); }
+.estilo-barra { display: flex; gap: 8px; flex-wrap: wrap; margin: 4px 0 10px; }
 .stories-detalle { min-width: 0; }
 .stories-paso { display: flex; align-items: center; gap: 8px; margin: 18px 0 8px; }
 .stories-paso:first-of-type { margin-top: 6px; }

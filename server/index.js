@@ -662,9 +662,11 @@ export function createApp({ jarvis, archivos, miniaturas = null, estrategia = nu
   // Laboratorio → Stories: guiones de stories (de un carrusel, un reel o un tema) que después se diseñan con el kit
   if (stories) {
     app.get('/api/stories', h(() => ({
-      guiones: stories.listar(), objetivos: OBJETIVOS_STORIES,
+      guiones: stories.listar(), objetivos: OBJETIVOS_STORIES, estilo: stories.estilo(),
       plantillas: (() => { try { return kit.leer().plantillas.filter((p) => p.formatos.includes('story')).map(({ id, nombre, descripcion }) => ({ id, nombre, descripcion })); } catch { return []; } })(),
     })));
+    app.get('/api/stories/estilo', h(() => stories.estilo()));
+    app.put('/api/stories/estilo', h((req) => stories.guardarEstilo(req.body || {}), true));
     app.get('/api/stories/:id', h((req) => stories.obtener(req.params.id)));
     app.post('/api/stories', h((req) => stories.crear(req.body || {}), true));
     app.put('/api/stories/:id', h((req) => stories.guardarGuion(req.params.id, req.body || {}), true));

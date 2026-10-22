@@ -17,6 +17,12 @@ export const OBJETIVOS_STORIES = {
   promo: 'Llevar tráfico al carrusel o al reel',
   venta: 'Venta: que te escriban para tu oferta',
 };
+// Tu guía de estilo de stories: una nota del vault (también se edita en Obsidian). JARVIS la sigue al escribir
+// los guiones y Claude al diseñarlas (lo hace Diseño con cualquier diseño de stories).
+export const ESTILO_STORIES = 'Stories/CLAUDE.md';
+export function leerEstiloStories(vault) {
+  try { const n = vault.read(ESTILO_STORIES); return { ruta: n.path, texto: n.contenido, modificado: n.modificado }; } catch { return { ruta: ESTILO_STORIES, texto: '', modificado: null }; }
+}
 const FORMATOS_ORIGEN = { Carrusel: 'carrusel', Reel: 'reel', Short: 'reel', 'Reel split': 'reel', 'B-roll': 'reel', Post: 'post' };
 const texto = (v, max) => (v == null ? '' : String(v).trim().slice(0, max));
 
@@ -68,10 +74,11 @@ export function createStories({ db, jarvis, asistente = null, disenos = null, al
 ${g.texto ? `Su guion:\n"""\n${g.texto.slice(0, 8000)}\n"""\n` : ''}${p.caption ? `Su caption:\n"""\n${String(p.caption).slice(0, 2500)}\n"""\n` : ''}${!g.texto && g.referencia?.texto ? `La idea de la que sale (con su transcripción):\n"""\n${g.referencia.texto.slice(0, 6000)}\n"""\n` : ''}${!g.texto && !p.caption && !g.referencia ? `Solo tengo su título: míralo con ver_pieza (id ${p.id}) y, si es un vídeo, transcríbelo con transcribir_pieza, para saber qué cuenta.\n` : ''}Las stories cuentan lo mismo con otro formato (no repitas el carrusel o el reel tal cual): que quien las vea quiera ir a verlo o actúe.`;
     } else origen = `Tema: ${r.tema}`;
     const obj = OBJETIVOS_STORIES[r.objetivo];
+    const estilo = leerEstiloStories(jarvis.vault).texto.trim();
     const pedido = texto(indicaciones, 1500) || r.indicaciones;
     return `${r.guion.trim() ? 'Cambia' : 'Escribe'} el GUION DE STORIES #${r.id} de JARVIS («${r.titulo}»): una secuencia de ${r.cantidad} stories de Instagram.
 ${origen}
-${obj ? `Objetivo de la secuencia: ${obj}.\n` : ''}${pedido ? `Lo que quiero (manda sobre todo lo demás): ${pedido}\n` : ''}${r.guion.trim() ? `Guion actual (si pido un cambio concreto, cambia solo eso):\n"""\n${r.guion.slice(0, 8000)}\n"""\n` : ''}
+${estilo ? `Mi guía de estilo de stories (${ESTILO_STORIES}): síguela en todo (estructura, tono, longitud de los textos, stickers, CTA), por encima de las reglas generales de abajo:\n"""\n${estilo.slice(0, 12_000)}\n"""\n` : ''}${obj ? `Objetivo de la secuencia: ${obj}.\n` : ''}${pedido ? `Lo que quiero (manda sobre todo lo demás): ${pedido}\n` : ''}${r.guion.trim() ? `Guion actual (si pido un cambio concreto, cambia solo eso):\n"""\n${r.guion.slice(0, 8000)}\n"""\n` : ''}
 Cómo hacerlo:
 1. Lee _voz.md y CLAUDE.md (mi oferta, mi cliente) y escribe con MI voz. Mira con ver_estrategia qué stories tocan estos días por si encaja. Si hay una skill de stories en .claude/skills, síguela.
 2. ${r.cantidad} stories con hilo: la 1 engancha (que no pasen), las del medio desarrollan con una idea por story, al menos una lleva interacción (encuesta, caja de preguntas, quiz o deslizador) y la última cierra con un CTA claro (responder con una palabra clave, ir al post o al reel, o el enlace).
@@ -157,5 +164,17 @@ Sticker: <encuesta con sus opciones, caja de preguntas, enlace… (si lleva)>
     return { ok: true };
   }
 
-  return { listar, obtener, crear, escribir, guardarGuion, disenar, borrar, alEventoClaude, prompt };
+  const estilo = () => leerEstiloStories(jarvis.vault);
+  function guardarEstilo({ texto: t, modificado } = {}) {
+    if (typeof t !== 'string') throw new StoriesError('Falta el texto de tu guía de estilo');
+    if (t.length > 50_000) throw new StoriesError('La guía es demasiado larga (máximo 50.000 caracteres)');
+    const contenido = t.trimEnd() ? `${t.trimEnd()}\n` : '';
+    if (jarvis.vault.existe(ESTILO_STORIES)) {
+      try { jarvis.vault.guardar(ESTILO_STORIES, contenido, { modificado: modificado || undefined }); } catch (e) { throw new StoriesError(e.message); }
+    } else jarvis.vault.write(ESTILO_STORIES, contenido);
+    alCambiar();
+    return estilo();
+  }
+
+  return { listar, obtener, crear, estilo, guardarEstilo, escribir, guardarGuion, disenar, borrar, alEventoClaude, prompt };
 }

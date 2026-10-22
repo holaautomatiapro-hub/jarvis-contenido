@@ -75,6 +75,21 @@ describe('guiones de stories', () => {
     } finally { limpiar(); }
   });
 
+  test('tu guía de estilo (Stories/CLAUDE.md): se guarda en el vault y JARVIS la sigue al escribir', () => {
+    const { jarvis, stories, preguntas, limpiar } = nuevo();
+    try {
+      assert.equal(stories.estilo().texto, '');
+      const e = stories.guardarEstilo({ texto: '# Mi estilo\n- Máximo 12 palabras por story\n- Siempre cierro con «responde YO»' });
+      assert.equal(e.ruta, 'Stories/CLAUDE.md');
+      assert.match(jarvis.vault.read('Stories/CLAUDE.md').contenido, /responde YO/);
+      // Si se cambió en Obsidian mientras se editaba, no se pisa
+      assert.throws(() => stories.guardarEstilo({ texto: 'otro', modificado: '2000-01-01T00:00:00.000Z' }), /ha cambiado/);
+      stories.guardarEstilo({ texto: `${e.texto}- Fondo con foto mía\n`, modificado: e.modificado });
+      stories.crear({ tema: 'Mis 3 errores al vender' });
+      assert.match(preguntas[0].texto, /Tema: Mis 3 errores[\s\S]*Mi guía de estilo de stories \(Stories\/CLAUDE\.md\)[\s\S]*Máximo 12 palabras[\s\S]*Fondo con foto mía/);
+    } finally { limpiar(); }
+  });
+
   test('API: desde un tema o escrito a mano, y se cambia a mano', async () => {
     const { jarvis, stories, preguntas, limpiar } = nuevo();
     const server = http.createServer();
@@ -90,7 +105,11 @@ describe('guiones de stories', () => {
       assert.equal(b.estado, 'listo');
       const c = await pedir(`/api/stories/${b.id}`, 'PUT', { guion: '## Story 1 · texto\nTexto en pantalla: hola' });
       assert.match(c.guion, /hola/);
+      const est = await pedir('/api/stories/estilo', 'PUT', { texto: '# Mi estilo\n- Corto' });
+      assert.equal(est.status, 200);
+      assert.match((await pedir('/api/stories/estilo')).texto, /Corto/);
       const l = await pedir('/api/stories');
+      assert.match(l.estilo.texto, /Corto/);
       assert.equal(l.guiones.length, 2);
       assert.ok(l.objetivos.lm);
       assert.equal((await pedir(`/api/stories/${b.id}`, 'DELETE')).ok, true);
