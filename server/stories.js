@@ -1,6 +1,8 @@
 // Guiones de stories (Laboratorio → Stories). De un carrusel, de un reel o de un tema, JARVIS escribe la secuencia
 // de stories (con tu voz y lo que toca en tu estrategia); la cambias a mano o se la pides de nuevo, y cuando está,
 // se diseña con tu sistema de diseño (un diseño de formato story, que se ajusta en el chat y se exporta).
+import path from 'node:path';
+import { mkdirSync, readdirSync, rmSync, statSync, writeFileSync } from 'node:fs';
 import { row, rows } from './db.js';
 
 export class StoriesError extends Error {
@@ -22,6 +24,18 @@ export const OBJETIVOS_STORIES = {
 export const ESTILO_STORIES = 'Stories/CLAUDE.md';
 export function leerEstiloStories(vault) {
   try { const n = vault.read(ESTILO_STORIES); return { ruta: n.path, texto: n.contenido, modificado: n.modificado }; } catch { return { ruta: ESTILO_STORIES, texto: '', modificado: null }; }
+}
+// Tus stories de ejemplo (capturas o diseños tuyos): imágenes en el vault, en Stories/ejemplos. Claude las mira
+// antes de diseñar para copiar tu estilo visual, y al escribir el guion para el tono y la estructura.
+export const EJEMPLOS_STORIES = 'Stories/ejemplos';
+const IMAGEN = /\.(jpe?g|png|webp)$/i;
+export const MAX_EJEMPLOS = 12;
+export function ejemplosStories(vault) {
+  const dir = path.join(vault.base, EJEMPLOS_STORIES);
+  try {
+    return readdirSync(dir).filter((f) => IMAGEN.test(f) && !f.startsWith('.')).sort()
+      .map((f) => ({ fichero: f, ruta: path.join(dir, f), tamano: statSync(path.join(dir, f)).size }));
+  } catch { return []; }
 }
 const FORMATOS_ORIGEN = { Carrusel: 'carrusel', Reel: 'reel', Short: 'reel', 'Reel split': 'reel', 'B-roll': 'reel', Post: 'post' };
 const texto = (v, max) => (v == null ? '' : String(v).trim().slice(0, max));
@@ -75,10 +89,11 @@ ${g.texto ? `Su guion:\n"""\n${g.texto.slice(0, 8000)}\n"""\n` : ''}${p.caption 
     } else origen = `Tema: ${r.tema}`;
     const obj = OBJETIVOS_STORIES[r.objetivo];
     const estilo = leerEstiloStories(jarvis.vault).texto.trim();
+    const ejemplos = ejemplosStories(jarvis.vault);
     const pedido = texto(indicaciones, 1500) || r.indicaciones;
     return `${r.guion.trim() ? 'Cambia' : 'Escribe'} el GUION DE STORIES #${r.id} de JARVIS («${r.titulo}»): una secuencia de ${r.cantidad} stories de Instagram.
 ${origen}
-${estilo ? `Mi guía de estilo de stories (${ESTILO_STORIES}): síguela en todo (estructura, tono, longitud de los textos, stickers, CTA), por encima de las reglas generales de abajo:\n"""\n${estilo.slice(0, 12_000)}\n"""\n` : ''}${obj ? `Objetivo de la secuencia: ${obj}.\n` : ''}${pedido ? `Lo que quiero (manda sobre todo lo demás): ${pedido}\n` : ''}${r.guion.trim() ? `Guion actual (si pido un cambio concreto, cambia solo eso):\n"""\n${r.guion.slice(0, 8000)}\n"""\n` : ''}
+${estilo ? `Mi guía de estilo de stories (${ESTILO_STORIES}): síguela en todo (estructura, tono, longitud de los textos, stickers, CTA), por encima de las reglas generales de abajo:\n"""\n${estilo.slice(0, 12_000)}\n"""\n` : ''}${ejemplos.length ? `Mis stories de ejemplo (míralas con Read para captar mi tono, cuánto texto pongo y cómo estructuro una secuencia): ${ejemplos.map((e) => e.ruta).join(', ')}\n` : ''}${obj ? `Objetivo de la secuencia: ${obj}.\n` : ''}${pedido ? `Lo que quiero (manda sobre todo lo demás): ${pedido}\n` : ''}${r.guion.trim() ? `Guion actual (si pido un cambio concreto, cambia solo eso):\n"""\n${r.guion.slice(0, 8000)}\n"""\n` : ''}
 Cómo hacerlo:
 1. Lee _voz.md y CLAUDE.md (mi oferta, mi cliente) y escribe con MI voz. Mira con ver_estrategia qué stories tocan estos días por si encaja. Si hay una skill de stories en .claude/skills, síguela.
 2. ${r.cantidad} stories con hilo: la 1 engancha (que no pasen), las del medio desarrollan con una idea por story, al menos una lleva interacción (encuesta, caja de preguntas, quiz o deslizador) y la última cierra con un CTA claro (responder con una palabra clave, ir al post o al reel, o el enlace).
@@ -176,5 +191,28 @@ Sticker: <encuesta con sus opciones, caja de preguntas, enlace… (si lleva)>
     return estilo();
   }
 
-  return { listar, obtener, crear, estilo, guardarEstilo, escribir, guardarGuion, disenar, borrar, alEventoClaude, prompt };
+  // Las stories de ejemplo: se suben una a una (imagen) y se borran
+  const ejemplos = () => ejemplosStories(jarvis.vault).map(({ fichero, tamano }) => ({ fichero, tamano, url: `/api/stories/ejemplos/${encodeURIComponent(fichero)}` }));
+  function subirEjemplo({ nombre, datos }) {
+    if (!Buffer.isBuffer(datos) || !datos.length) throw new StoriesError('Sube la imagen de la story');
+    if (datos.length > 15 * 1024 ** 2) throw new StoriesError('La imagen pesa más de 15 MB');
+    const ext = String(nombre || '').toLowerCase().match(/\.(jpe?g|png|webp)$/)?.[1]?.replace('jpeg', 'jpg');
+    if (!ext) throw new StoriesError('Sube la story como imagen (JPG, PNG o WebP). Si es un vídeo, haz una captura.');
+    if (ejemplosStories(jarvis.vault).length >= MAX_EJEMPLOS) throw new StoriesError(`Como mucho ${MAX_EJEMPLOS} ejemplos: borra alguno`);
+    const base = String(nombre).replace(/\.[^.]*$/, '').normalize('NFD').replace(/[\u0300-\u036f]/g, '').replace(/[^A-Za-z0-9-]+/g, '-').replace(/^-+|-+$/g, '').slice(0, 40) || 'story';
+    const dir = path.join(jarvis.vault.base, EJEMPLOS_STORIES);
+    mkdirSync(dir, { recursive: true });
+    writeFileSync(path.join(dir, `${Date.now()}-${base}.${ext}`), datos);
+    alCambiar();
+    return ejemplos();
+  }
+  const rutaEjemplo = (fichero) => ejemplosStories(jarvis.vault).find((e) => e.fichero === fichero)?.ruta || null;
+  function borrarEjemplo(fichero) {
+    const r = rutaEjemplo(fichero);
+    if (r) rmSync(r, { force: true });
+    alCambiar();
+    return ejemplos();
+  }
+
+  return { listar, obtener, crear, estilo, guardarEstilo, ejemplos, subirEjemplo, borrarEjemplo, rutaEjemplo, escribir, guardarGuion, disenar, borrar, alEventoClaude, prompt };
 }

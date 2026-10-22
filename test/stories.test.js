@@ -9,6 +9,8 @@ import { createVault } from '../server/vault.js';
 import { createJarvis } from '../server/jarvis.js';
 import { createStories } from '../server/stories.js';
 import { createApp } from '../server/index.js';
+import { createKit } from '../server/diseno/kit.js';
+import { createDisenos } from '../server/diseno/disenos.js';
 import { Client } from '@modelcontextprotocol/sdk/client/index.js';
 import { InMemoryTransport } from '@modelcontextprotocol/sdk/inMemory.js';
 import { buildServer } from '../mcp/jarvis-mcp.js';
@@ -90,8 +92,26 @@ describe('guiones de stories', () => {
     } finally { limpiar(); }
   });
 
+  test('al diseñar stories, Claude lee tu CLAUDE.md y mira tus stories de ejemplo', () => {
+    const { db, jarvis, stories, limpiar } = nuevo();
+    try {
+      stories.guardarEstilo({ texto: '# Mi estilo\n- Fondo negro' });
+      stories.subirEjemplo({ nombre: 'ejemplo.png', datos: Buffer.from([0x89, 0x50, 0x4e, 0x47]) });
+      const textos = [];
+      const asistente = { estado: () => ({ ocupado: false }), nuevaSesion() {}, preguntar: (b) => { textos.push(b.texto); return { id: 1 }; } };
+      const kit = createKit({ vaultPath: jarvis.vault.base });
+      const disenos = createDisenos({ db, jarvis, kit, motor: {}, previasDir: path.join(jarvis.vault.base, '..', 'previas'), asistente });
+      const plantilla = kit.leer().plantillas.find((p) => p.formatos.includes('story'));
+      disenos.crear({ formato: 'story', plantilla: plantilla.id, guion: '## Story 1 · texto\nTexto en pantalla: hola' });
+      assert.match(textos[0], /Stories\/CLAUDE\.md[\s\S]*Mis stories de ejemplo[^\n]*Stories\/ejemplos\/\d+-ejemplo\.png/);
+      // En un carrusel, no
+      disenos.crear({ formato: 'carrusel', guion: 'Slide 1' });
+      assert.doesNotMatch(textos[1], /stories de ejemplo|Stories\/CLAUDE/);
+    } finally { limpiar(); }
+  });
+
   test('API: desde un tema o escrito a mano, y se cambia a mano', async () => {
-    const { jarvis, stories, preguntas, limpiar } = nuevo();
+    const { jarvis, stories, preguntas, asistente, limpiar } = nuevo();
     const server = http.createServer();
     try {
       await new Promise((ok) => server.listen(0, '127.0.0.1', ok));
@@ -108,9 +128,24 @@ describe('guiones de stories', () => {
       const est = await pedir('/api/stories/estilo', 'PUT', { texto: '# Mi estilo\n- Corto' });
       assert.equal(est.status, 200);
       assert.match((await pedir('/api/stories/estilo')).texto, /Corto/);
+      // Stories de ejemplo: imágenes en el vault (Stories/ejemplos) que Claude mira para copiar el estilo
+      const jpg = Buffer.from([0xff, 0xd8, 0xff, 0xe0, 1, 2, 3]);
+      const sube = (nombre, cuerpo = jpg) => fetch(`${base}/api/stories/ejemplos?nombre=${encodeURIComponent(nombre)}`, { method: 'POST', headers: { 'content-type': 'application/octet-stream' }, body: cuerpo }).then(async (r) => ({ status: r.status, json: await r.json() }));
+      const s1 = await sube('Mi story ñandú.JPG');
+      assert.equal(s1.status, 200);
+      assert.match(s1.json[0].fichero, /^\d+-Mi-story-nandu\.jpg$/);
+      assert.equal((await sube('video.mp4')).status, 400);
+      const img = await fetch(base + s1.json[0].url);
+      assert.equal(Buffer.from(await img.arrayBuffer()).length, jpg.length);
+      asistente.acabar();
+      stories.crear({ tema: 'Con ejemplos' });
+      assert.match(preguntas.at(-1).texto, /Mis stories de ejemplo[^\n]*Stories\/ejemplos\/\d+-Mi-story-nandu\.jpg/);
+      assert.equal((await fetch(`${base}/api/stories/ejemplos/${s1.json[0].fichero}`, { method: 'DELETE' }).then((r) => r.json())).length, 0);
+      assert.equal((await fetch(base + s1.json[0].url)).status, 404);
       const l = await pedir('/api/stories');
       assert.match(l.estilo.texto, /Corto/);
-      assert.equal(l.guiones.length, 2);
+      assert.equal(l.guiones.length, 3);
+      assert.deepEqual(l.ejemplos, []);
       assert.ok(l.objetivos.lm);
       assert.equal((await pedir(`/api/stories/${b.id}`, 'DELETE')).ok, true);
       assert.equal((await pedir(`/api/stories/${b.id}`)).status, 400);
