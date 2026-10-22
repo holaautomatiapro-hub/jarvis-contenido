@@ -284,52 +284,6 @@ function FilaDia({ p, redes, onAbrir }) {
   );
 }
 
-// ---------- Lista: próximos, sin fecha y anteriores ----------
-// metricas: { piezaId: { alcance, … } } de las que están unidas a su publicación de Instagram
-export function Lista({ piezas, metricas = {}, cargando, onAbrir, onMover }) {
-  const ESTADOS = useFases();
-  const h = hoyIso();
-  const orden = (a, b) => a.fecha.localeCompare(b.fecha) || ordenDia(a, b);
-  const grupos = [
-    { titulo: 'Próximos', lista: piezas.filter((p) => p.fecha && p.fecha >= h).sort(orden), vacio: 'Nada planificado a partir de hoy.' },
-    { titulo: 'Sin fecha', lista: piezas.filter((p) => !p.fecha).sort((a, b) => b.id - a.id), vacio: 'Ninguna idea sin fecha.' },
-    { titulo: 'Anteriores', lista: piezas.filter((p) => p.fecha && p.fecha < h).sort(orden).reverse(), vacio: 'Nada anterior a hoy.' },
-  ];
-  return grupos.map((g) => (
-    <div key={g.titulo} className="panel panel-pad">
-      <div className="panel-head"><span className="label">{g.titulo}</span><span className="cuenta">{g.lista.length}</span></div>
-      {!g.lista.length && <div className="vacio">{cargando ? 'Cargando…' : g.vacio}</div>}
-      {g.lista.map((p) => (
-        <div key={p.id} className="fila-lista" tabIndex={0} onClick={() => onAbrir(p)} onKeyDown={(e) => e.key === 'Enter' && onAbrir(p)}>
-          <Miniatura p={p} className="media" />
-          <div className="fila-c-txt"><b>{p.titulo || 'Sin título'}</b><small>{p.caption?.split('\n')[0] || 'Sin caption'}</small></div>
-          {p.pilar ? <span className="chip-pilar hide-sm" title="Pilar">{p.pilar}</span> : <span className="hide-sm" />}
-          <span className="tipo-pildora">{textoTipo(p.formato)}</span>
-          <span className="fila-fecha">{p.fecha ? `${diaCorto(p.fecha)}${p.hora ? ` · ${p.hora}` : ''}` : 'Sin fecha'}</span>
-          <span className="fila-ind">
-            {metricas[p.id]?.alcance != null && <span className="ind-alcance" title={`Alcance en Instagram · ${metricas[p.id].guardados ?? 0} guardados · ${metricas[p.id].compartidos ?? 0} compartidos`}><Icon name="eye" size={11} /> {num(metricas[p.id].alcance)}</span>}
-            {p.archivos.length > 0 && <span title="Archivos subidos">🎞 {p.archivos.length}</span>}
-            {(p.publicar_ig || p.ig_estado) ? (
-              p.ig_permalink
-                ? <a href={p.ig_permalink} target="_blank" rel="noreferrer" onClick={(e) => e.stopPropagation()} className="ig-ind publicado" title="Publicado en Instagram"><Icon name="instagram" size={13} /></a>
-                : <span className={`ig-ind ${p.ig_estado || 'pendiente'}`} title={p.ig_estado === 'error' ? `Error al publicar: ${p.ig_error}` : p.ig_estado === 'procesando' ? 'Publicándose en Instagram…' : 'Se publicará sola en Instagram'}><Icon name="instagram" size={13} /></span>
-            ) : null}
-            <MarcaLeadMagnet p={p} />
-            {p.video_url && <a href={p.video_url} target="_blank" rel="noreferrer" onClick={(e) => e.stopPropagation()} title="Abrir URL del vídeo"><Icon name="link" size={13} /></a>}
-            {p.origen === 'hermes' && <Icon name="telegram" size={12} color="var(--cyan)" />}
-          </span>
-          <select
-            className="estado-select" value={p.estado} style={{ '--c': estadoDe(p.estado).color }}
-            onClick={(e) => e.stopPropagation()} onChange={(e) => onMover(p, { estado: e.target.value })} aria-label="Estado"
-          >
-            {ESTADOS.map((e) => <option key={e.id} value={e.id}>{e.label}</option>)}
-          </select>
-        </div>
-      ))}
-    </div>
-  ));
-}
-
 // ---------- Pipeline (tablero por estados) ----------
 export function Pipeline({ piezas, onAbrir, onMover, onNuevaIdea }) {
   const ESTADOS = useFases();
