@@ -35,6 +35,7 @@ import { promptAdaptarAnuncio, promptReplicarCompetencia, promptReplicarPropia, 
 import { createReferencias } from './referencias.js';
 import { createMiniaturas } from './miniaturas.js';
 import { createFotogramas } from './fotograma.js';
+import { createAcceso } from './acceso.js';
 import { createStories, OBJETIVOS_STORIES, promptGuionStory } from './stories.js';
 import { createEstrategia, DIAS, FILAS, OBJETIVOS_SEMANA, PRINCIPIOS, TACTICAS, lunesDe } from './estrategia.js';
 import { createLaboratorio, carpetaPorDefecto } from './laboratorio.js';
@@ -53,7 +54,7 @@ const DIST = path.join(ROOT, 'web', 'dist');
 // Replicar con diseño de carruseles o stories: lo hace Opus, como en Diseño
 const modeloReplicar = (formatos, disenar) => { try { return seDisena(normalizarFormatos(formatos), disenar) ? 'opus' : undefined; } catch { return undefined; } };
 
-export function createApp({ jarvis, archivos, miniaturas = null, estrategia = null, stories = null, publicadorIg, asistente, instagram, competencia, ads, publicar, hermes, jobs, kit, disenos, recordatorios, laboratorio, resultados, adjuntos, preferencias, actualizar, conversiones, port, onChange = () => {}, status, tts = sintetizar }) {
+export function createApp({ jarvis, archivos, miniaturas = null, estrategia = null, stories = null, acceso = null, publicadorIg, asistente, instagram, competencia, ads, publicar, hermes, jobs, kit, disenos, recordatorios, laboratorio, resultados, adjuntos, preferencias, actualizar, conversiones, port, onChange = () => {}, status, tts = sintetizar }) {
   const estadoSistema = status || (() => systemStatus({ vaultPath: jarvis.vault.base, instagram: Boolean(instagram?.estado().conectado), ads: Boolean(ads?.estado().conectado && ads?.estado().cuenta), hermes: Boolean(hermes?.estado().gateway.online) }));
   const app = express();
 
@@ -70,6 +71,21 @@ export function createApp({ jarvis, archivos, miniaturas = null, estrategia = nu
     next();
   });
   app.use(express.json({ limit: '2mb' }));
+  // Contraseña (si JARVIS_CLAVE está en .env): sin sesión solo se ve la página para entrar
+  if (acceso) {
+    app.use(acceso.middleware);
+    app.post('/api/login', (req, res) => {
+      const r = acceso.entrar(req.body?.clave);
+      if (r.espera) return res.status(429).json({ error: `Demasiados intentos. Espera ${r.espera} s y vuelve a probar.` });
+      if (!r.ok) return res.status(401).json({ error: 'Contraseña incorrecta' });
+      if (r.cookie) res.set('Set-Cookie', acceso.cabeceraCookie(r.cookie, req));
+      res.json({ ok: true });
+    });
+    app.post('/api/logout', (req, res) => res.set('Set-Cookie', acceso.cabeceraCookie('', req)).json({ ok: true }));
+  }
+  app.get('/api/acceso', (_req, res) => res.json({ conClave: Boolean(acceso?.activa()), nombre: process.env.JARVIS_NOMBRE || null }));
+  // Para descargar el conector de Claude Code desde PowerShell (sin sesión): un enlace que vale una hora
+  app.post('/api/puente/enlace', (_req, res) => res.json({ t: acceso?.activa() ? acceso.enlaceDescarga() : null }));
   // Las respuestas grandes de la API van comprimidas (por Tailscale o el móvil se nota: Contenido pasa de 60 KB a 10)
   app.use('/api', (req, res, next) => {
     const json = res.json.bind(res);
@@ -823,6 +839,8 @@ export function createApp({ jarvis, archivos, miniaturas = null, estrategia = nu
     let codigo = readFileSync(path.join(ROOT, 'puente', 'jarvis-puente.mjs'), 'utf8');
     const url = String(req.query.url || '').replace(/\/+$/, '');
     if (/^https?:\/\/[\w.-]+(:\d+)?$/.test(url)) codigo = codigo.replace("'http://localhost:3333'", JSON.stringify(url));
+    // Con contraseña, el conector lleva dentro su token (deja de valer si cambias la contraseña: vuelve a instalarlo)
+    if (acceso?.activa()) codigo = codigo.replace("process.env.JARVIS_TOKEN || ''", `process.env.JARVIS_TOKEN || ${JSON.stringify(acceso.tokenConector())}`);
     res.set({ 'Cache-Control': 'no-cache', 'Content-Disposition': 'attachment; filename="jarvis-puente.mjs"' }).type('text/javascript').send(codigo);
   });
 
@@ -850,6 +868,7 @@ export function createApp({ jarvis, archivos, miniaturas = null, estrategia = nu
 
 function main() {
   const cfg = getConfig();
+  const acceso = createAcceso({ dataDir: path.dirname(cfg.dbPath) });
   vigilarEnv(ENV_PATH, { alCambiar: (claves) => console.log(`[JARVIS] Claves actualizadas desde .env: ${claves.join(', ')}`) });
   const { nuevo } = ensureVault(cfg.vaultPath, cfg.templateDir, cfg.mcpScript);
   const db = openDb(cfg.dbPath);
@@ -908,10 +927,10 @@ function main() {
   }
   const estrategia = createEstrategia({ db, jarvis });
   stories = createStories({ db, jarvis, asistente, alCambiar: onChange });
-  const server = createServer(createApp({ jarvis, archivos, miniaturas, estrategia, stories, publicadorIg, asistente, instagram, competencia, ads, publicar, hermes, jobs, kit, disenos, recordatorios, laboratorio, resultados, adjuntos, preferencias, actualizar, conversiones, port: cfg.port, onChange }));
+  const server = createServer(createApp({ jarvis, archivos, miniaturas, estrategia, stories, acceso, publicadorIg, asistente, instagram, competencia, ads, publicar, hermes, jobs, kit, disenos, recordatorios, laboratorio, resultados, adjuntos, preferencias, actualizar, conversiones, port: cfg.port, onChange }));
   // Solo el propio dashboard puede escuchar los eventos (otra web abierta en el navegador, no)
   const local = hostsPermitidos(cfg.port);
-  wss = new WebSocketServer({ server, path: '/ws', verifyClient: ({ origin, req }) => local.has(req.headers.host) && (!origin || local.has(origin.replace(/^https?:\/\//, ''))) });
+  wss = new WebSocketServer({ server, path: '/ws', verifyClient: ({ origin, req }) => local.has(req.headers.host) && (!origin || local.has(origin.replace(/^https?:\/\//, ''))) && acceso.autorizado(req) });
   wss.on('connection', (ws) => ws.send(JSON.stringify({ type: 'hola', at: Date.now() })));
 
   // PID para que instalar.ps1 pueda parar o reiniciar JARVIS sin tocar otros procesos de Node

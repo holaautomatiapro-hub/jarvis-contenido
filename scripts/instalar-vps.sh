@@ -131,6 +131,14 @@ else
   ok "JARVIS en https://$NOMBRE (solo desde tus dispositivos con Tailscale)"
 fi
 
+# Los otros JARVIS de este VPS (otro-jarvis.sh, p. ej. el de tu pareja) se ponen al día a la vez que el tuyo
+for UNIDAD in /etc/systemd/system/jarvis-*.service; do
+  [ -f "$UNIDAD" ] && grep -q '^# JARVIS extra' "$UNIDAD" || continue
+  OTRO="$(basename "$UNIDAD" .service)"; OTRO="${OTRO#jarvis-}"
+  paso "JARVIS de $OTRO"
+  bash "$DIR/scripts/otro-jarvis.sh" "$OTRO" --solo-actualizar || aviso "No se ha podido actualizar el JARVIS de $OTRO. Repite:  bash $DIR/scripts/otro-jarvis.sh $OTRO"
+done
+
 paso "Siguiente"
 echo "    1. Si no lo has hecho: inicia sesión en Claude Code con  claude"
 echo "    2. Trae tus datos del PC:  npm run importar-copia -- ~/JARVIS-copia.tar.gz  y  $SUDO systemctl restart jarvis"

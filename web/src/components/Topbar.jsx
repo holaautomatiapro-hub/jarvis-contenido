@@ -2,6 +2,20 @@ import { useEffect, useState } from 'react';
 import Icon from './Icon.jsx';
 import Apariencia from './Apariencia.jsx';
 import Trabajando from './Trabajando.jsx';
+import { api, useRecurso } from '../lib/api.js';
+
+// La inicial de quien usa este JARVIS; con contraseña, pulsándola se cierra la sesión
+function Avatar() {
+  const [a] = useRecurso('/api/acceso', null);
+  const inicial = (a?.nombre || 'J').trim().charAt(0).toUpperCase() || 'J';
+  if (!a?.conClave) return <div className="avatar" title={a?.nombre || undefined}>{inicial}</div>;
+  const salir = async () => {
+    if (!window.confirm('¿Cerrar la sesión de JARVIS en este navegador?')) return;
+    await api('/api/logout', { method: 'POST' }).catch(() => {});
+    window.location.reload();
+  };
+  return <button type="button" className="avatar avatar-btn" onClick={salir} title={`${a.nombre ? `${a.nombre} · ` : ''}Cerrar sesión`} aria-label="Cerrar sesión">{inicial}</button>;
+}
 
 export const TABS = [
   { id: 'inicio', label: 'Inicio', icon: 'home' },
@@ -46,7 +60,7 @@ export default function Topbar({ tab, onTab }) {
       <div className="top-right">
         <Trabajando onTab={onTab} />
         <Apariencia />
-        <div className="avatar">J</div>
+        <Avatar />
         <div className="clock">
           <div className="clock-time">{time}</div>
           <div className="clock-date">{date}</div>

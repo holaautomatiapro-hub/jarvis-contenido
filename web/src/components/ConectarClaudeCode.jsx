@@ -1,4 +1,5 @@
-import { useState } from 'react';
+import { useEffect, useState } from 'react';
+import { api } from '../lib/api.js';
 import Icon from './Icon.jsx';
 import { BotonCopiar } from '../views/contenido/comun.jsx';
 
@@ -8,10 +9,13 @@ export default function ConectarClaudeCode() {
   const [abierto, setAbierto] = useState(() => { try { return localStorage.getItem('conectar_cc') === '1'; } catch { return false; } });
   const alternar = () => { setAbierto(!abierto); try { localStorage.setItem('conectar_cc', abierto ? '0' : '1'); } catch { /* sin localStorage */ } };
   const origen = window.location.origin;
+  // Con contraseña, PowerShell no tiene sesión: el enlace lleva un código que vale una hora
+  const [t, setT] = useState(null);
+  useEffect(() => { if (abierto) api('/api/puente/enlace', { method: 'POST' }).then((r) => setT(r.t)).catch(() => {}); }, [abierto]);
   const ruta = '$env:USERPROFILE\\.jarvis\\jarvis-puente.mjs';
   const instalar = [
     'New-Item -ItemType Directory -Force "$env:USERPROFILE\\.jarvis" | Out-Null',
-    `Invoke-WebRequest "${origen}/puente/jarvis-puente.mjs?url=${encodeURIComponent(origen)}" -OutFile "${ruta}" -UseBasicParsing`,
+    `Invoke-WebRequest "${origen}/puente/jarvis-puente.mjs?url=${encodeURIComponent(origen)}${t ? `&t=${t}` : ''}" -OutFile "${ruta}" -UseBasicParsing`,
     'claude mcp remove jarvis --scope user 2>$null',
     `claude mcp add --scope user jarvis node "${ruta}"`,
   ].join('; ');
@@ -39,7 +43,7 @@ export default function ConectarClaudeCode() {
             </li>
             <li><b>Pruébalo:</b> abre un chat nuevo de Claude Code, escribe <code>/mcp</code> y verás «jarvis» conectado. Luego, por ejemplo: «sube a JARVIS el vídeo que acabas de hacer como reel, con este caption, para mañana a las 19:00».</li>
           </ol>
-          <p className="ayuda">Para actualizarlo, vuelve a pegar el comando del paso 2. Solo sube los archivos que le pidas a Claude, y entra en JARVIS igual que tu navegador.</p>
+          <p className="ayuda">Para actualizarlo, vuelve a pegar el comando del paso 2{t ? ' (cópialo de nuevo: el enlace vale una hora; y si cambias la contraseña de JARVIS, vuelve a instalarlo)' : ''}. Solo sube los archivos que le pidas a Claude.</p>
         </div>
       )}
     </section>

@@ -17,6 +17,7 @@ import { createCompetencia } from '../server/integrations/competencia.js';
 import { createAds } from '../server/integrations/ads.js';
 import { createPublicar, REDES } from '../server/publicar.js';
 import { createResultados } from '../server/resultados.js';
+import { claveLocal } from '../server/acceso.js';
 import { createStories } from '../server/stories.js';
 import { createEstrategia } from '../server/estrategia.js';
 import { PIEZAS_TESTIMONIO, PLANTILLAS_REEL } from '../server/laboratorio.js';
@@ -556,12 +557,14 @@ async function main() {
   const publicar = createPublicar({ db, jarvis, vault });
   const origen = process.env.JARVIS_ORIGEN || 'claude';
   // Avisa al dashboard (si está abierto) para que se refresque al instante
-  const avisar = () => fetch(`http://127.0.0.1:${cfg.port}/api/avisar`, { method: 'POST', signal: AbortSignal.timeout(800) }).catch(() => {});
+  // Si JARVIS tiene contraseña, las llamadas desde este mismo servidor llevan su clave local
+  const local = { 'x-jarvis-local': claveLocal(path.dirname(cfg.dbPath)) };
+  const avisar = () => fetch(`http://127.0.0.1:${cfg.port}/api/avisar`, { method: 'POST', headers: local, signal: AbortSignal.timeout(800) }).catch(() => {});
   // El motor de diseño corre en el dashboard: estas llamadas le pasan el trabajo
   const servidor = async (metodo, ruta, body, { minutos = 10 } = {}) => {
     let res;
     try {
-      res = await fetch(`http://127.0.0.1:${cfg.port}${ruta}`, { method: metodo, headers: body ? { 'content-type': 'application/json' } : {}, body: body ? JSON.stringify(body) : undefined, signal: AbortSignal.timeout(minutos * 60_000) });
+      res = await fetch(`http://127.0.0.1:${cfg.port}${ruta}`, { method: metodo, headers: { ...local, ...(body ? { 'content-type': 'application/json' } : {}) }, body: body ? JSON.stringify(body) : undefined, signal: AbortSignal.timeout(minutos * 60_000) });
     } catch (e) {
       const codigo = e.cause?.code || e.name;
       if (codigo === 'ECONNREFUSED') throw new Error('JARVIS no está abierto: el motor de diseño vive en el dashboard');
@@ -580,7 +583,7 @@ async function main() {
     const q = new URLSearchParams({ tipo, nombre: path.basename(ruta), cliente: cliente || '' });
     let res;
     try {
-      res = await fetch(`http://127.0.0.1:${cfg.port}/api/laboratorio/subir?${q}`, { method: 'POST', headers: { 'content-type': 'application/octet-stream' }, body: Readable.toWeb(createReadStream(ruta)), duplex: 'half', signal: AbortSignal.timeout(60 * 60_000) });
+      res = await fetch(`http://127.0.0.1:${cfg.port}/api/laboratorio/subir?${q}`, { method: 'POST', headers: { ...local, 'content-type': 'application/octet-stream' }, body: Readable.toWeb(createReadStream(ruta)), duplex: 'half', signal: AbortSignal.timeout(60 * 60_000) });
     } catch { throw new Error('JARVIS no está abierto: el Laboratorio vive en el dashboard'); }
     const j = await res.json().catch(() => ({}));
     if (!res.ok) throw new Error(j.error || `Error ${res.status}`);

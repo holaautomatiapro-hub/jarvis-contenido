@@ -60,7 +60,7 @@ export default function Actualizar() {
               <ul>{pendientes.map((c) => <li key={c.commit}><span>{c.titulo}</span><small className="t-dim">{fechaCorta(c.fecha)}</small></li>)}</ul>
               {e.puedeSola
                 ? <button className="btn" onClick={() => actualizar()} disabled={Boolean(haciendo)}><Icon name="bolt" size={14} />Actualizar ahora</button>
-                : <p className="ayuda">{e.plataforma === 'win32' ? <>En el PC: en PowerShell, dentro de la carpeta de JARVIS, <code>git pull</code> y luego <code>powershell -ExecutionPolicy Bypass -File instalar.ps1</code>.</> : <>Ejecuta <code>bash ~/instalar-vps.sh</code> en el servidor.</>}</p>}
+                : <p className="ayuda">{e.secundario ? <>Este JARVIS se actualiza a la vez que el principal del servidor: cuando se actualiza el otro, este también.</> : e.plataforma === 'win32' ? <>En el PC: en PowerShell, dentro de la carpeta de JARVIS, <code>git pull</code> y luego <code>powershell -ExecutionPolicy Bypass -File instalar.ps1</code>.</> : <>Ejecuta <code>bash ~/instalar-vps.sh</code> en el servidor.</>}</p>}
             </div>
           ) : <div className="aviso ok">Está al día (mirado {fechaCorta(e.comprobado.en)}).</div>)}
         </>

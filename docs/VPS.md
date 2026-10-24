@@ -96,3 +96,39 @@ Esto quita el arranque automático y el acceso directo, pero tus datos del PC se
 - **Obsidian:** el vault vive en el VPS (`~/JARVIS-Vault`). Puedes ver y buscar tus notas en la pestaña **Notas**. Si quieres seguir editándolas con Obsidian en el PC, hay que sincronizar las dos carpetas, por ejemplo con Syncthing (gratis).
 - **«Conectar con Facebook»:** desde el VPS la vuelta de Meta va a `https://jarvis.tu-red.ts.net/api/instagram/callback`. Añádela en tu app de Meta, en *URI de redireccionamiento de OAuth válidos*. Pegar un token sigue funcionando igual.
 - **Voz:** el micrófono funciona porque Tailscale da HTTPS.
+
+## Contraseña
+
+Con Tailscale solo tus dispositivos llegan a JARVIS. Si además quieres contraseña (imprescindible si en el VPS hay otro JARVIS, el de otra persona):
+
+```bash
+cd ~/JARVIS && npm run clave              # ponerla o cambiarla
+cd ~/JARVIS && npm run clave -- --quitar  # quitarla
+```
+
+Se usa al momento. Al abrir JARVIS te la pide y la sesión dura 180 días en ese navegador; para cerrarla, pulsa tu inicial arriba a la derecha. Cambiarla cierra todas las sesiones y anula el conector de Claude Code: vuelve a instalarlo desde Inicio. El MCP y los scripts del propio VPS siguen funcionando sin hacer nada.
+
+## Otro JARVIS para otra persona (p. ej. tu pareja)
+
+Cada uno con lo suyo: su Instagram, su contenido, su estrategia, su voz, su Claude (su propia suscripción) y su contraseña, en el mismo VPS y sin tocar el tuyo.
+
+```bash
+bash ~/JARVIS/scripts/otro-jarvis.sh andrea
+```
+
+El script:
+
+1. Crea un usuario de Linux `jarvis-andrea` y su copia de JARVIS en `/home/jarvis-andrea/JARVIS` (con su vault y sus datos).
+2. Te pide su contraseña.
+3. Lo deja como servicio `jarvis-andrea` en otro puerto (3334, 3335…).
+4. Le da su propia dirección de Tailscale: `https://jarvis-andrea.tu-red.ts.net`. Para ello te pide entrar con tu cuenta de Tailscale una vez.
+
+Después:
+
+- **Su Claude:** `sudo -iu jarvis-andrea claude` y que entre con su cuenta (Pro o Max).
+- **Su acceso:** en login.tailscale.com/admin/machines, busca `jarvis-andrea` → ⋯ → **Share** y mándale la invitación. Ella instala Tailscale en su móvil y su ordenador, acepta y abre su dirección. Solo verá su JARVIS.
+- **Sus claves** (Meta, Supabase, ElevenLabs…): `sudo -u jarvis-andrea -H bash -c 'cd ~/JARVIS && npm run claves'`.
+- **Su Instagram:** desde su JARVIS → Instagram. Si usáis la misma app de Meta, añade también `https://jarvis-andrea.tu-red.ts.net/api/instagram/callback`.
+- **Tu contraseña:** ponle también contraseña a tu JARVIS (`npm run clave`), porque ahora el VPS es compartido.
+
+Se actualiza solo cuando actualizas el tuyo (desde Inicio o con `instalar-vps.sh`). Para ver qué hace: `journalctl -u jarvis-andrea -f`. Ocupa unos 3 GB más de disco (Laboratorio y Chromium propios), y si los dos exportáis vídeos a la vez el VPS trabaja el doble.
