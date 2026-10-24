@@ -1,5 +1,9 @@
 import { useCallback, useEffect, useRef, useState } from 'react';
 
+// Con contraseña: si la sesión ya no vale (caducó o se cambió la contraseña), se recarga y sale la página de entrar
+let recargando = false;
+function sesionCaducada() { if (!recargando) { recargando = true; window.location.reload(); } }
+
 export async function api(path, { method = 'GET', body } = {}) {
   const r = await fetch(path, {
     method,
@@ -7,6 +11,7 @@ export async function api(path, { method = 'GET', body } = {}) {
     body: body ? JSON.stringify(body) : undefined,
   });
   const data = await r.json().catch(() => ({}));
+  if (r.status === 401 && data.sesion) sesionCaducada();
   if (!r.ok) throw new Error(data.error || `Error ${r.status}`);
   return data;
 }
@@ -79,6 +84,7 @@ export function useRecurso(path, inicial) {
       const texto = await r.text();
       let d = {};
       try { d = texto ? JSON.parse(texto) : {}; } catch { /* sin JSON */ }
+      if (r.status === 401 && d.sesion) sesionCaducada();
       if (!r.ok) throw new Error(d.error || `Error ${r.status}`);
       setError(null);
       if (texto === ultimo.current) return;

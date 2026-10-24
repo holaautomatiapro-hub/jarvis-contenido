@@ -22,6 +22,8 @@ export function createActualizar({ dir, dataDir, env = process.env, plataforma =
 
   // En el VPS: Linux con el servicio jarvis (lo crea el instalador) y systemd-run para lanzar la actualización aparte
   const enVps = () => plataforma === 'linux' && existe('/etc/systemd/system/jarvis.service') && existe(path.join(dir, 'scripts', 'instalar-vps.sh'));
+  // Otro JARVIS del mismo VPS (otro-jarvis.sh): no se actualiza solo, sino a la vez que el principal
+  const secundario = () => env.JARVIS_SECUNDARIO === '1';
 
   function ultimaActualizacion() {
     let u;
@@ -47,7 +49,7 @@ export function createActualizar({ dir, dataDir, env = process.env, plataforma =
     try { actual = await version(); } catch { /* sin git */ }
     const u = ultimaActualizacion();
     return {
-      disponible: true, puedeSola: enVps(), plataforma, actual, comprobado: ultima,
+      disponible: true, puedeSola: enVps() && !secundario(), secundario: secundario(), plataforma, actual, comprobado: ultima,
       actualizando: u?.estado === 'actualizando', ultima: u, log: u ? log() : '',
     };
   }
@@ -63,6 +65,7 @@ export function createActualizar({ dir, dataDir, env = process.env, plataforma =
   }
 
   async function actualizar({ aunqueOcupado = false } = {}) {
+    if (secundario()) throw new ActualizarError('Este JARVIS se actualiza a la vez que el principal: cuando se actualiza el otro JARVIS del servidor, este también.');
     if (!enVps()) throw new ActualizarError(plataforma === 'win32'
       ? 'En Windows se actualiza con el instalador: en PowerShell, dentro de la carpeta de JARVIS, ejecuta  git pull  y luego  powershell -ExecutionPolicy Bypass -File instalar.ps1'
       : 'Aquí no puedo actualizarme solo: ejecuta  bash ~/instalar-vps.sh  en el servidor.');

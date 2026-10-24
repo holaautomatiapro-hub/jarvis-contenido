@@ -13,6 +13,8 @@ import { createInterface } from 'node:readline';
 
 const VERSION = '1.0.0';
 const BASE = String(process.env.JARVIS_URL || 'http://localhost:3333').replace(/\/+$/, '');
+// Si tu JARVIS tiene contraseña, este es el token del conector (lo pone JARVIS al descargarlo desde Inicio)
+const TOKEN = String(process.env.JARVIS_TOKEN || '');
 const MIMES = { jpg: 'image/jpeg', jpeg: 'image/jpeg', png: 'image/png', webp: 'image/webp', heic: 'image/heic', gif: 'image/gif', mp4: 'video/mp4', mov: 'video/quicktime', m4v: 'video/x-m4v', webm: 'video/webm' };
 const FORMATOS = ['Reel', 'Carrusel', 'Post', 'Story', 'Short'];
 const FORMATOS_VIDEO = ['Reel', 'Short'];
@@ -26,7 +28,7 @@ async function pedir(ruta, { metodo = 'GET', cuerpo, json } = {}) {
   try {
     res = await fetch(BASE + ruta, {
       method: metodo,
-      headers: json !== undefined ? { 'content-type': 'application/json' } : cuerpo ? { 'content-type': 'application/octet-stream' } : {},
+      headers: { ...(TOKEN ? { authorization: `Bearer ${TOKEN}` } : {}), ...(json !== undefined ? { 'content-type': 'application/json' } : cuerpo ? { 'content-type': 'application/octet-stream' } : {}) },
       body: json !== undefined ? JSON.stringify(json) : cuerpo,
       ...(cuerpo ? { duplex: 'half' } : {}),
       signal: AbortSignal.timeout(cuerpo ? 60 * 60_000 : 60_000),
@@ -37,6 +39,7 @@ async function pedir(ruta, { metodo = 'GET', cuerpo, json } = {}) {
   const texto = await res.text();
   let d = {};
   try { d = texto ? JSON.parse(texto) : {}; } catch { /* sin JSON */ }
+  if (res.status === 401) throw new Fallo('Tu JARVIS tiene contraseña y este conector no tiene su token (o cambiaste la contraseña). Vuelve a instalarlo con el comando de Inicio → «Conectar con Claude Code».');
   if (!res.ok) throw new Fallo(d.error || `JARVIS respondió ${res.status}${res.status === 403 ? ' (no deja entrar: abre JARVIS en el navegador con esta misma dirección para comprobarla)' : ''}`);
   return d;
 }
