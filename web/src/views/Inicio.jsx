@@ -327,6 +327,13 @@ function AdsPanel({ ir }) {
   );
 }
 
+// Si Meta corta la conexión con Instagram, se avisa aquí (si no, solo se ve cuando falla una publicación)
+function AvisoInstagram() {
+  const [e] = useRecurso('/api/instagram/estado', null);
+  if (!e?.caducada) return null;
+  return <div className="aviso error ig-aviso" style={{ marginBottom: 14 }}><Icon name="instagram" size={14} /><span>Meta ha cortado la conexión con Instagram (@{e.username}): no se publica ni se sincroniza nada hasta que la vuelvas a conectar.</span><a className="link-btn" href="#instagram">Volver a conectar</a></div>;
+}
+
 export default function Inicio({ data, onAsk, acciones = {}, recargar = () => {} }) {
   const [q, setQ] = useState('');
   const submit = (text) => {
@@ -340,6 +347,7 @@ export default function Inicio({ data, onAsk, acciones = {}, recargar = () => {}
   return (
     <>
       <Actualizar />
+      <AvisoInstagram />
       <ConectarClaudeCode />
       <section className="home">
         <div className="col">

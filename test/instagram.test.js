@@ -117,6 +117,18 @@ describe('conexión', () => {
     assert.equal(ig.conexion().token, 'TOKEN_PAGINA');
     assert.equal(ig.estado().conectado, true);
   });
+
+  test('si Meta corta la conexión se apunta (para avisar) y al volver a conectar se quita', async () => {
+    assert.equal(ig.estado().caducada, null);
+    ig.marcarCaducada('La conexión con Instagram ha caducado o se ha revocado. Vuelve a conectar Instagram.');
+    const c = ig.estado().caducada;
+    assert.match(c.mensaje, /caducado/);
+    ig.marcarCaducada('otra vez');
+    assert.equal(ig.estado().caducada.en, c.en, 'se queda la primera vez');
+    assert.equal(ig.estado().conectadoMeta, true, 'sigue la cuenta (para reconectar la misma)');
+    await ig.conectarConToken('TOKEN_USUARIO');
+    assert.equal(ig.estado().caducada, null);
+  });
 });
 
 describe('sincronización', () => {

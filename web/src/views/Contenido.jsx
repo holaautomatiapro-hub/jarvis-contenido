@@ -85,6 +85,7 @@ export default function Contenido({ onCaptura }) {
 
       {(aviso || errorCarga) && <div className="aviso error">{aviso || `No se pudo cargar el contenido. ${errorCarga}`}</div>}
       {enCurso.map((p) => <div key={`c${p.id}`} className="aviso ig-aviso"><Icon name="instagram" size={14} />Publicando en Instagram «{p.titulo}»: {pasoDe(p)}</div>)}
+      {data?.instagram?.caducada && <div className="aviso error ig-aviso"><Icon name="instagram" size={14} /><span>Meta ha cortado la conexión con Instagram: no se publicará nada hasta que la vuelvas a conectar.</span><a className="link-btn" href="#instagram">Volver a conectar</a></div>}
       {fallidas.map((p) => <div key={`e${p.id}`} className="aviso error ig-aviso"><Icon name="instagram" size={14} /><span>No se pudo publicar «{p.titulo}»: {p.ig_error}</span><button className="link-btn" onClick={() => setEditando(p)}>Abrir</button></div>)}
       {recientes.map((p) => <div key={`r${p.id}`} className="aviso ok ig-aviso"><Icon name="instagram" size={14} /><span>Publicado en Instagram: «{p.titulo}»</span>{p.ig_permalink && <a className="link-btn" href={p.ig_permalink} target="_blank" rel="noreferrer">Verlo ↗</a>}</div>)}
 

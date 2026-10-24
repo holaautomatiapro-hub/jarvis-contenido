@@ -42,7 +42,7 @@ describe('reglas de publicación', () => {
 
 // Meta y Supabase de mentira
 // prepararVideo: aquí no se pasa ffmpeg a los vídeos de mentira (lo de verdad se prueba en video-ig.test.js)
-function entorno({ procesando = 0, fallarPublicar = false, prepararVideo = async (ruta) => ({ ruta, limpiar() {}, cambiado: false }) } = {}) {
+function entorno({ procesando = 0, fallarPublicar = false, tokenCaducado = false, prepararVideo = async (ruta) => ({ ruta, limpiar() {}, cambiado: false }) } = {}) {
   const db = openDb(':memory:');
   const jarvis = createJarvis({ db, vault: createVault(path.join(dir, 'V')) });
   const archivos = createArchivos({ dir: path.join(dir, 'arch') });
@@ -50,6 +50,8 @@ function entorno({ procesando = 0, fallarPublicar = false, prepararVideo = async
   for (const n of ['foto.jpg', 'b.jpg', 'reel.mp4']) writeFileSync(path.join(dir, 'arch', '2026-10', `1700000000000-abcdef_${n}`), 'xyz');
   const llamadas = [];
   let n = 0;
+  let cortada = tokenCaducado; // Meta ha invalidado el token
+  let caducada = null;
   const estados = new Map();
   const fetchImpl = async (u, o = {}) => {
     const url = new URL(u);
@@ -59,6 +61,7 @@ function entorno({ procesando = 0, fallarPublicar = false, prepararVideo = async
       return new Response('{}', { status: 200 });
     }
     const ruta = url.pathname.replace(/^\/v[\d.]+\//, '');
+    if (cortada) return Response.json({ error: { code: 190, message: 'Error validating access token: The session has been invalidated because the user changed their password' } }, { status: 401 });
     const body = o.body ? Object.fromEntries(new URLSearchParams(o.body)) : null;
     llamadas.push({ ruta, method: o.method || 'GET', body, query: Object.fromEntries(url.searchParams) });
     if (o.method === 'POST' && ruta === 'ig1/media') { const id = `c${++n}`; estados.set(id, procesando); return Response.json({ id }); }
@@ -67,14 +70,42 @@ function entorno({ procesando = 0, fallarPublicar = false, prepararVideo = async
     if (estados.has(ruta)) { const k = estados.get(ruta); estados.set(ruta, k - 1); return Response.json({ status_code: k > 0 ? 'IN_PROGRESS' : 'FINISHED' }); }
     return Response.json({ error: { code: 803, message: `ruta ${ruta}` } }, { status: 404 });
   };
-  const instagram = { estado: () => ({ conectadoMeta: true, username: 'micuenta' }), conexion: () => ({ token: 'tok', igUserId: 'ig1' }) };
+  const instagram = { estado: () => ({ conectadoMeta: true, username: 'micuenta', caducada }), conexion: () => ({ token: 'tok', igUserId: 'ig1' }), marcarCaducada: (m) => { caducada = caducada || { en: '2026-10-20T18:00:00Z', mensaje: m }; } };
   const almacen = createAlmacen({ env: { CRM_SUPABASE_URL: 'https://abc.supabase.co', CRM_SUPABASE_ANON_KEY: 'eyJ'.padEnd(40, 'x') }, fetchImpl });
   let reloj = new Date('2026-10-20T17:00:00');
   const pub = createPublicadorIg({ db, jarvis, instagram, almacen, archivos, fetchImpl, ahora: () => reloj, dormir: async () => {}, esperaMax: 0, log: { warn: () => {} }, prepararVideo });
-  return { db, jarvis, pub, llamadas, mover: (d) => { reloj = new Date(d); } };
+  return { db, jarvis, pub, llamadas, mover: (d) => { reloj = new Date(d); }, reconectar: () => { cortada = false; caducada = null; }, caducada: () => caducada };
 }
 
 describe('publicador', () => {
+  test('si Meta corta la conexión: se avisa, no se sigue intentando y al reconectar vuelve a la cola lo reciente', async () => {
+    const { jarvis, pub, llamadas, mover, reconectar, caducada } = entorno({ tokenCaducado: true });
+    const viejo = jarvis.crearPieza({ titulo: 'De anteayer', formato: 'Post', fecha: '2026-10-18', hora: '10:00', archivos: [jpg()] });
+    const a = jarvis.crearPieza({ titulo: 'Post · Viral', formato: 'Post', fecha: '2026-10-20', hora: '18:00', archivos: [jpg()] });
+    const b = jarvis.crearPieza({ titulo: 'Story', formato: 'Story', fecha: '2026-10-20', hora: '18:05', archivos: [jpg('b.jpg')] });
+    for (const p of [viejo, a, b]) pub.marcar(p.id, true);
+    mover('2026-10-20T18:10:00');
+    await pub.revisar();
+    const de = (p) => jarvis.listarPiezas().find((x) => x.id === p.id);
+    assert.match(de(viejo).ig_error, /caducado o se ha revocado/);
+    assert.match(caducada().mensaje, /caducado o se ha revocado/, 'se apunta para avisar en el dashboard');
+    assert.equal(de(a).ig_estado, null, 'al primer 190 para: no marca todo lo demás como fallido');
+    assert.equal(de(b).ig_estado, null);
+    const antes = llamadas.length;
+    await pub.revisar();
+    assert.equal(llamadas.length, antes, 'con la conexión cortada no intenta nada más');
+    assert.equal(pub.estado().caducada, true);
+
+    // Se vuelve a conectar: lo que falló hace más de un día no se publica tarde sin avisar
+    reconectar();
+    const r = pub.reactivar();
+    assert.deepEqual(r, { reactivadas: 0, tarde: 1 });
+    assert.match(de(viejo).ig_error, /No se publicó a su hora/);
+    for (let i = 0; i < 100 && !(de(a).ig_estado === 'publicado' && de(b).ig_estado === 'publicado'); i++) await new Promise((ok) => setTimeout(ok, 20));
+    assert.equal(de(a).ig_estado, 'publicado', 'lo pendiente sale en cuanto se reconecta');
+    assert.equal(de(b).ig_estado, 'publicado');
+  });
+
   test('una foto programada se publica a su hora, y no antes', async () => {
     const { jarvis, pub, llamadas, mover } = entorno();
     const p = jarvis.crearPieza({ titulo: 'Foto', formato: 'Post', fecha: '2026-10-20', hora: '18:00', caption: 'Hola **GUÍA**', archivos: [jpg()] });

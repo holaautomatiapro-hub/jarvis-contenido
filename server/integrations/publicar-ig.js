@@ -24,6 +24,7 @@ export function createPublicadorIg({ db, jarvis, instagram, almacen, archivos, f
   const q = {
     get: db.prepare('SELECT * FROM piezas WHERE id = ?'),
     pendientes: db.prepare("SELECT * FROM piezas WHERE publicar_ig = 1 AND (ig_estado IS NULL OR ig_estado = 'procesando') ORDER BY fecha, hora, id"),
+    conError: db.prepare("SELECT * FROM piezas WHERE publicar_ig = 1 AND ig_estado = 'error'"),
   };
   const set = (id, campos) => {
     const k = Object.keys(campos);
@@ -45,6 +46,7 @@ export function createPublicadorIg({ db, jarvis, instagram, almacen, archivos, f
       disponible: Boolean(ig.conectadoMeta),
       cuenta: ig.conectadoMeta ? ig.username : null,
       almacen: Boolean(almacen?.configurado()),
+      caducada: Boolean(ig.caducada),
       motivo: !ig.conectadoMeta ? 'Conecta Instagram con Facebook (pestaña Instagram) para publicar desde JARVIS.'
         : !almacen?.configurado() ? 'Falta dónde subir los archivos para Instagram: npm run claves → CRM_SUPABASE_URL y CRM_SUPABASE_ANON_KEY.' : null,
     };
@@ -184,7 +186,8 @@ export function createPublicadorIg({ db, jarvis, instagram, almacen, archivos, f
   // Lo que toca publicar: lo marcado cuya hora ya llegó, y lo que estaba a medias
   let trabajando = false;
   async function revisar() {
-    if (trabajando || !estado().disponible) return { publicadas: 0 };
+    // Con la conexión cortada por Meta no se intenta nada (fallaría todo): se espera a que se vuelva a conectar
+    if (trabajando || !estado().disponible || instagram?.estado?.().caducada) return { publicadas: 0 };
     trabajando = true;
     let publicadas = 0;
     try {
@@ -202,6 +205,7 @@ export function createPublicadorIg({ db, jarvis, instagram, almacen, archivos, f
           else set(p.id, { ig_estado: 'error', ig_error: conocido ? e.message : `Error inesperado: ${e.message}` });
           log.warn?.(`  Instagram · «${p.titulo}»: no se pudo publicar: ${e.message}`);
           if (!conocido) log.warn?.(`  Instagram (publicar): ${e.stack || e.message}`);
+          if (e instanceof MetaError && e.caducado) { instagram?.marcarCaducada?.(e.message); alCambiar(); break; }
         }
         alCambiar();
       }
@@ -219,5 +223,21 @@ export function createPublicadorIg({ db, jarvis, instagram, almacen, archivos, f
     timer.unref?.();
   }
 
-  return { estado, marcar, publicarAhora, revisar, iniciar, parar: () => clearInterval(timer) };
+  // Al volver a conectar Instagram: lo que falló porque la conexión estaba cortada vuelve a la cola. Lo que tenía que
+  // salir hace más de un día no se publica tarde sin avisar: se queda con un aviso para que lo decidas tú.
+  function reactivar() {
+    const ya = ahora().getTime();
+    let reactivadas = 0, tarde = 0;
+    for (const p of rows(q.conError)) {
+      if (!/caducado o se ha revocado|conexión con Instagram estaba cortada/.test(p.ig_error || '')) continue;
+      const cuando = instanteDe(p);
+      if (!cuando || cuando.getTime() >= ya - 24 * 60 * MINUTO) { set(p.id, { ig_estado: null, ig_error: null, ig_contenedor: null }); reactivadas++; }
+      else { set(p.id, { ig_error: 'No se publicó a su hora porque la conexión con Instagram estaba cortada. Ábrela y pulsa «Publicar ahora» o ponle otro día.' }); tarde++; }
+    }
+    if (reactivadas || tarde) alCambiar();
+    revisar().catch((e) => log.warn?.(`  Instagram (publicar): ${e.message}`));
+    return { reactivadas, tarde };
+  }
+
+  return { estado, marcar, publicarAhora, revisar, reactivar, iniciar, parar: () => clearInterval(timer) };
 }

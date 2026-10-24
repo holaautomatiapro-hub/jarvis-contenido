@@ -60,10 +60,12 @@ export function createInstagram({ db, vault, env = process.env, fetchImpl = fetc
     const cnt = row(q.cuenta);
     const conectadoMeta = Boolean(c?.igUserId && c?.token);
     const w = windsor.estado();
+    // Meta cortó la conexión (error 190): sigue «conectada» pero no sirve hasta que se vuelva a conectar
     return {
       // Conectado = hay de dónde sacar datos: la app de Meta o Windsor
       conectado: conectadoMeta || windsor.configurado(),
       conectadoMeta,
+      caducada: conectadoMeta ? c.caducada || null : null,
       fuente: conectadoMeta ? (windsor.configurado() ? 'meta+windsor' : 'meta') : windsor.configurado() ? 'windsor' : null,
       windsor: { configurado: windsor.configurado(), ultimaSync: w.fin || null, historias: w.historias || 0, metricas: w.metricas?.length || 0, avisos: w.avisos || [] },
       username: c?.username || w.cuenta || null,
@@ -120,6 +122,15 @@ export function createInstagram({ db, vault, env = process.env, fetchImpl = fetc
     aj.guardar('instagram', c);
     alCambiar();
     return { username: c.username, pagina: c.paginaNombre, otras: c.otras };
+  }
+
+  // Cuando Meta dice que el token ya no vale (cambio de contraseña, sesiones cerradas, permiso quitado o caducado):
+  // se apunta para avisar en el dashboard y no seguir intentando publicar hasta reconectar
+  function marcarCaducada(mensaje) {
+    const c = conexion();
+    if (!c?.token || c.caducada) return;
+    aj.guardar('instagram', { ...c, caducada: { en: new Date().toISOString(), mensaje: String(mensaje || '').slice(0, 300) } });
+    alCambiar();
   }
 
   function desconectar() {
@@ -197,6 +208,7 @@ export function createInstagram({ db, vault, env = process.env, fetchImpl = fetc
       return { ok: true, fuente: 'windsor', publicaciones: r.publicaciones, dias: r.dias, historias: r.historias, metricas: r.metricas.length, transcritas: trans.hechas, avisos: r.avisos };
     } catch (e) {
       aj.guardar('instagram_sync', { ...aj.leer('instagram_sync', {}), inicio, error: e.message });
+      if (e instanceof MetaError && e.caducado) marcarCaducada(e.message);
       throw e;
     } finally {
       sincronizando = false;
@@ -240,6 +252,7 @@ export function createInstagram({ db, vault, env = process.env, fetchImpl = fetc
       return { ok: true, publicaciones: n, transcritas: trans.hechas };
     } catch (e) {
       aj.guardar('instagram_sync', { ...aj.leer('instagram_sync', {}), inicio, error: e.message });
+      if (e instanceof MetaError && e.caducado) marcarCaducada(e.message);
       throw e;
     } finally {
       sincronizando = false;
@@ -305,7 +318,7 @@ export function createInstagram({ db, vault, env = process.env, fetchImpl = fetc
     return m;
   }
 
-  return { publicacion, estado, urlConexion, canjearCodigo, conectarConToken, desconectar, sincronizar, transcribirPendientes, sinTema, etiquetar, temas, resumen, conexion };
+  return { publicacion, estado, urlConexion, canjearCodigo, conectarConToken, desconectar, marcarCaducada, sincronizar, transcribirPendientes, sinTema, etiquetar, temas, resumen, conexion };
 }
 
 // Todas las métricas de cuenta e historias que trae Windsor, para el periodo (función pura)
