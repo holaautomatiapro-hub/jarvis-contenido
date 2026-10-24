@@ -9,6 +9,7 @@ import { Biblioteca } from './contenido/Biblioteca.jsx';
 import { EditorContenido, ProgramarContenido, Visor } from './contenido/Editor.jsx';
 import { FichaReferencia, esReferencia } from './contenido/FichaReferencia.jsx';
 import { LeadMagnetsBiblioteca } from './contenido/LeadMagnetsBiblioteca.jsx';
+import ProgramarStories from './contenido/ProgramarStories.jsx';
 
 const VISTAS = [
   { id: 'calendario', label: 'Calendario', icon: 'calendar' },
@@ -27,6 +28,7 @@ export default function Contenido({ onCaptura }) {
   const [editando, setEditando] = useState(null);
   const [programando, setProgramando] = useState(null);
   const [visor, setVisor] = useState(null);
+  const [subiendoStories, setSubiendoStories] = useState(false);
   const [aviso, setAviso] = useState('');
   const [girando, setGirando] = useState(false);
 
@@ -65,6 +67,16 @@ export default function Contenido({ onCaptura }) {
     catch (e) { setData((d) => ({ ...d, piezas: d.piezas.map((x) => (x.id === p.id ? p : x)) })); setAviso(`No se pudo guardar el cambio. ${e.message}`); }
   }, [setData]);
 
+  // Eliminar ideas (una desde su tarjeta o varias marcadas en el banco de ideas): desaparecen al momento
+  const borrar = useCallback(async (lista) => {
+    if (!lista.length) return false;
+    if (!window.confirm(lista.length === 1 ? `¿Eliminar la idea «${lista[0].titulo}»?` : `¿Eliminar ${lista.length} ideas?`)) return false;
+    const ids = lista.map((p) => p.id);
+    setData((d) => ({ ...d, piezas: d.piezas.filter((x) => !ids.includes(x.id)) }));
+    try { await api('/api/contenido/borrar', { method: 'POST', body: { ids } }); setAviso(''); return true; }
+    catch (e) { setAviso(`No se pudieron eliminar. ${e.message}`); recargar(); return false; }
+  }, [setData, recargar]);
+
   const actualizar = () => { setGirando(true); recargar(); setTimeout(() => setGirando(false), 700); };
   const nuevo = (fecha = vista === 'calendario' ? dia : '') => setEditando({ fecha, estado: 'idea', archivos: [] });
   const abrirVisor = useCallback((archivos, inicio) => setVisor({ archivos, inicio }), []);
@@ -79,6 +91,7 @@ export default function Contenido({ onCaptura }) {
         </div>
         <div className="cabecera-acciones">
           <button className="btn btn-sec" onClick={actualizar}><span className={girando ? 'girar' : ''}><Icon name="refresh" size={14} /></span><span className="hide-sm">Actualizar</span></button>
+          <button className="btn btn-sec" onClick={() => setSubiendoStories(true)} title="Sube tus stories (fotos o vídeos) y prográmalas para que se publiquen solas en Instagram"><Icon name="calendar" size={14} /><span className="hide-sm">Subir stories</span></button>
           <button className="btn" onClick={() => nuevo()}><Icon name="plus" size={14} />Nuevo contenido</button>
         </div>
       </div>
@@ -120,13 +133,14 @@ export default function Contenido({ onCaptura }) {
       {vista === 'calendario' && <Calendario piezas={piezas} versiones={data?.versiones || []} carpetas={carpetas} dia={dia} setDia={setDia} onAbrir={setEditando} onNuevo={nuevo} onMover={mover} onProgramar={(p, f) => setProgramando({ p, f })} />}
       {vista === 'biblioteca' && <Biblioteca piezas={biblioteca} publicados={publicados} carpetas={carpetas} onAbrir={setEditando} onProgramar={(p) => setProgramando({ p })} onRepublicar={republicar} recargar={recargar} />}
       {vista === 'biblioteca' && <LeadMagnetsBiblioteca />}
-      {vista === 'ideas' && <BancoIdeas piezas={piezas} onAbrir={setEditando} onMover={mover} onNuevaIdea={() => onCaptura('idea')} />}
-      {vista === 'pipeline' && <Pipeline piezas={piezas} onAbrir={setEditando} onMover={mover} onNuevaIdea={() => onCaptura('idea')} />}
+      {vista === 'ideas' && <BancoIdeas piezas={piezas} onAbrir={setEditando} onMover={mover} onNuevaIdea={() => onCaptura('idea')} onBorrar={borrar} />}
+      {vista === 'pipeline' && <Pipeline piezas={piezas} onAbrir={setEditando} onMover={mover} onNuevaIdea={() => onCaptura('idea')} onBorrar={borrar} />}
 
       {editando && esReferencia(editando) && !editando.comoPieza && <FichaReferencia key={`ref-${editando.id}`} pieza={editando} onClose={() => { setEditando(null); recargar(); }} onGuardado={recargar} onEditar={() => setEditando({ ...editando, comoPieza: true })} />}
       {editando && (!esReferencia(editando) || editando.comoPieza) && <EditorContenido key={editando.id || `nuevo-${editando.padre_id || ''}`} pieza={editando} carpetas={carpetas} ig={data?.instagram} piezas={piezas} pilares={data?.pilares || []} onAbrir={setEditando} onDerivada={setEditando} onClose={() => setEditando(null)} onGuardado={recargar} onVisor={abrirVisor} onRepublicar={republicar} />}
       {programando && <ProgramarContenido pieza={programando.p} fecha={programando.f} ig={data?.instagram} onClose={() => setProgramando(null)} onGuardado={recargar} />}
       {visor && <Visor archivos={visor.archivos} inicio={visor.inicio} onClose={() => setVisor(null)} />}
+      {subiendoStories && <ProgramarStories ig={data?.instagram} titulo="Stories" onClose={() => setSubiendoStories(false)} onHecho={(n, conErrores) => { setAviso(''); recargar(); if (!conErrores) setSubiendoStories(false); }} />}
     </section>
   );
 }

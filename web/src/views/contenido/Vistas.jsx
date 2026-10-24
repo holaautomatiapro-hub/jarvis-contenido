@@ -285,7 +285,7 @@ function FilaDia({ p, redes, onAbrir }) {
 }
 
 // ---------- Pipeline (tablero por estados) ----------
-export function Pipeline({ piezas, onAbrir, onMover, onNuevaIdea }) {
+export function Pipeline({ piezas, onAbrir, onMover, onNuevaIdea, onBorrar }) {
   const ESTADOS = useFases();
   const [sobre, setSobre] = useState(null);
   const [editandoFases, setEditandoFases] = useState(false);
@@ -310,6 +310,7 @@ export function Pipeline({ piezas, onAbrir, onMover, onNuevaIdea }) {
       <div className="kanban" style={{ gridTemplateColumns: `repeat(${ESTADOS.length}, minmax(148px, 1fr))` }}>
         {ESTADOS.map((c, idx) => {
           const lista = piezas.filter((p) => p.estado === c.id).sort((a, b) => b.orden - a.orden || b.id - a.id);
+          const esIdea = c.id === 'idea';
           return (
             <div
               key={c.id}
@@ -325,22 +326,19 @@ export function Pipeline({ piezas, onAbrir, onMover, onNuevaIdea }) {
               </div>
               <div className="columna-linea" style={{ background: c.color, boxShadow: `0 0 10px ${c.color}` }} />
               {lista.map((p) => (
+                // Tarjetas compactas: el título y el tipo (en las ideas, también el día); sin imágenes, para que quepan más
                 <div
-                  key={p.id} className="tarjeta" draggable tabIndex={0}
+                  key={p.id} className="tarjeta tarjeta-compacta" draggable tabIndex={0}
                   onDragStart={(e) => { e.dataTransfer.setData('text/plain', String(p.id)); arrastrando.current = p.id; }}
                   onClick={() => onAbrir(p)} onKeyDown={(e) => e.key === 'Enter' && onAbrir(p)}
                 >
-                  {p.archivos[0] && <Miniatura p={p} className="tarjeta-mini" />}
                   <div className="tarjeta-titulo">{p.titulo}</div>
                   <div className="tarjeta-meta">
                     {p.formato && <span className="tag" style={{ background: 'color-mix(in srgb, var(--accent) 14%, transparent)', color: 'var(--accent-texto)' }}>{textoTipo(p.formato)}</span>}
-                    {p.pilar && <span className="chip-pilar">{p.pilar}</span>}
-                    {p.plataformas && <span className="mini">{p.plataformas}</span>}
-                    <MarcaLeadMagnet p={p} />
-                    {p.fecha && <span className="mini"><Icon name="calendar" size={10} /> {p.fecha.slice(5).split('-').reverse().join('/')}</span>}
-                    {p.origen === 'hermes' && <Icon name="telegram" size={11} color="var(--cyan)" />}
+                    {esIdea && p.fecha && <span className="mini"><Icon name="calendar" size={10} /> {p.fecha.slice(5).split('-').reverse().join('/')}</span>}
                   </div>
                   <div className="tarjeta-acciones" onClick={(e) => e.stopPropagation()}>
+                    {esIdea && onBorrar && <button className="tarjeta-borrar" onClick={() => onBorrar([p])} aria-label="Eliminar la idea" title="Eliminar la idea"><Icon name="trash" size={11} /></button>}
                     <button disabled={idx === 0} onClick={() => onMover(p, { estado: ESTADOS[idx - 1].id })} aria-label="Mover a la columna anterior">←</button>
                     <button disabled={idx === ESTADOS.length - 1} onClick={() => onMover(p, { estado: ESTADOS[idx + 1].id })} aria-label="Mover a la columna siguiente">→</button>
                   </div>
@@ -356,9 +354,11 @@ export function Pipeline({ piezas, onAbrir, onMover, onNuevaIdea }) {
 }
 
 // ---------- Banco de ideas: lo que aún es solo una idea, agrupado por pilar ----------
-export function BancoIdeas({ piezas, onAbrir, onMover, onNuevaIdea }) {
+export function BancoIdeas({ piezas, onAbrir, onMover, onNuevaIdea, onBorrar }) {
   const ESTADOS = useFases();
   const [busca, setBusca] = useState('');
+  const [marcadas, setMarcadas] = useState([]);
+  const marcar = (id) => setMarcadas((l) => (l.includes(id) ? l.filter((x) => x !== id) : [...l, id]));
   const siguiente = ESTADOS[ESTADOS.findIndex((e) => e.id === 'idea') + 1];
   const ideas = useMemo(() => {
     const b = normaliza(busca.trim());
@@ -379,6 +379,12 @@ export function BancoIdeas({ piezas, onAbrir, onMover, onNuevaIdea }) {
           <button className="chip" onClick={onNuevaIdea}><Icon name="plus" />Nueva idea</button>
         </div>
       </div>
+      {onBorrar && ideas.length > 0 && (
+        <div className="banco-borrar">
+          <button type="button" className="link-btn" onClick={() => setMarcadas(marcadas.length === ideas.length ? [] : ideas.map((p) => p.id))}>{marcadas.length === ideas.length ? 'Desmarcar todas' : busca ? 'Marcar las que salen' : 'Marcar todas'}</button>
+          {marcadas.length > 0 && <button type="button" className="btn btn-sec peligro btn-mini" onClick={async () => { if (await onBorrar(piezas.filter((p) => marcadas.includes(p.id)))) setMarcadas([]); }}><Icon name="trash" size={12} />Eliminar {marcadas.length === 1 ? 'la marcada' : `las ${marcadas.length} marcadas`}</button>}
+        </div>
+      )}
       <p className="ayuda">Ideas sin desarrollar, separadas de lo que ya tiene archivos. Ponles pilar y objetivo y, cuando vayas a trabajarlas, pásalas a {siguiente?.label || 'la siguiente fase'}.</p>
       {!ideas.length && <div className="vacio">{busca ? 'Ninguna idea con ese texto.' : 'No hay ideas pendientes. Apúntalas desde aquí, desde el chat o por Telegram.'}</div>}
       {grupos.map(([pilar, lista]) => (
@@ -387,11 +393,13 @@ export function BancoIdeas({ piezas, onAbrir, onMover, onNuevaIdea }) {
           {lista.map((p) => {
             const o = objetivoDe(p.objetivo);
             return (
-              <div key={p.id} className="banco-idea" tabIndex={0} onClick={() => onAbrir(p)} onKeyDown={(e) => e.key === 'Enter' && onAbrir(p)}>
+              <div key={p.id} className={`banco-idea${marcadas.includes(p.id) ? ' marcada' : ''}`} tabIndex={0} onClick={() => onAbrir(p)} onKeyDown={(e) => e.key === 'Enter' && onAbrir(p)}>
+                {onBorrar && <input type="checkbox" className="banco-check" checked={marcadas.includes(p.id)} onClick={(e) => e.stopPropagation()} onChange={() => marcar(p.id)} aria-label="Marcar para eliminar" />}
                 <div className="fila-c-txt"><b>{p.titulo}</b>{p.gancho && <small>«{p.gancho}»</small>}</div>
                 {o ? <span className="tag-estado" style={{ '--c': o.color }}>{o.label}</span> : <span />}
                 {p.formato ? <span className="tipo-pildora">{textoTipo(p.formato)}</span> : <span />}
                 {siguiente && <button className="btn btn-sec btn-mini" onClick={(e) => { e.stopPropagation(); onMover(p, { estado: siguiente.id }); }}>→ {siguiente.label}</button>}
+                {onBorrar && <button className="icon-btn banco-x" onClick={(e) => { e.stopPropagation(); onBorrar([p]); }} aria-label="Eliminar la idea" title="Eliminar la idea"><Icon name="trash" size={13} /></button>}
               </div>
             );
           })}
