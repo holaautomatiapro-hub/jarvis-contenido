@@ -158,7 +158,7 @@ export function createApp({ jarvis, archivos, miniaturas = null, estrategia = nu
     app.post('/api/instagram/token', h(conMensaje(async (req) => {
       const r = await instagram.conectarConToken(req.body?.token, { paginaId: req.body?.paginaId });
       jobs?.sincronizarAhora(); // como al volver del botón de Facebook: empieza a sincronizar ya
-      return r;
+      return { ...r, ...(publicadorIg?.reactivar() || {}) };
     }), true));
     app.post('/api/instagram/desconectar', h(() => instagram.desconectar(), true));
     app.post('/api/instagram/sincronizar', h(conMensaje(() => {
@@ -181,7 +181,9 @@ export function createApp({ jarvis, archivos, miniaturas = null, estrategia = nu
       try {
         await instagram.canjearCodigo(String(code), redirectUri(req));
         jobs?.sincronizarAhora();
-        res.redirect('/#instagram?conectado=1');
+        // Lo que no se pudo publicar mientras la conexión estaba cortada vuelve a la cola
+        const r = publicadorIg?.reactivar() || { reactivadas: 0, tarde: 0 };
+        res.redirect(`/#instagram?conectado=1&reactivadas=${r.reactivadas}&tarde=${r.tarde}`);
       } catch (e) { res.redirect(`/#instagram?error=${encodeURIComponent(e.message)}`); }
     });
   }

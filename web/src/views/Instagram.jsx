@@ -73,14 +73,20 @@ function Conectar({ estado, onHecho }) {
   const pegar = async (e) => {
     e.preventDefault();
     setEnviando(true); setError('');
-    try { await api('/api/instagram/token', { method: 'POST', body: { token } }); setToken(''); onHecho(); } catch (err) { setError(err.message); } finally { setEnviando(false); }
+    try { const r = await api('/api/instagram/token', { method: 'POST', body: { token } }); setToken(''); onHecho(r); } catch (err) { setError(err.message); } finally { setEnviando(false); }
   };
   return (
     <div className="panel panel-pad ig-conectar">
       <div className="ig-conectar-txt">
         <span className="ig-logo"><Icon name="instagram" size={22} /></span>
         <div>
-          {estado.conectado ? (
+          {estado.caducada ? (
+            // Meta cortó la conexión (cambio de contraseña, sesiones cerradas, permiso quitado o caducado)
+            <>
+              <b>Meta ha cortado la conexión con @{estado.username}</b>
+              <p>Desde el {new Date(estado.caducada.en).toLocaleString('es-ES', { day: 'numeric', month: 'short', hour: '2-digit', minute: '2-digit' })} no se puede publicar ni sincronizar. Suele pasar al cambiar la contraseña de Facebook, cerrar sesión en todos los dispositivos o quitarle el permiso a la app. Vuelve a conectar y lo que no se pudo publicar vuelve a la cola.</p>
+            </>
+          ) : estado.conectado ? (
             // Con Windsor ya hay métricas: Facebook añade Competencia, Meta Ads y (más adelante) publicar
             <>
               <b>Conecta también con Facebook</b>
@@ -96,7 +102,7 @@ function Conectar({ estado, onHecho }) {
       </div>
       <div className="ig-conectar-acciones">
         {estado.appConfigurada
-          ? <a className="btn" href="/api/instagram/conectar"><Icon name="link" size={14} />Conectar con Facebook</a>
+          ? <a className="btn" href="/api/instagram/conectar"><Icon name="link" size={14} />{estado.caducada ? 'Volver a conectar con Facebook' : 'Conectar con Facebook'}</a>
           : <span className="ayuda">Para el botón de conexión, añade META_APP_ID y META_APP_SECRET en .env (guía en docs/INSTAGRAM.md).{estado.windsor?.configurado ? '' : ' O, sin app de Meta, pon tu WINDSOR_API_KEY con npm run claves.'}</span>}
         <form className="fila" onSubmit={pegar} style={{ margin: 0 }}>
           <input className="campo" value={token} onChange={(e) => setToken(e.target.value)} placeholder="…o pega un token de acceso de Meta" aria-label="Token de acceso de Meta" />
@@ -216,7 +222,8 @@ export default function Instagram() {
   const [insight, setInsight] = useState('temas');
   const [aviso, setAviso] = useState(() => {
     const p = new URLSearchParams(window.location.hash.split('?')[1] || '');
-    return p.get('error') ? { tipo: 'error', texto: p.get('error') } : p.get('conectado') ? { tipo: 'ok', texto: 'Instagram conectado. JARVIS está sincronizando tus publicaciones…' } : null;
+    const pendientes = (r, t) => `${Number(r) ? ` ${r} ${Number(r) === 1 ? 'publicación que no salió por la conexión vuelve' : 'publicaciones que no salieron por la conexión vuelven'} a la cola.` : ''}${Number(t) ? ` ${t} ${Number(t) === 1 ? 'tenía' : 'tenían'} que haber salido hace más de un día: ábrelas en Contenido y decide (Publicar ahora u otro día).` : ''}`;
+    return p.get('error') ? { tipo: 'error', texto: p.get('error') } : p.get('conectado') ? { tipo: 'ok', texto: `Instagram conectado. JARVIS está sincronizando tus publicaciones…${pendientes(p.get('reactivadas'), p.get('tarde'))}` } : null;
   });
   const [data, recargar] = useRecurso(`/api/instagram/resumen?dias=${dias}`, null);
   useEffect(() => { if (aviso) history.replaceState(null, '', '#instagram'); }, []); // eslint-disable-line react-hooks/exhaustive-deps
@@ -246,7 +253,7 @@ export default function Instagram() {
             <div className="label">Cuenta de Instagram</div>
             <div className="ig-user">
               {estado.conectado ? (estado.username ? `@${estado.username}` : 'Tu cuenta') : 'Sin conectar'}
-              <span className={`chip-estado ${estado.conectado && !data.demo ? 'on' : 'demo'}`}><span className={`dot ${estado.conectado && !data.demo ? 'on' : 'warn'}`} />{!estado.conectado ? 'Datos de ejemplo' : data.demo ? 'Pendiente de sincronizar' : estado.fuente === 'windsor' ? 'Conectada vía Windsor' : 'Conectada'}</span>
+              <span className={`chip-estado ${estado.conectado && !data.demo && !estado.caducada ? 'on' : 'demo'}`}><span className={`dot ${estado.conectado && !data.demo && !estado.caducada ? 'on' : 'warn'}`} />{estado.caducada ? 'Conexión cortada' : !estado.conectado ? 'Datos de ejemplo' : data.demo ? 'Pendiente de sincronizar' : estado.fuente === 'windsor' ? 'Conectada vía Windsor' : 'Conectada'}</span>
             </div>
           </div>
         </div>
@@ -272,7 +279,7 @@ export default function Instagram() {
 
       {aviso && <div className={`aviso ${aviso.tipo}`} role="status">{aviso.texto}<button className="link-btn" onClick={() => setAviso(null)}>Cerrar</button></div>}
       {estado.error && <div className="aviso error">Última sincronización con error: {estado.error}</div>}
-      {!estado.conectadoMeta && <Conectar estado={estado} onHecho={() => { setAviso({ tipo: 'ok', texto: 'Conectado con Facebook. Sincronizando…' }); recargar(); }} />}
+      {(!estado.conectadoMeta || estado.caducada) && <Conectar estado={estado} onHecho={(r) => { setAviso({ tipo: 'ok', texto: `Conectado con Facebook. Sincronizando…${r?.reactivadas ? ` ${r.reactivadas} ${r.reactivadas === 1 ? 'publicación vuelve' : 'publicaciones vuelven'} a la cola.` : ''}${r?.tarde ? ` ${r.tarde} se quedan para que decidas (tenían que salir hace más de un día).` : ''}` }); recargar(); }} />}
       {estado.conectado && data.demo && <div className="aviso ok">Windsor está configurado. Pulsa <b>Sincronizar</b> para traer tus publicaciones y todas las métricas (la primera vez trae un año y tarda un poco). Mientras, ves datos de ejemplo.</div>}
       {estado.windsor?.avisos?.map((a) => <div key={a} className="aviso">{a}</div>)}
       {estado.conectado && (
