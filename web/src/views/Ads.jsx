@@ -3,11 +3,11 @@ import Icon from '../components/Icon.jsx';
 import ChatJarvis from '../components/ChatJarvis.jsx';
 import LineChart from '../components/charts/LineChart.jsx';
 import AnunciosCompetencia from './ads/AnunciosCompetencia.jsx';
+import Explorador from './ads/Explorador.jsx';
 import { api, useRecurso } from '../lib/api.js';
-import { fechaCorta, hace, num, numLargo } from '../lib/formato.js';
+import { fechaCorta, hace, num } from '../lib/formato.js';
 
 const euro = (v, moneda = 'EUR') => (v == null ? '—' : new Intl.NumberFormat('es-ES', { style: 'currency', currency: moneda || 'EUR', maximumFractionDigits: v < 10 ? 2 : 0 }).format(v));
-const ESTADO = { ACTIVE: ['Activa', 'on'], PAUSED: ['En pausa', 'warn'], CAMPAIGN_PAUSED: ['En pausa', 'warn'], ADSET_PAUSED: ['En pausa', 'warn'], ARCHIVED: ['Archivada', 'off'], WITH_ISSUES: ['Con problemas', 'warn'] };
 
 function CuentaPublicitaria({ estado, recargar, setAviso }) {
   const [cuentas, setCuentas] = useState(null);
@@ -139,31 +139,6 @@ export default function Ads() {
             <div className="panel-head"><span className="label">Gasto diario</span>{!data.demoRendimiento && <span className="ayuda">Actualizado {hace(r.actualizado)}</span>}</div>
             <LineChart datos={r.diario.map((d) => ({ ...d, fecha: d.fecha }))} campo="gasto" etiqueta={`Gasto (${moneda})`} alto={170} />
           </div>
-          <div className="panel panel-pad">
-            <div className="panel-head"><span className="label">Campañas</span></div>
-            <div className="tabla-scroll">
-              <table className="tabla" style={{ minWidth: 620 }}>
-                <thead><tr><th>Campaña</th><th>Estado</th><th className="n">Gasto</th><th className="n">CTR</th><th className="n">CPC</th><th className="n">Resultados</th><th className="n">€/result.</th></tr></thead>
-                <tbody>
-                  {r.campanas.map((c) => {
-                    const [et, cl] = ESTADO[c.estado] || [c.estado, 'off'];
-                    return (
-                      <tr key={c.id}>
-                        <td style={{ whiteSpace: 'normal' }}><b style={{ fontWeight: 500 }}>{c.nombre}</b></td>
-                        <td><span className="status"><span className={`dot ${cl}`} />{et}</span></td>
-                        <td className="n">{euro(c.gasto, moneda)}</td>
-                        <td className="n">{c.ctr.toLocaleString('es-ES', { maximumFractionDigits: 2 })} %</td>
-                        <td className="n">{euro(c.cpc, moneda)}</td>
-                        <td className="n" title={c.tipoResultado}>{numLargo(c.resultados)}</td>
-                        <td className="n">{euro(c.costeResultado, moneda)}</td>
-                      </tr>
-                    );
-                  })}
-                </tbody>
-              </table>
-              {!r.campanas.length && <div className="vacio">Sin campañas en este periodo.</div>}
-            </div>
-          </div>
         </div>
 
         {pendientes.length > 0 && (
@@ -175,6 +150,7 @@ export default function Ads() {
           </div>
         )}
       </div>
+      <Explorador />
       <AnunciosCompetencia conectado={estado.conectado} />
     </section>
   );

@@ -319,6 +319,33 @@ export function buildServer(jarvis, { origen = 'claude', avisar = () => {}, inst
     tool('ads_rendimiento', 'Rendimiento de tus campañas de Meta Ads en el periodo: gasto, impresiones, clics, CTR, CPC, CPM y resultados por campaña. Si la cuenta no está conectada devuelve error: dilo.',
       { dias: z.number().int().min(7).max(90).optional() },
       async ({ dias = 30 }) => ads.rendimiento({ dias }));
+    // Lo que no aporta (ceros y vacíos) no se manda, para que la respuesta sea corta
+    const compactar = (m) => Object.fromEntries(Object.entries(m || {}).filter(([, v]) => v != null && v !== 0 && v !== ''));
+    const PERIODO = z.enum(['today', 'yesterday', 'last_7d', 'last_14d', 'last_30d', 'last_90d', 'this_month', 'last_month', 'this_year', 'maximum']).optional().describe('Por defecto last_30d');
+    tool('ads_cuentas', 'Todas las cuentas publicitarias a las que tienes acceso, agrupadas por Business Manager. porDefecto es la que usa JARVIS si no se indica otra.', {},
+      () => ads.cuentasNegocio());
+    tool('ads_explorar', 'Como el Administrador de anuncios: campañas, conjuntos de anuncios o anuncios de una cuenta, con todas sus métricas (gasto, resultados y coste por resultado, CTR, CPC, CPM, frecuencia, leads, conversaciones, ThruPlays, hook rate, ROAS, clasificaciones de calidad…). Para bajar de nivel pasa campana (y conjunto) con el id de la fila.',
+      {
+        nivel: z.enum(['campanas', 'conjuntos', 'anuncios']),
+        campana: z.string().optional().describe('id de la campaña (para ver sus conjuntos o anuncios)'),
+        conjunto: z.string().optional().describe('id del conjunto (para ver sus anuncios)'),
+        periodo: PERIODO,
+        cuenta: z.string().optional().describe('act_… si no es la cuenta por defecto (ver ads_cuentas)'),
+      },
+      async (a) => {
+        const r = await ads.explorar(a);
+        return { cuenta: r.cuenta, nivel: r.nivel, periodo: r.periodo, total: compactar(r.total.m),
+          filas: r.filas.map((f) => ({ id: f.id, nombre: f.nombre, campana: f.campana?.nombre, conjunto: f.conjunto?.nombre, metricas: compactar(f.m) })) };
+      });
+    tool('ads_detalle', 'Detalle de una campaña, conjunto o anuncio: todas sus métricas, la evolución día a día, el reparto por edad, sexo, ubicación y dispositivo, el creativo (texto, título, CTA) y, en un conjunto, a quién se dirige.',
+      { nivel: z.enum(['campanas', 'conjuntos', 'anuncios']), id: z.string(), periodo: PERIODO, cuenta: z.string().optional() },
+      async (a) => {
+        const d = await ads.detalle(a);
+        const parte = (l) => (l || []).map((x) => ({ clave: x.clave, gasto: x.m.gasto, impresiones: x.m.impresiones, ctr_enlace: x.m.ctr_enlace, resultados: x.m.resultados, coste_resultado: x.m.coste_resultado }));
+        return { nombre: d.fila.nombre, metricas: compactar(d.fila.m), diario: d.diario.map((x) => ({ fecha: x.fecha, gasto: x.m.gasto, resultados: x.m.resultados, ctr_enlace: x.m.ctr_enlace })),
+          edad: parte(d.desgloses.edad), sexo: parte(d.desgloses.sexo), ubicacion: parte(d.desgloses.ubicacion), dispositivo: parte(d.desgloses.dispositivo),
+          creativo: d.creativo, segmentacion: d.segmentacion };
+      });
     tool('ads_biblioteca', 'Anuncios de la competencia en la Ad Library de Meta. diasActivo alto = anuncio que probablemente funciona (lo mantienen).',
       { competidor: z.string().optional().describe('Usuario de Instagram del competidor, sin @') },
       ({ competidor }) => ads.biblioteca().filter((a) => !competidor || a.competidor === competidor.replace(/^@/, '').toLowerCase()).slice(0, 40));
