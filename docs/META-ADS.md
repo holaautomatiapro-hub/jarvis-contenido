@@ -28,6 +28,17 @@ En la UE la Ad Library devuelve **todos** los anuncios (no solo los políticos),
 ### 3. Las páginas de Facebook de tu competencia
 La Ad Library busca por **páginas de Facebook**, no por perfiles de Instagram. En *Creativos de la competencia → Configurar páginas de Facebook* pon, para cada competidor, el **nombre** de su página o, mejor aún, su **ID** (aparece en la biblioteca de anuncios, en la URL de la página del anunciante: `view_all_page_id=…`). Si no pones nada, JARVIS busca por el nombre de su perfil de Instagram.
 
+## Administrador de anuncios
+
+En la pestaña **Meta Ads**, el panel **Administrador de anuncios** enseña lo mismo que el de Meta, sin salir de JARVIS (solo lectura: los cambios se hacen en Meta):
+
+- **Cualquier cuenta**: las tuyas y las de cada Business Manager al que tienes acceso (propias y de clientes; necesita el permiso `business_management`, que ya pide la conexión de Instagram). La que eliges en «Cambiar cuenta» es la principal; las demás se miran desde el desplegable del panel.
+- **Campañas → conjuntos → anuncios**: pulsa en un nombre para bajar de nivel. Búsqueda, solo activas, con gasto, archivadas y cualquier periodo (o fechas a tu elección).
+- **Columnas**: elige qué métricas ver y en qué orden (resultados y coste por resultado, gasto, alcance, frecuencia, CTR, CPC, CPM, leads, conversaciones, ThruPlays, hook rate, hold rate, ROAS, clasificaciones de calidad… y cualquier acción que registre Meta). Hay combinaciones rápidas (Rendimiento, Interacción, Vídeo, Leads y mensajes, Ventas) y se guardan para el ordenador y el móvil.
+- **Detalle**: de cada campaña, conjunto o anuncio, todas sus métricas, el día a día, el reparto por edad, sexo, ubicación y dispositivo, el creativo (texto, título, botón, enlace y vista previa) y, en un conjunto, a quién se dirige.
+
+El asistente también lo usa (herramientas `ads_cuentas`, `ads_explorar` y `ads_detalle`): «¿qué anuncio de la campaña de leads tiene mejor coste por lead?», «¿qué edad me sale más barata?».
+
 ## Anuncios de la competencia
 En la pestaña **Meta Ads**, abajo, busca una cuenta de tu competencia (nombre, @usuario, enlace de su página o de la Biblioteca de anuncios), elige su página y verás **todos sus anuncios activos**:
 - Ordena por **más tiempo activos** (los que mantienen: los que les funcionan), **más variantes** (el mismo texto en varios anuncios: lo están escalando), **más alcance** en la UE o **más nuevos**, y filtra por antigüedad (+7, +30, +90 días).

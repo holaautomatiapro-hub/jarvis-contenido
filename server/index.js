@@ -261,6 +261,13 @@ export function createApp({ jarvis, archivos, miniaturas = null, estrategia = nu
     app.get('/api/ads', h((req) => ads.resumen({ dias: Math.min(90, Math.max(7, Number(req.query.dias) || 30)) })));
     app.get('/api/ads/cuentas', h(() => ads.cuentas()));
     app.post('/api/ads/cuenta', h((req) => ads.elegirCuenta(req.body?.id), true));
+    // Administrador de anuncios (solo lectura): cuentas del Business Manager, campañas, conjuntos, anuncios y su detalle
+    const filtroAds = (q) => ({ cuenta: q.cuenta || null, periodo: q.periodo || 'last_30d', desde: q.desde || undefined, hasta: q.hasta || undefined, forzar: q.forzar === '1' });
+    app.get('/api/ads/negocio/cuentas', h(() => ads.cuentasNegocio()));
+    app.get('/api/ads/explorar', h((req) => ads.explorar({ ...filtroAds(req.query), nivel: String(req.query.nivel || 'campanas'), campana: req.query.campana || null, conjunto: req.query.conjunto || null, archivadas: req.query.archivadas === '1' })));
+    app.get('/api/ads/explorar/:nivel/:id', h((req) => ads.detalle({ ...filtroAds(req.query), nivel: req.params.nivel, id: req.params.id })));
+    app.get('/api/ads/columnas', h(() => ads.columnas()));
+    app.put('/api/ads/columnas', h((req) => ads.guardarColumnas(req.body?.columnas)));
     app.post('/api/ads/actualizar', h((req) => { fallo = null; return ads.rendimiento({ dias: Number(req.body?.dias) || 30, forzar: true }); }, true));
     app.post('/api/ads/biblioteca/sincronizar', h(() => { if (!ads.estado().conectado) { const e = new Error('Conecta primero Instagram con Facebook (pestaña Instagram)'); e.publico = true; throw e; } enFondo(ads.sincronizarBiblioteca()); return { ok: true }; }));
     app.post('/api/ads/competidores/:usuario/pagina', h((req) => ads.paginaCompetidor(req.params.usuario, req.body?.pagina), true));

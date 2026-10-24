@@ -4,7 +4,8 @@ import { Readable } from 'node:stream';
 import { pipeline } from 'node:stream/promises';
 import { ajustes, row, rows } from '../db.js';
 import { createGraph, MetaError } from './meta.js';
-import { demoAds } from './ads-demo.js';
+import { demoAds, demoExplorador } from './ads-demo.js';
+import { createExplorador, filaDe, metricasDe, resultadoDe as resultadoExplorador, resultadosTotales, columnasAcciones } from './ads-explorador.js';
 
 // Meta Ads: rendimiento de tus campañas, Ad Library de la competencia, qué contenido impulsar
 // y campañas por chat. REGLA DE ORO: JARVIS solo propone borradores; la campaña se crea cuando
@@ -610,7 +611,11 @@ export function createAds({ db, instagram, env = process.env, fetchImpl = fetch,
     };
   }
 
+  // El Administrador de anuncios: todas las cuentas, campañas, conjuntos y anuncios con sus métricas (solo lectura)
+  const explorador = createExplorador({ graph, conectado: () => Boolean(tokenUsuario()), cuentaPorDefecto: cuenta, aj, demo: demoExplorador({ filaDe, metricasDe, resultadoDe: resultadoExplorador, resultadosTotales, columnasAcciones }) });
+
   return {
+    ...explorador,
     estado, cuentas, elegirCuenta, rendimiento, paginaCompetidor, sincronizarBiblioteca, biblioteca, recomendarImpulso, proponer, descartar, confirmar, leerBorrador, resumen,
     buscarAnunciante, seguirAnunciante, dejarAnunciante, sincronizarAnunciante, sincronizarAnunciantes, anunciosCompetencia, anuncioCompetencia,
     mediosAnuncio, miniaturaAnuncio, subirVideoAnuncio, rutaMedioAnuncio, guardarTranscripcionAnuncio, paraAdaptar, dirAnuncio: (id) => (mediosDir ? dirAnuncio(id) : null),
