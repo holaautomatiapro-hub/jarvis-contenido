@@ -7,21 +7,15 @@ import { Preparar } from './laboratorio/comun.jsx';
 import Testimonios from './laboratorio/Testimonios.jsx';
 import Reels from './laboratorio/Reels.jsx';
 import LeadMagnets from './laboratorio/LeadMagnets.jsx';
-import Imagenes from './laboratorio/Imagenes.jsx';
-import DesdeEnlace from './laboratorio/DesdeEnlace.jsx';
-import Stories, { storiesDePieza } from './laboratorio/Stories.jsx';
 import { useIr } from '../lib/ir.js';
 
-// Laboratorio: donde se crea lo visual. Replicar desde un enlace, Diseño (carruseles y stories), clips de testimonios,
-// edición de reels, lead magnets (páginas web publicadas en Vercel) e imágenes.
+// Laboratorio: donde se crea lo visual. Diseño (carruseles y stories), clips de testimonios, edición de reels y
+// lead magnets (páginas web publicadas en Vercel).
 const SECCIONES = [
-  { id: 'replicar', label: 'Replicar', icon: 'link', ayuda: 'Pega el enlace de un post o un reel y JARVIS hace tu versión, con tu voz y tu diseño' },
   { id: 'diseno', label: 'Diseño', icon: 'palette', ayuda: 'Carruseles y stories con tu sistema de diseño' },
-  { id: 'stories', label: 'Stories', icon: 'layers', ayuda: 'El guion de stories de cada carrusel o reel (o de un tema), con tu estilo; y subirlas y programarlas' },
   { id: 'testimonios', label: 'Testimonios', icon: 'users', ayuda: 'De la entrevista a clips, stories, carrusel, portada y captions' },
   { id: 'reels', label: 'Reels', icon: 'play', ayuda: 'Tus vídeos: mejores momentos, subtítulos y sin muletillas' },
   { id: 'leadmagnets', label: 'Lead magnets', icon: 'target', ayuda: 'Guías, checklists y tests en una página web, publicados con un enlace' },
-  { id: 'imagenes', label: 'Imágenes', icon: 'eye', ayuda: 'Imágenes, fotos contigo, B-roll y animaciones con Higgsfield' },
 ];
 const guardada = () => { try { const v = localStorage.getItem('lab_seccion'); return SECCIONES.some((s) => s.id === v) ? v : 'diseno'; } catch { return 'diseno'; } };
 
@@ -33,11 +27,10 @@ export default function Laboratorio() {
     if (d.tab !== 'laboratorio') return false;
     if (d.diseno) { try { localStorage.setItem('diseno_sel', String(d.diseno)); } catch { /* sin localStorage */ } window.dispatchEvent(new CustomEvent('jarvis:diseno', { detail: d.diseno })); }
     if (d.seccion && SECCIONES.some((x) => x.id === d.seccion)) setSeccion(d.seccion);
-    if (d.storiesDe) storiesDePieza(d.storiesDe);
     return true;
   });
-  const [lab, recargarLab, errorLab] = useRecurso(['testimonios', 'reels', 'leadmagnets', 'imagenes'].includes(seccion) ? '/api/laboratorio' : null, null);
-  const [contenido, recargarContenido] = useRecurso(seccion === 'diseno' || seccion === 'stories' ? '/api/contenido' : null, null);
+  const [lab, recargarLab, errorLab] = useRecurso(['testimonios', 'reels', 'leadmagnets'].includes(seccion) ? '/api/laboratorio' : null, null);
+  const [contenido, recargarContenido] = useRecurso(seccion === 'diseno' ? '/api/contenido' : null, null);
   const [editando, setEditando] = useState(null);
   const [programando, setProgramando] = useState(null);
   const [visor, setVisor] = useState(null);
@@ -58,9 +51,7 @@ export default function Laboratorio() {
         </div>
       </div>
 
-      {seccion === 'replicar' && <DesdeEnlace />}
       {seccion === 'diseno' && <Diseno piezas={piezas} ig={contenido?.instagram} onAbrir={setEditando} onProgramar={(p) => setProgramando({ p })} />}
-      {seccion === 'stories' && <Stories piezas={piezas} ig={contenido?.instagram} onAbrir={setEditando} />}
       {(seccion === 'testimonios' || seccion === 'reels') && (!lab ? (
         <div className="panel panel-pad vacio">
           {errorLab ? <>No se ha podido cargar el Laboratorio: {errorLab}.<br />Si acabas de actualizar JARVIS en el VPS, espera a que termine el instalador y recarga la página.</> : 'Cargando…'}
@@ -72,7 +63,6 @@ export default function Laboratorio() {
         </>
       ))}
       {seccion === 'leadmagnets' && <LeadMagnets trabajando={Boolean(lab?.trabajando)} />}
-      {seccion === 'imagenes' && <Imagenes trabajando={Boolean(lab?.trabajando)} />}
 
       {editando && <EditorContenido key={editando.id || `nuevo-${editando.padre_id || ''}`} pieza={editando} carpetas={contenido?.carpetas || []} ig={contenido?.instagram} piezas={piezas} pilares={contenido?.pilares || []} onAbrir={setEditando} onDerivada={setEditando} onClose={() => setEditando(null)} onGuardado={recargarContenido} onVisor={abrirVisor} />}
       {programando && <ProgramarContenido pieza={programando.p} ig={contenido?.instagram} onClose={() => setProgramando(null)} onGuardado={recargarContenido} />}

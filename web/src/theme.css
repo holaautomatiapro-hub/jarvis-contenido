@@ -362,6 +362,9 @@ select.campo option { background: var(--panel); }
 .tarjeta:hover .tarjeta-acciones, .tarjeta:focus-within .tarjeta-acciones { opacity: 1; }
 .tarjeta-acciones button { border: 1px solid var(--border); background: color-mix(in srgb, var(--hondo) 60%, transparent); color: var(--muted); border-radius: 6px; width: 24px; height: 22px; font-size: 11px; padding: 0; }
 .tarjeta-acciones button:disabled { opacity: .3; }
+.tarjeta-compacta { padding: 8px 10px; margin-bottom: 6px; }
+.tarjeta-compacta .tarjeta-meta { margin-top: 5px; }
+.tarjeta-acciones .tarjeta-borrar:hover { color: var(--red); border-color: color-mix(in srgb, var(--red) 50%, transparent); }
 .mini-vacio { border: 1px dashed var(--border-soft); border-radius: 10px; padding: 14px 6px; font-size: 11px; }
 
 /* ---------- Notas ---------- */
@@ -1442,8 +1445,14 @@ button.portada-muestra { padding: 0; border: 0; width: 100%; cursor: pointer; fo
 .chip-pilar { justify-self: start; max-width: 100%; overflow: hidden; text-overflow: ellipsis; font-size: 10px; padding: 1px 7px; border-radius: 999px; background: color-mix(in srgb, var(--accent-2) 14%, transparent); color: var(--accent-texto); white-space: nowrap; }
 .banco-grupo { margin-top: 12px; }
 .banco-grupo-head { font-size: 11px; font-weight: 600; text-transform: uppercase; letter-spacing: .06em; color: var(--muted); margin-bottom: 4px; display: flex; gap: 6px; align-items: center; }
-.banco-idea { display: grid; grid-template-columns: minmax(0, 1fr) auto auto auto; gap: 10px; align-items: center; padding: 8px 6px; border-radius: 9px; cursor: pointer; border-bottom: 1px solid color-mix(in srgb, var(--accent) 6%, transparent); }
+.banco-idea { display: grid; grid-template-columns: auto minmax(0, 1fr) auto auto auto auto; gap: 10px; align-items: center; padding: 8px 6px; border-radius: 9px; cursor: pointer; border-bottom: 1px solid color-mix(in srgb, var(--accent) 6%, transparent); }
 .banco-idea:hover { background: color-mix(in srgb, var(--accent) 6%, transparent); }
+.banco-idea.marcada { background: color-mix(in srgb, var(--red) 8%, transparent); }
+.banco-check { width: 15px; height: 15px; accent-color: var(--red); cursor: pointer; }
+.banco-x { width: 28px; height: 28px; opacity: .55; }
+.banco-idea:hover .banco-x { opacity: 1; }
+.banco-x:hover { color: var(--red); }
+.banco-borrar { display: flex; gap: 12px; align-items: center; margin: 4px 0 8px; }
 @media (max-width: 720px) { .banco-idea { grid-template-columns: minmax(0, 1fr) auto; } .banco-idea .tipo-pildora, .banco-idea .tag-estado { display: none; } }
 .lab-medio { position: relative; }
 .lab-enviado { position: absolute; top: 6px; left: 6px; z-index: 1; font-size: 9.5px; padding: 2px 6px; border-radius: 999px; background: color-mix(in srgb, var(--green) 85%, #000); color: #fff; pointer-events: none; }
