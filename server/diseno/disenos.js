@@ -93,18 +93,21 @@ export function createDisenos({ db, jarvis, kit, motor, archivos = null, previas
     return { texto: texto.slice(0, 30_000), nota: ruta, pieza };
   }
 
-  function crear({ titulo, formato = 'carrusel', plantilla, guion, nota, pieza_id, indicaciones, generar = true } = {}) {
+  function crear({ titulo, formato = 'carrusel', plantilla, guion, nota, pieza_id, indicaciones, generar = true, uso = null } = {}) {
     const k = kit.leer();
     if (!FORMATOS[formato]) throw new DisenoError('El formato debe ser carrusel o story');
-    const pl = k.plantillas.find((p) => p.id === plantilla) || k.plantillas.find((p) => p.formatos.includes(formato));
+    const anuncio = uso === 'anuncio';
+    const validas = k.plantillas.filter((p) => (anuncio ? p.anuncio : !p.anuncio));
+    if (anuncio && !validas.length) throw new DisenoError('Tu sistema de diseño no tiene plantilla de anuncios. Importa uno que la tenga (Laboratorio → Diseño → Cambiar sistema).');
+    const pl = validas.find((p) => p.id === plantilla) || validas.find((p) => p.formatos.includes(formato)) || k.plantillas.find((p) => p.id === plantilla) || k.plantillas.find((p) => p.formatos.includes(formato));
     if (!pl) throw new DisenoError('Tu sistema de diseño no tiene ninguna plantilla para ese formato');
     if (!pl.formatos.includes(formato)) throw new DisenoError(`La plantilla «${pl.nombre}» no tiene formato ${FORMATOS[formato].nombre.toLowerCase()}`);
     if (generar && !asistente) throw new DisenoError('El chat con Claude no está disponible');
     if (generar && asistente.estado().ocupado) throw new DisenoError('JARVIS está terminando otra petición (en Voz, Skills u otro diseño). Espera a que acabe y vuelve a pulsar Diseñar.');
     const g = resolverGuion({ guion, nota, pieza_id });
     const nombre = String(titulo || g.pieza?.titulo || g.texto.split('\n').find((l) => l.trim()) || 'Diseño').replace(/^#+\s*/, '').trim().slice(0, 160);
-    const { lastInsertRowid } = db.prepare('INSERT INTO disenos (titulo, formato, plantilla, guion, nota, pieza_origen) VALUES (?, ?, ?, ?, ?, ?)')
-      .run(nombre, formato, pl.id, g.texto, g.nota, g.pieza?.id ?? null);
+    const { lastInsertRowid } = db.prepare('INSERT INTO disenos (titulo, formato, plantilla, guion, nota, pieza_origen, uso) VALUES (?, ?, ?, ?, ?, ?, ?)')
+      .run(nombre, formato, pl.id, g.texto, g.nota, g.pieza?.id ?? null, anuncio ? 'anuncio' : null);
     const id = Number(lastInsertRowid);
     if (generar) generarConClaude(id, { indicaciones });
     else {
@@ -114,6 +117,54 @@ export function createDisenos({ db, jarvis, kit, motor, archivos = null, previas
     }
     avisar(id);
     return obtener(id);
+  }
+
+  // ---------- Creativos para anuncios (Meta Ads → Creativos) ----------
+  // imagen: 4:5 (feed), una diapositiva por variante · video: 9:16 (reels y stories), una diapositiva larga
+  function crearAnuncio({ tipo = 'imagen', titulo, brief, oferta, palabra, variantes = 3, material = [], plantilla, pieza_id, indicaciones } = {}) {
+    if (!['imagen', 'video'].includes(tipo)) throw new DisenoError('El creativo es imagen o vídeo');
+    const b = String(brief || '').trim();
+    if (b.length < 10 && !pieza_id) throw new DisenoError('Cuenta de qué va el anuncio: a quién se dirige, qué ofreces y el ángulo');
+    const n = tipo === 'video' ? 1 : Math.min(6, Math.max(1, Math.round(Number(variantes) || 3)));
+    const urls = (Array.isArray(material) ? material : []).map(String).filter((u) => u.startsWith('/api/contenido/archivos/')).slice(0, 12);
+    const guion = [
+      `# ${String(titulo || '').trim() || (tipo === 'video' ? 'Anuncio en vídeo' : 'Anuncio')}`,
+      `Tipo: ${tipo === 'video' ? 'vídeo 9:16 (reels y stories)' : `imagen 4:5 (feed) · ${n} variante${n === 1 ? '' : 's'}`}`,
+      b && `Brief: ${b.slice(0, 4000)}`,
+      oferta && `Oferta: ${String(oferta).trim().slice(0, 500)}`,
+      palabra && `Llamada a la acción / palabra clave: ${String(palabra).trim().slice(0, 100)}`,
+      urls.length && `Material para usar: ${urls.join(', ')}`,
+    ].filter(Boolean).join('\n');
+    const guionPieza = pieza_id ? resolverGuion({ pieza_id }).texto : '';
+    return crear({ titulo, formato: tipo === 'video' ? 'story' : 'carrusel', plantilla, guion: guionPieza ? `${guion}\n\nGuion o contenido de partida:\n${guionPieza}` : guion, indicaciones, uso: 'anuncio' });
+  }
+
+  function promptAnuncio(r, { indicaciones } = {}) {
+    const k = kit.leer();
+    const pl = k.plantillas.find((p) => p.id === r.plantilla);
+    const video = r.formato === 'story';
+    const n = Number((/(\d+) variantes?/.exec(r.guion) || [])[1]) || (video ? 1 : 3);
+    return `Diseña el creativo de anuncio #${r.id} de JARVIS (Meta Ads).
+- Formato: ${video ? 'vídeo vertical 9:16 (1080×1920) para reels y stories: UNA sola diapositiva con "duracion" = lo que dure el anuncio (15-45 s, máx. 60)' : `imagen 4:5 (1080×1350) para el feed: ${n} diapositiva${n === 1 ? '' : 's'}, y cada una es un anuncio distinto (otra variante del gancho, del ángulo o de la foto, con el mismo sistema) para probarlas a la vez`}
+- Plantilla: ${pl?.nombre || r.plantilla} (id "${r.plantilla}")${pl?.guia ? `; su guía de anuncios: ${pl.guia} (léela entera: manda sobre lo de abajo)` : ''}
+${indicaciones ? `- Indicaciones de la persona: ${String(indicaciones).slice(0, 2000)}\n` : ''}${instruccionLogo()}- Encargo:
+"""
+${r.guion}
+"""
+
+Lo que hace que un anuncio funcione (salvo que la guía diga otra cosa):
+1. El gancho se entiende al primer vistazo${video ? ' y se ve ya en el fotograma 0' : ''}: una escena concreta y deseable o la pregunta que se hace el cliente, no un diagnóstico abstracto.
+2. Una sola idea y una sola llamada a la acción, visible en el propio creativo.
+3. Las palabras del cliente, sin jerga del sector. Texto grande y legible en el móvil.
+4. Prueba real: la cara de la persona, capturas reales, frases y cifras literales. Nada inventado ni promesas que la guía prohíba.
+5. ${video ? 'Si hay un testimonio o un vídeo hablando, que mande él (con data-audio) y que los gráficos animados acompañen lo que se dice; subtítulos palabra a palabra con subtitulos_video y subtitulos(…, { karaoke: true, claves: […] }); y un cierre con la llamada a la acción los últimos 3-5 s. Respeta la zona segura de las stories.' : 'Composición de anuncio, no de carrusel: sin paginación; el titular y la oferta se leen en un segundo.'}
+
+Pasos: 1) ver_kit_diseno; lee con leer_archivo_kit la guía del kit${pl?.guia ? `, la guía de anuncios (${pl.guia})` : ''} y el ejemplo de esta plantilla más parecido a lo que vas a hacer; mira con Read las referencias si las hay;
+2) material: el que diga el encargo y, si te sirve, listar_medios; si hace falta una foto que no existe, generar_foto (como mucho 3);
+3) escribe el diseño y guárdalo con guardar_diseno (id ${r.id});
+4) mira con Read TODAS las vistas previas${video ? ' y, con ver_fotogramas_diseno, 5-6 momentos del vídeo (el gancho en el segundo 0, los gráficos y el cierre)' : ''}; corrige lo que no esté al nivel de los ejemplos y vuelve a guardar (hasta 2 rondas);
+5) en "caption" escribe los textos para Meta${video ? '' : ' de cada variante (VARIANTE 1, VARIANTE 2…)'}: «Texto principal:» (la primera frase, de unos 125 caracteres, es casi todo el anuncio: que enganche sola), «Titular:» (26-32 caracteres) y «Descripción:» (opcional);
+6) termina con un resumen de 2-3 líneas: qué variante es cada una y si queda algún aviso.`;
   }
 
   // ---------- Claude ----------
@@ -180,7 +231,7 @@ Pasos: 1) ver_kit_diseno; 2) lee con leer_archivo_kit la guía del kit y, de est
     if (asistente.estado({ conversacion: 'diseno' }).ocupado) throw new DisenoError('JARVIS está terminando otra petición. Espera a que acabe y vuelve a probar.');
     const r = leer(id);
     asistente.nuevaSesion({ conversacion: 'diseno' });
-    asistente.preguntar({ texto: prompt || promptGenerar(r, { indicaciones }), conversacion: 'diseno' });
+    asistente.preguntar({ texto: prompt || (r.uso === 'anuncio' ? promptAnuncio : promptGenerar)(r, { indicaciones }), conversacion: 'diseno' });
     seguir(r.id, { conversacion: 'diseno', version: r.version });
     avisar(r.id);
     return obtener(r.id);
@@ -573,7 +624,13 @@ Pasos: 1) Read de la referencia; 2) ver_kit_diseno (formato técnico de las diap
     // Lo nuevo hereda la estrategia de la pieza del guion y queda enlazado a ella (o al diseño, si no sale de una pieza)
     const origen = r.pieza_origen ? piezas.find((x) => x.id === r.pieza_origen) : null;
     const enlace = origen ? { padre_id: origen.id, pilar: origen.pilar, objetivo: origen.objetivo } : { origen_ref: `Diseño #${r.id} · ${r.titulo}` };
-    if (r.formato === 'carrusel') {
+    if (r.uso === 'anuncio') {
+      // Un creativo → una pieza «Anuncio» con todas sus variantes y los textos para Meta, en la carpeta Anuncios
+      const destino = libre(previas[0]);
+      const campos = { titulo: r.titulo, formato: 'Anuncio', estado: 'listo', caption: datos.caption || r.caption || null, archivos: guardados, carpeta: 'Anuncios' };
+      if (destino) { sustituidos.push(...destino.archivos); ids = [jarvis.actualizarPieza(destino.id, campos).id]; }
+      else ids = [jarvis.crearPieza({ ...campos, ...enlace, origen: 'dashboard' }).id];
+    } else if (r.formato === 'carrusel') {
       const destino = libre(previas[0]) || libre(r.pieza_origen);
       const campos = { titulo: r.titulo, formato: 'Carrusel', estado: 'listo', caption: datos.caption || r.caption || null, archivos: guardados };
       if (destino) { sustituidos.push(...destino.archivos); ids = [jarvis.actualizarPieza(destino.id, campos).id]; }
@@ -644,7 +701,7 @@ Pasos: 1) Read de la referencia; 2) ver_kit_diseno (formato técnico de las diap
     return [...ids].map((id) => { try { return vista(leer(id)); } catch { return null; } }).filter(Boolean);
   }
 
-  return { listar, obtener, crear, generar: generarConClaude, trabajos, pararExportacion, deLaPieza, otraVersion, alEventoClaude, guardarDatos, fotogramas, exportar, borrar, rutaPrevia, tiposPortada, muestraPortada, guardarPlantillaPortada, borrarPlantillaPortada, crearPortada, exportarPortada, logos, guardarLogo, borrarLogo, ESTADOS };
+  return { listar, obtener, crear, crearAnuncio, generar: generarConClaude, trabajos, pararExportacion, deLaPieza, otraVersion, alEventoClaude, guardarDatos, fotogramas, exportar, borrar, rutaPrevia, tiposPortada, muestraPortada, guardarPlantillaPortada, borrarPlantillaPortada, crearPortada, exportarPortada, logos, guardarLogo, borrarLogo, ESTADOS };
 }
 
 const slug = (s) => String(s).normalize('NFD').replace(/[̀-ͯ]/g, '').replace(/[^A-Za-z0-9]+/g, '-').replace(/^-+|-+$/g, '').slice(0, 40).toLowerCase() || 'diseno';

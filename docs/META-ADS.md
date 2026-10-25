@@ -64,3 +64,14 @@ Campañas de mensajes, tráfico o clientes potenciales, por ahora, desde el Admi
 | *La Ad Library necesita que verifiques tu identidad* | Pasos del punto 2. |
 | *No se pudo crear el conjunto de anuncios: …* | Meta explica el motivo (público pequeño, presupuesto mínimo…). Lo creado hasta ese paso queda **en pausa**: puedes borrarlo en el Administrador. |
 | *La conexión ha caducado* | El token de usuario de Facebook dura 60 días: vuelve a conectar desde la pestaña Instagram. |
+
+## Creativos para anuncios
+
+En **Meta Ads → Creativos** Claude te diseña los anuncios con tu sistema de diseño:
+
+- **Imagen 4:5** (feed): varias variantes a la vez (otro gancho, otra foto, otro ángulo) para probarlas juntas.
+- **Vídeo 9:16** (reels y stories): por ejemplo, un testimonio con gráficos animados encima, subtítulos que se iluminan palabra a palabra y un cierre con la palabra clave.
+
+Cuéntale de qué va (a quién, qué ofreces, el ángulo), la oferta y la palabra clave, y elige el material de tu biblioteca (fotos, capturas, el vídeo del testimonio). Claude lo diseña con la **plantilla de anuncios** de tu sistema (en `kit.json`, una plantilla con `"anuncio": true` y su guía en `"guia"`), mira cada variante antes de terminar y escribe los **textos para Meta** (texto principal, titular y descripción). Si hace falta una foto que no tienes, la genera con IA (Fotos con IA).
+
+Lo ajustas hablando con Claude y lo exportas a la biblioteca: queda como una pieza **Anuncio** en la carpeta **Anuncios**, con todas sus variantes y los textos. Desde ahí lo descargas y lo subes en el Administrador de anuncios.

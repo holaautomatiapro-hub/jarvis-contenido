@@ -91,15 +91,30 @@ ${estilos.length ? `<style>\n${estilos.join('\n')}\n</style>` : ''}
 var tl = gsap.timeline({ paused: true }); var O = "power3.out";
 // Subtítulos sincronizados: cada línea [inicio, fin, texto] (segundos desde que empieza el vídeo) sale en su momento
 // dentro de la caja «sel» (el estilo de la caja lo pones tú). inicio: el data-start del vídeo en la diapositiva.
-window.subtitulos = function (sel, lineas, inicio) {
+// karaoke: cada palabra es un <span class="sub-palabra"> que recibe data-dicha="1" al decirse (y la clase «clave» si
+// está en opciones.claves): sus colores los pones tú en el CSS.
+window.subtitulos = function (sel, lineas, inicio, opciones) {
   var caja = document.querySelector(sel);
   if (!caja) { window.__errores.push('subtitulos: no existe ' + sel); return; }
+  var o = opciones || {}, i0 = inicio || 0;
+  var norm = function (t) { return String(t).toLowerCase().normalize('NFD').replace(/[\u0300-\u036f]/g, '').replace(/[^a-z0-9ñ]/g, ''); };
+  var claves = (o.claves || []).map(norm);
   (lineas || []).forEach(function (l) {
     var s = document.createElement('span');
-    s.className = 'sub-linea'; s.textContent = l[2]; s.style.display = 'none';
+    s.className = 'sub-linea'; s.style.display = 'none';
+    if (o.karaoke && Array.isArray(l[3]) && l[3].length) {
+      l[3].forEach(function (p, k) {
+        var w = document.createElement('span');
+        w.className = 'sub-palabra' + (claves.indexOf(norm(p[2])) >= 0 ? ' clave' : '');
+        w.textContent = p[2];
+        s.appendChild(w);
+        if (k < l[3].length - 1) s.appendChild(document.createTextNode(' '));
+        tl.set(w, { attr: { 'data-dicha': '1' } }, i0 + p[0]);
+      });
+    } else s.textContent = l[2];
     caja.appendChild(s);
-    tl.set(s, { display: 'block' }, (inicio || 0) + l[0]);
-    tl.set(s, { display: 'none' }, (inicio || 0) + l[1]);
+    tl.set(s, { display: 'block' }, i0 + l[0]);
+    tl.set(s, { display: 'none' }, i0 + l[1]);
   });
 };</script>
 </head><body><div id="lienzo">

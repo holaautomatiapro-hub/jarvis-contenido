@@ -15,6 +15,19 @@ export default function FotosIa() {
   const [prueba, setPrueba] = useState({ descripcion: '', conmigo: true, formato: '4:5' });
   const [trabajo, setTrabajo] = useState(null);
   const input = useRef(null);
+  const [clave, setClave] = useState('');
+  const [guardandoClave, setGuardandoClave] = useState(false);
+  const [cambiandoClave, setCambiandoClave] = useState(false);
+  const [creditos, setCreditos] = useState(null);
+  const conectar = async () => {
+    setGuardandoClave(true); setAviso('');
+    try {
+      const r = await api('/api/fotos-ia/clave', { method: 'PUT', body: { clave: clave.trim() } });
+      setClave(''); setCambiandoClave(false); setCreditos(r.creditos ?? null);
+      setAviso('Clave guardada en el servidor.'); recargar();
+    } catch (err) { setAviso(`No se pudo guardar la clave: ${err.message}`); }
+    setGuardandoClave(false);
+  };
 
   useEffect(() => { if (e && identidad === null) setIdentidad(e.identidadTexto || ''); }, [e]); // eslint-disable-line react-hooks/exhaustive-deps
   // Mientras se genera la prueba, se pregunta cada pocos segundos
@@ -63,7 +76,15 @@ export default function FotosIa() {
       {abierto && !e && <p className="ayuda">Cargando…</p>}
       {abierto && e && (
         <div className="fotos-ia-cuerpo">
-          {!e.configurado && <div className="aviso">Falta la clave de Kie AI. En el servidor: <code>cd ~/JARVIS && npm run claves</code> (KIE_API_KEY) y reinicia JARVIS con <code>sudo systemctl restart jarvis</code>.</div>}
+          <div className="label">Clave de Kie AI</div>
+          {e.configurado && !cambiandoClave
+            ? <p className="ayuda">Conectado ({e.final}).{creditos != null && ` Te quedan ${creditos} créditos.`} <button type="button" className="link-btn" onClick={() => setCambiandoClave(true)}>Cambiar la clave</button></p>
+            : (
+              <div className="fotos-ia-fila">
+                <input className="campo" type="password" autoComplete="off" value={clave} onChange={(ev) => setClave(ev.target.value)} placeholder="Pega aquí tu API key de kie.ai (kie.ai → API Key)" style={{ flex: 1, minWidth: 220 }} />
+                <button className="btn" onClick={conectar} disabled={guardandoClave || clave.trim().length < 16}>{guardandoClave ? 'Comprobando…' : 'Guardar clave'}</button>
+              </div>
+            )}
           <div className="label">Tus fotos de referencia ({e.referencias}/{e.maxReferencias})</div>
           <p className="ayuda">Las usa para que salgas tú. Lo ideal son 8: cuerpo entero, medio cuerpo, cara de frente, de tres cuartos y de perfil, con buena luz.</p>
           <div className="fotos-ia-caras">

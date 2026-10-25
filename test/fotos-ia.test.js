@@ -151,6 +151,28 @@ describe('fotos con IA (Kie AI)', () => {
     assert.equal(jpg[1], 0xd8);
   });
 
+  test('la clave se pega desde el panel: Kie la comprueba, se guarda en el .env y no se devuelve', async () => {
+    const guardadas = [];
+    const env = {};
+    const fetchImpl = async (url, o) => {
+      assert.match(url, /\/api\/v1\/chat\/credit$/);
+      const ok = o.headers.authorization === `Bearer ${CLAVE}`;
+      return new Response(JSON.stringify(ok ? { code: 200, data: 812 } : { code: 401, msg: 'unauthorized' }), { status: ok ? 200 : 401 });
+    };
+    const f = createFotosIa({ env, jarvis: { vault: { read: () => { throw new Error('no'); } } }, archivos: null, ajustesDb: ajustes(openDb(':memory:')), carpetaCara: null, fetchImpl, guardarClaves: (c) => guardadas.push(c) });
+    assert.equal(f.estado().configurado, false);
+    await assert.rejects(f.conectar({ clave: 'con espacios no' }), /no parece de Kie/);
+    await assert.rejects(f.conectar({ clave: 'otra-clave-que-no-vale-123' }), /no acepta esa clave/);
+    assert.equal(guardadas.length, 0);
+    const r = await f.conectar({ clave: ` ${CLAVE} ` });
+    assert.deepEqual(guardadas, [{ KIE_API_KEY: CLAVE }]);
+    assert.equal(env.KIE_API_KEY, CLAVE);
+    assert.equal(r.configurado, true);
+    assert.equal(r.creditos, 812);
+    assert.equal(r.final, `••••${CLAVE.slice(-4)}`);
+    assert.ok(!JSON.stringify(r).includes(CLAVE), 'la clave no vuelve al navegador');
+  });
+
   test('MCP generar_foto: lo encarga al dashboard y espera a que salga', async () => {
     const llamadas = [];
     let vueltas = 0;

@@ -203,7 +203,7 @@ export function createAdjuntos({ archivos, vaultPath, env = process.env, ffmpeg 
     if (!existsSync(ruta)) throw Object.assign(new Error('Ese vídeo aún no está transcrito con los tiempos de cada palabra'), { publico: true });
     const lineas = lineasSubtitulos(JSON.parse(readFileSync(ruta, 'utf8')), { desde, hasta });
     if (!lineas.length) throw Object.assign(new Error(`No se dice nada entre el segundo ${desde} y el ${hasta ?? 'final'} del vídeo`), { publico: true });
-    return { url, desde, hasta, lineas, como_usarlas: 'En el js de la diapositiva: subtitulos("#sN-sub", lineas, INICIO) con INICIO = el data-start del vídeo; el vídeo con data-from igual a «desde».' };
+    return { url, desde, hasta, lineas, como_usarlas: 'En el js de la diapositiva: subtitulos("#sN-sub", lineas, INICIO) con INICIO = el data-start del vídeo; el vídeo con data-from igual a «desde». Para que cada palabra se ilumine al decirla (estilo anuncio): subtitulos("#sN-sub", lineas, INICIO, { karaoke: true, claves: ["palabra", …] }).' };
   }
 
   // ---------- Transcripciones en segundo plano ----------
@@ -292,14 +292,15 @@ export function lineasSubtitulos(palabras, { desde = 0, hasta = null, maxPalabra
     const txt = String(w || '').trim();
     if (!txt || b <= desde || a >= fin) continue;
     const corta = l && (l.n >= maxPalabras || `${l.texto} ${txt}`.length > maxLetras || b - l.ini > maxSegundos || a - l.fin > 0.6 || /[.!?…]$/.test(l.texto));
-    if (!l || corta) { if (l) lineas.push(l); l = { ini: a, fin: b, texto: txt, n: 1 }; } else Object.assign(l, { fin: b, texto: `${l.texto} ${txt}`, n: l.n + 1 });
+    if (!l || corta) { if (l) lineas.push(l); l = { ini: a, fin: b, texto: txt, n: 1, palabras: [[a, b, txt]] }; } else { Object.assign(l, { fin: b, texto: `${l.texto} ${txt}`, n: l.n + 1 }); l.palabras.push([a, b, txt]); }
   }
   if (l) lineas.push(l);
   // Cada línea se queda hasta que empieza la siguiente (como mucho 0,4 s más), para que dé tiempo a leerla
   return lineas.map((x, i) => {
     const sig = lineas[i + 1];
     const hastaLinea = Math.min(fin, sig ? Math.min(sig.ini, x.fin + 0.4) : x.fin + 0.4);
-    return [r2(Math.max(0, x.ini - desde)), r2(hastaLinea - desde), x.texto];
+    // 4.º elemento: cada palabra con su momento (para los subtítulos que se iluminan palabra a palabra)
+    return [r2(Math.max(0, x.ini - desde)), r2(hastaLinea - desde), x.texto, x.palabras.map(([a, b, w]) => [r2(Math.max(0, a - desde)), r2(b - desde), w])];
   });
 }
 

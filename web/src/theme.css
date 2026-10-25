@@ -2040,3 +2040,11 @@ button.est-boton:hover { background: color-mix(in srgb, var(--cat) 30%, transpar
 .fotos-ia-resultado { display: flex; flex-wrap: wrap; gap: 8px; }
 .fotos-ia-resultado img { width: 160px; border-radius: 10px; display: block; }
 @media (max-width: 640px) { .fotos-ia-cab { grid-template-columns: auto 1fr auto; } .fotos-ia-cab small { grid-column: 1 / -1; grid-row: 2; } }
+
+/* Meta Ads → Creativos */
+.creativos .panel-head { align-items: flex-start; gap: 16px; }
+.creativos-grid { margin-top: 12px; }
+.creativo-fila { display: grid; grid-template-columns: 1fr 1fr auto; gap: 10px; }
+.creativo-material { display: flex; flex-wrap: wrap; gap: 8px; align-items: center; }
+.creativo-material .chip { display: inline-flex; align-items: center; gap: 6px; }
+@media (max-width: 640px) { .creativo-fila { grid-template-columns: 1fr; } }

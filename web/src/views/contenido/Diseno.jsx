@@ -153,7 +153,7 @@ export function Diseno({ piezas, ig, onAbrir, onProgramar }) {
     else recargar();
   });
 
-  const disenos = data?.disenos || [];
+  const disenos = (data?.disenos || []).filter((d) => d.uso !== 'anuncio');
   const kit = data?.kit;
   const actual = disenos.find((d) => d.id === sel) || disenos[0] || null;
   useEffect(() => { if (actual && actual.id !== sel) setSel(actual.id); }, [actual?.id]); // eslint-disable-line react-hooks/exhaustive-deps
@@ -231,6 +231,7 @@ export function Diseno({ piezas, ig, onAbrir, onProgramar }) {
 export function DetalleDiseno({ d, kit, piezas, ig, progreso, onVisor, onAbrir, onProgramar, onAviso, onBorrado, recargar }) {
   const [ocupado, setOcupado] = useState('');
   const plantilla = kit?.plantillas.find((p) => p.id === d.plantilla);
+  const anuncio = d.uso === 'anuncio';
   const trabajando = ['generando', 'renderizando', 'exportando'].includes(d.estado);
   const exportadas = (d.exportado?.piezas || []).map((id) => piezas.find((p) => p.id === id)).filter(Boolean);
   const archivosVisor = d.previas.map((url, i) => ({ url, mime: 'image/jpeg', nombre: `${d.titulo} · ${i + 1}` }));
@@ -277,7 +278,7 @@ export function DetalleDiseno({ d, kit, piezas, ig, progreso, onVisor, onAbrir, 
     <div className="panel panel-pad diseno-detalle">
       <div className="panel-head">
         <div>
-          <div className="label">{NOMBRE_FORMATO[d.formato]} · {plantilla?.nombre || d.plantilla}</div>
+          <div className="label">{anuncio ? (d.formato === 'story' ? 'Anuncio · vídeo 9:16' : `Anuncio · imagen 4:5 · ${d.previas.length || '—'} variante${d.previas.length === 1 ? '' : 's'}`) : NOMBRE_FORMATO[d.formato]} · {plantilla?.nombre || d.plantilla}</div>
           <h2 className="diseno-titulo">{d.titulo}</h2>
         </div>
         <div className="diseno-acciones-cab">
@@ -302,7 +303,7 @@ export function DetalleDiseno({ d, kit, piezas, ig, progreso, onVisor, onAbrir, 
           {d.previas.map((url, i) => (
             <div key={url} className={`diseno-previa-c${marcadas.includes(i + 1) ? ' marcada' : ''}`}>
               <button className="diseno-previa" onClick={() => onVisor({ archivos: archivosVisor, inicio: i })} title="Ver en grande">
-                <img src={url} alt={`Diapositiva ${i + 1}`} loading="lazy" />
+                <img src={url} alt={anuncio ? `Variante ${i + 1}` : `Diapositiva ${i + 1}`} loading="lazy" />
                 <span className="diseno-n">{i + 1}</span>
                 {d.avisos.some((a) => a.diapositiva === i + 1) && <span className="diseno-alerta" title="Tiene avisos">!</span>}
                 {d.cambiadas?.includes(i + 1) && <span className="diseno-cambiada" title="Ha cambiado desde la última exportación">cambiada</span>}
@@ -327,8 +328,8 @@ export function DetalleDiseno({ d, kit, piezas, ig, progreso, onVisor, onAbrir, 
       {d.previas.length > 0 && !d.avisos.length && d.estado === 'listo' && <div className="aviso ok">Revisión sin avisos: todo cabe y nada se pisa.</div>}
 
       {d.caption && (
-        <details className="diseno-caption">
-          <summary>Caption</summary>
+        <details className="diseno-caption" open={anuncio || undefined}>
+          <summary>{anuncio ? 'Textos para Meta (texto principal, titular y descripción)' : 'Caption'}</summary>
           <p>{d.caption}</p>
         </details>
       )}
@@ -340,13 +341,13 @@ export function DetalleDiseno({ d, kit, piezas, ig, progreso, onVisor, onAbrir, 
             <p className="ayuda">
               {d.exportado
                 ? <>Solo se vuelven a exportar las diapositivas que han cambiado{d.cambiadas?.length ? ` (${d.cambiadas.length === 1 ? `la ${d.cambiadas[0]}` : d.cambiadas.join(', ')})` : ''} y se sustituyen en la biblioteca. Para elegir tú cuáles, márcalas con el ✓ de cada una.{marcadas.length > 0 && <> <button type="button" className="link-btn" onClick={() => setMarcadas([])}>Desmarcar</button>.</>}</>
-                : <>{d.formato === 'story' ? 'Cada story será una pieza, todas en una carpeta con el nombre del diseño.' : 'Será una pieza de tipo Carrusel con su caption, lista para programar.'}</>}
+                : <>{anuncio ? 'Será una pieza «Anuncio» con todas sus variantes y los textos para Meta, en la carpeta Anuncios de la biblioteca.' : d.formato === 'story' ? 'Cada story será una pieza, todas en una carpeta con el nombre del diseño.' : 'Será una pieza de tipo Carrusel con su caption, lista para programar.'}</>}
               {' '}El vídeo tarda unos 15 s por diapositiva.
             </p>
           </div>
           <div className="diseno-botones">
-            <button className="btn btn-sec" onClick={() => exportar('jpg')} disabled={trabajando || Boolean(ocupado)}><Icon name="doc" size={14} />Imágenes (JPG){textoQue('jpg')}</button>
-            <button className="btn" onClick={() => exportar('mp4')} disabled={trabajando || Boolean(ocupado)}><Icon name="play" size={14} />Vídeo (MP4){textoQue('mp4')}</button>
+            <button className={`btn${anuncio && d.formato !== 'story' ? '' : ' btn-sec'}`} onClick={() => exportar('jpg')} disabled={trabajando || Boolean(ocupado)}><Icon name="doc" size={14} />Imágenes (JPG){textoQue('jpg')}</button>
+            <button className={`btn${anuncio && d.formato !== 'story' ? ' btn-sec' : ''}`} onClick={() => exportar('mp4')} disabled={trabajando || Boolean(ocupado)}><Icon name="play" size={14} />Vídeo (MP4){textoQue('mp4')}</button>
           </div>
         </div>
       )}
@@ -356,7 +357,7 @@ export function DetalleDiseno({ d, kit, piezas, ig, progreso, onVisor, onAbrir, 
           <Icon name="checkCircle" size={16} color="var(--green)" />
           <span>En la biblioteca como {d.exportado.tipo === 'mp4' ? 'vídeo' : 'imágenes'}{exportadas.length > 1 ? ` (${exportadas.length} stories)` : ''}.</span>
           {exportadas.length === 1 && <>
-            <button className="link-btn" onClick={() => onProgramar(exportadas[0])}>Programar…</button>
+            {!anuncio && <button className="link-btn" onClick={() => onProgramar(exportadas[0])}>Programar…</button>}
             <button className="link-btn" onClick={() => onAbrir(exportadas[0])}>{ig?.disponible ? 'Abrir y publicar' : 'Abrir'}</button>
           </>}
           {exportadas.length > 1 && <button className="link-btn" onClick={() => onAbrir(exportadas[0])}>Abrir la primera</button>}
@@ -367,9 +368,11 @@ export function DetalleDiseno({ d, kit, piezas, ig, progreso, onVisor, onAbrir, 
 }
 
 function NuevoDiseno({ kit, piezas, onClose, onCreado }) {
-  const formatos = useMemo(() => ['carrusel', 'story'].filter((f) => kit.plantillas.some((p) => p.formatos.includes(f))), [kit]);
+  // Las plantillas de anuncios se usan desde Meta Ads → Creativos
+  const deContenido = useMemo(() => kit.plantillas.filter((p) => !p.anuncio), [kit]);
+  const formatos = useMemo(() => ['carrusel', 'story'].filter((f) => deContenido.some((p) => p.formatos.includes(f))), [deContenido]);
   const [formato, setFormato] = useState(formatos[0] || 'carrusel');
-  const deFormato = kit.plantillas.filter((p) => p.formatos.includes(formato));
+  const deFormato = deContenido.filter((p) => p.formatos.includes(formato));
   const [plantilla, setPlantilla] = useState(deFormato[0]?.id || '');
   const conGuion = useMemo(() => piezas.filter((p) => p.estado !== 'publicado').sort((a, b) => (b.estado === 'guion') - (a.estado === 'guion') || Boolean(b.nota) - Boolean(a.nota)), [piezas]);
   const [origen, setOrigen] = useState(conGuion.some((p) => p.estado === 'guion') ? 'pieza' : 'texto');

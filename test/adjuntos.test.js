@@ -191,7 +191,8 @@ describe('adjuntos del chat', () => {
     assert.equal(llamadas.length, 2);
     assert.ok(llamadas[1].endsWith('palabras.json'));
     const r = ad.subtitulosVideo(v.url, { desde: 95.5, hasta: 99 });
-    assert.deepEqual(r.lineas, [[0.1, 1.8, 'antes trabajaba doce horas.'], [1.8, 3.5, 'Ahora tengo tiempo']]);
+    assert.deepEqual(r.lineas.map((l) => l.slice(0, 3)), [[0.1, 1.8, 'antes trabajaba doce horas.'], [1.8, 3.5, 'Ahora tengo tiempo']]);
+    assert.deepEqual(r.lineas[0][3][0], [0.1, 0.4, 'antes'], 'y cada palabra con su momento, contando desde «desde»');
     assert.match(r.como_usarlas, /subtitulos\(/);
     await ad.transcribirVideo(v.url, { palabras: true });
     assert.equal(llamadas.length, 2, 'con las palabras ya guardadas no se vuelve a transcribir');
