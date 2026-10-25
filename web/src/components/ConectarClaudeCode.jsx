@@ -5,8 +5,10 @@ import { BotonCopiar } from '../views/contenido/comun.jsx';
 
 // Conectar JARVIS con Claude Code en el ordenador (Windows): un conector que, en cualquier chat, sube a JARVIS lo
 // que Claude acaba de hacer («súbelo a JARVIS») y deja ver el calendario. Se instala con un comando de PowerShell.
-export default function ConectarClaudeCode() {
-  const [abierto, setAbierto] = useState(() => { try { return localStorage.getItem('conectar_cc') === '1'; } catch { return false; } });
+// fijo: siempre abierto y sin cabecera (dentro de una ventana)
+export default function ConectarClaudeCode({ fijo = false }) {
+  const [abiertoGuardado, setAbierto] = useState(() => { try { return localStorage.getItem('conectar_cc') === '1'; } catch { return false; } });
+  const abierto = fijo || abiertoGuardado;
   const alternar = () => { setAbierto(!abierto); try { localStorage.setItem('conectar_cc', abierto ? '0' : '1'); } catch { /* sin localStorage */ } };
   const origen = window.location.origin;
   // Con contraseña, PowerShell no tiene sesión: el enlace lleva un código que vale una hora
@@ -20,13 +22,13 @@ export default function ConectarClaudeCode() {
     `claude mcp add --scope user jarvis node "${ruta}"`,
   ].join('; ');
   return (
-    <section className="panel panel-pad conectar-cc">
-      <button type="button" className="aprendido-cab" onClick={alternar} aria-expanded={abierto}>
+    <section className={fijo ? 'conectar-cc fijo' : 'panel panel-pad conectar-cc'}>
+      {!fijo && <button type="button" className="aprendido-cab" onClick={alternar} aria-expanded={abierto}>
         <Icon name="claude" size={14} />
         <b>Conectar con Claude Code en tu ordenador</b>
         <span className="t-dim">«súbelo a JARVIS» desde cualquier chat</span>
         <span className="aprendido-flecha">{abierto ? '▾' : '▸'}</span>
-      </button>
+      </button>}
       {abierto && (
         <div className="conectar-cc-cuerpo">
           <p className="ayuda">Con esto, en cualquier chat de Claude Code de tu ordenador puedes decir <b>«súbelo a JARVIS»</b> (o «súbelo como carrusel para el jueves a las 18:00 y que se publique solo») y lo que acabas de hacer llega a tu biblioteca de Contenido. También puedes preguntarle qué tienes programado. Solo funciona en tu ordenador (con Tailscale conectado), no en los chats en la nube.</p>
