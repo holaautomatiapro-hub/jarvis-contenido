@@ -11,11 +11,12 @@ export default function Chat({ pendiente, onConsumido }) {
         titulo="JARVIS"
         subtitulo="Pregunta, apunta ideas, pide guiones o un resumen. Recuerda la conversación hasta que pulses «Nueva»."
         placeholder="Escribe a JARVIS… (Enter para enviar)"
-        intro="Lee tu vault, tus tareas, tu pipeline y tus métricas. Para dictar, pulsa el micro."
+        intro="Lee tu vault, tus tareas, tu pipeline y tus métricas. Para hablarle, pulsa la esfera o el micro."
         sugerencias={SUGERENCIAS}
         conGuardarGuion={false}
         conModelo
         conVoz
+        conPresencia
         pendiente={pendiente}
         onPendienteUsado={onConsumido}
         clase="chat-principal"

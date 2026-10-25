@@ -2,6 +2,7 @@ import { useEffect, useMemo, useRef, useState } from 'react';
 import { marked } from 'marked';
 import DOMPurify from 'dompurify';
 import Icon from './Icon.jsx';
+import JarvisPresencia from './JarvisPresencia.jsx';
 import { api, useMensajes, useRecurso } from '../lib/api.js';
 import { callar, escuchar, hablar, reconocimientoDisponible } from '../lib/voz.js';
 
@@ -65,7 +66,8 @@ function turnos(eventos) {
 // conModelo: elegir Normal / Rápido / A fondo. conVoz: dictar con el micro y oír las respuestas.
 // pendiente: un mensaje que llega de otra pestaña (p. ej. «Pregúntale a JARVIS» de Inicio) y se envía solo.
 // conAdjuntos: adjuntar fotos y vídeos (clip, arrastrar o pegar) para que JARVIS los tenga en cuenta.
-export default function ChatJarvis({ conversacion, titulo, subtitulo, placeholder, intro, sugerencias = [], borrador, onBorradorUsado, prefijo = '', mostrarPregunta = (t) => t, conGuardarGuion = true, deshabilitado = '', conModelo = false, conVoz = false, conAdjuntos = true, pendiente, onPendienteUsado, clase = '' }) {
+// conPresencia: JARVIS «en persona» arriba (esfera y mascota que reaccionan cuando te escucha, piensa o habla).
+export default function ChatJarvis({ conversacion, titulo, subtitulo, placeholder, intro, sugerencias = [], borrador, onBorradorUsado, prefijo = '', mostrarPregunta = (t) => t, conGuardarGuion = true, deshabilitado = '', conModelo = false, conVoz = false, conAdjuntos = true, conPresencia = false, pendiente, onPendienteUsado, clase = '' }) {
   const [eventos, setEventos] = useState([]);
   const [ocupado, setOcupado] = useState(false);
   const [texto, setTexto] = useState('');
@@ -185,6 +187,17 @@ export default function ChatJarvis({ conversacion, titulo, subtitulo, placeholde
           <button className="link-btn" onClick={() => { callar(); api('/api/jarvis/nueva-sesion', { method: 'POST', body: { conversacion } }); }}>Nueva</button>
         </div>
       </div>
+      {conPresencia && (
+        <div className={`chat-presencia${lista.length ? ' compacta' : ''}`}>
+          <JarvisPresencia
+            estado={escuchando ? 'escuchando' : ocupado ? 'pensando' : hablando ? 'hablando' : 'listo'}
+            texto={escuchando && texto ? `“${texto}”` : ocupado ? `Pensando con ${lista.at(-1)?.etiqueta || 'Claude'}…` : undefined}
+            onMicro={conVoz ? micro : undefined}
+            microDisponible={reconocimientoDisponible && !ocupado}
+            compacto={lista.length > 0}
+          />
+        </div>
+      )}
       <div className="chat-mensajes" ref={caja}>
         {!lista.length && (
           <div className="chat-vacio">
