@@ -175,6 +175,9 @@ describe('Laboratorio', () => {
     assert.ok(!args.includes('--disallowedTools'), 'con permisos de Bash no se prohíbe Bash entero');
     assert.deepEqual(args.slice(args.indexOf('--plugin-dir'), args.indexOf('--plugin-dir') + 2), ['--plugin-dir', lab.pluginDir]);
     assert.ok(argumentos({}).includes('--disallowedTools'), 'el resto de JARVIS sigue sin Bash');
+    const conEsfuerzo = argumentos({ esfuerzo: 'high' });
+    assert.equal(conEsfuerzo[conEsfuerzo.indexOf('--effort') + 1], 'high');
+    assert.ok(!argumentos({}).includes('--effort'), 'sin esfuerzo, no se pasa la opción');
   });
 
   test('el Laboratorio va en su propio carril: no bloquea al resto de JARVIS', () => {

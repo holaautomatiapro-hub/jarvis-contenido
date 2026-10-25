@@ -15,6 +15,9 @@ con alguien hablando: { "bg": "white", "duracion": 32, "blocks": [ … ] }. Las 
 Marco que pone el motor (no lo escribas tú): <div class="slide on-{bg} fmt-{formato} tpl-{plantilla}" id="s{n}-root"> con
 .bg.bg-{bg}, .glow.{glow} (si lo hay), la cabecera .hdr con ${kit.handle || 'el usuario'}${kit.verificado ? ' y el check de verificado' : ''} y los puntos .dots (solo en carruseles de plantillas que los llevan),
 y dentro <div class="content"> con el html de los blocks. n es la posición de la diapositiva (empieza en 1).
+Para lo que va a sangre detrás del contenido y fuera de su caja (una foto o un vídeo a pantalla completa con su degradado), usa
+"fondo" en la diapositiva: { "bg": "black", "fondo": "<div id=\"s1-foto\" style=\"position:absolute;inset:0;…\">…</div>", "blocks": [ … ] }.
+Va entre .bg y .glow, antes de la cabecera; se anima desde el js como lo demás.
 CSS cargado: ${kit.css.join(', ') || '(ninguno)'}. Usa sus clases y variables; tus estilos van en <style> dentro del html.
 
 Reglas técnicas (si no se cumplen, el vídeo sale mal):
@@ -36,5 +39,6 @@ Reglas técnicas (si no se cumplen, el vídeo sale mal):
 - Sin emojis en el diseño salvo que la guía del kit diga lo contrario. Textos del guion; no inventes cifras ni clientes.
 - Carrusel: 2-10 diapositivas (lo normal, 5-8). Stories: una por pantalla, hasta 20.
 - Al guardar, el motor dibuja el último fotograma y te devuelve avisos (textos que se salen, que no caben o que se pisan, medios que no cargan).
-  Corrígelos y vuelve a guardar con el mismo id. Puedes mirar las vistas previas con Read (te da sus rutas).`;
+  Corrígelos y vuelve a guardar con el mismo id. Mira las vistas previas con Read (te da sus rutas) y, para ver la animación a mitad,
+  ver_fotogramas_diseno (la diapositiva en los segundos que elijas).`;
 }

@@ -469,8 +469,10 @@ export function buildServer(jarvis, { origen = 'claude', avisar = () => {}, inst
         return {
           nombre: k.nombre, propio: k.propio, cuenta: k.handle, duracion_diapositiva: `${k.duracion} s`,
           guia: k.guia, css: k.css,
-          plantillas: k.plantillas.map(({ id, nombre, descripcion, formatos, ejemplo }) => ({ id, nombre, descripcion, formatos, ejemplo })),
-          como_leer: 'Lee la guía y el ejemplo de la plantilla con leer_archivo_kit (el ejemplo es un diseño completo hecho a mano: imítalo).',
+          plantillas: k.plantillas.map(({ id, nombre, descripcion, formatos, ejemplos }) => ({ id, nombre, descripcion, formatos, ejemplos })),
+          ...(k.piezas.length ? { piezas: k.piezas.map(({ archivo, nombre, descripcion }) => ({ archivo, nombre, descripcion })) } : {}),
+          ...(k.referencias.length ? { referencias: k.referencias.map(({ archivo, descripcion }) => ({ ruta: path.join(k.dir, archivo), descripcion })) } : {}),
+          como_leer: 'Lee con leer_archivo_kit la guía y el ejemplo de la plantilla que más se parezca a lo que vas a hacer (diseños completos hechos a mano: imita su nivel de detalle y de animación, no solo los colores; si hay varios, la guía dice cuál sirve para qué). Si hay referencias, míralas con Read. Si hay piezas, son trozos ya probados (un CTA, un móvil, un escenario…): léelas y reutilízalas adaptando el texto antes de inventar otra cosa.',
           reglas: reglasDiseno(k),
         };
       });
@@ -558,6 +560,9 @@ export function buildServer(jarvis, { origen = 'claude', avisar = () => {}, inst
         }).passthrough()).min(1).max(20),
       },
       ({ id, ...datos }) => servidor('PUT', `/api/disenos/${id}/datos`, datos), true);
+    tool('ver_fotogramas_diseno', 'Dibuja una diapositiva ya guardada en varios momentos de su animación (por defecto a 1, 2,5 y 4 s) y devuelve las rutas de los JPG para mirarlos con Read. Úsalo para revisar la animación a mitad (textos que se cruzan al entrar, saltos, cosas que tapan a otras), no solo el final.',
+      { id: z.number().int(), diapositiva: z.number().int().min(1), segundos: z.array(z.number().min(0).max(60)).max(6).optional() },
+      ({ id, ...datos }) => servidor('POST', `/api/disenos/${id}/fotogramas`, datos));
   }
 
   // Laboratorio: testimonios, reels, clips, imágenes y lead magnets. Lo hace el Laboratorio del dashboard (Claude con el

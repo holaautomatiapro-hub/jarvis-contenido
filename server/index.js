@@ -489,6 +489,8 @@ export function createApp({ jarvis, archivos, miniaturas = null, estrategia = nu
     app.get('/api/disenos/:id', h((req) => disenos.obtener(req.params.id, { conDatos: req.query.datos === '1' })));
     // Lo usa guardar_diseno (MCP): guarda las diapositivas y devuelve la revisión de calidad
     app.put('/api/disenos/:id/datos', h((req) => disenos.guardarDatos(req.params.id, req.body || {}), true));
+    // Lo usa ver_fotogramas_diseno (MCP): la animación a mitad, para revisarla
+    app.post('/api/disenos/:id/fotogramas', h((req) => disenos.fotogramas(req.params.id, { diapositiva: req.body?.diapositiva, segundos: req.body?.segundos })));
     app.post('/api/disenos/:id/generar', h((req) => disenos.generar(req.params.id, { indicaciones: req.body?.indicaciones }), true));
     app.post('/api/disenos/:id/exportar', h((req) => disenos.exportar(req.params.id, { tipo: req.body?.tipo, solo: req.body?.solo, todo: req.body?.todo === true }), true));
     app.delete('/api/disenos/:id', h((req) => disenos.borrar(req.params.id), true));

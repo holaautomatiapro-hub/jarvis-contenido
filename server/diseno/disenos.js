@@ -167,9 +167,9 @@ ${indicaciones ? `- Indicaciones de la persona: ${String(indicaciones).slice(0, 
 ${r.guion}
 """
 
-Pasos: 1) ver_kit_diseno; 2) lee con Read la guía del kit y el ejemplo de esta plantilla; 3) si te sirve material propio (fotos o vídeos), listar_medios;
+Pasos: 1) ver_kit_diseno; 2) lee con leer_archivo_kit la guía del kit y, de esta plantilla, el ejemplo que más se parezca a lo que vas a hacer (si hay muchos, no hace falta leerlos todos: mira sus nombres y la guía); mira con Read las referencias si las hay, y lee las piezas reutilizables que encajen (úsalas antes de inventar otra cosa); 3) si te sirve material propio (fotos, vídeos, capturas), listar_medios: el material real luce más que el inventado;
 4) escribe el diseño y guárdalo con guardar_diseno (id ${r.id}), con su caption;
-5) mira con Read TODAS las vistas previas que devuelve y júzgalas como un diseñador exigente frente al ejemplo de la plantilla: jerarquía y tamaño de los textos, aire y márgenes, alineación, contraste, que cada diapositiva dibuje la idea (no solo texto) y que parezcan de la misma cuenta. Corrige lo que no esté a la altura del ejemplo y los avisos, y vuelve a guardar (hasta 2 rondas; mira solo las que cambies);
+5) mira con Read TODAS las vistas previas que devuelve y júzgalas como un diseñador exigente frente al ejemplo de la plantilla: jerarquía y tamaño de los textos, aire y márgenes, alineación, contraste, que cada diapositiva dibuje la idea (no solo texto) y que parezcan de la misma cuenta. Mira también la animación a mitad con ver_fotogramas_diseno en las diapositivas con más movimiento (nada debe taparse ni cruzarse al entrar). Corrige lo que no esté a la altura del ejemplo y los avisos, y vuelve a guardar (hasta 2 rondas; mira solo las que cambies);
 6) termina con un resumen de 2-3 líneas: qué hay en cada diapositiva y si queda algún aviso.`;
   }
 
@@ -474,6 +474,29 @@ Pasos: 1) Read de la referencia; 2) ver_kit_diseno (formato técnico de las diap
     }
   }
 
+  // Fotogramas de una diapositiva a mitad de animación: se guardan junto a las vistas previas (no cuentan como versión)
+  async function fotogramas(id, { diapositiva, segundos } = {}) {
+    const r = leer(id);
+    const d = json(r.datos, null);
+    if (!d?.slides?.length) throw new DisenoError('Ese diseño aún no tiene diapositivas: guárdalo primero con guardar_diseno');
+    const n = Number(diapositiva);
+    if (!Number.isInteger(n) || n < 1 || n > d.slides.length) throw new DisenoError(`La diapositiva tiene que estar entre 1 y ${d.slides.length}`);
+    const lista = (Array.isArray(segundos) && segundos.length ? segundos : [1, 2.5, 4]).slice(0, 6).map(Number).filter(Number.isFinite);
+    let res;
+    try { res = await motor.fotogramas(d, n, lista); } catch (e) { throw new DisenoError(`No se ha podido dibujar: ${e.message}`); }
+    const dir = path.join(previasDir, String(r.id), 'fotogramas');
+    rmSync(dir, { recursive: true, force: true });
+    mkdirSync(dir, { recursive: true });
+    return {
+      diapositiva: n,
+      fotogramas: res.map((f) => {
+        const ruta = path.join(dir, `d${n}-${f.segundo.toFixed(1).replace('.', '_')}s.jpg`);
+        writeFileSync(ruta, f.buffer);
+        return { segundo: f.segundo, ruta };
+      }),
+    };
+  }
+
   // ---------- Exportar a la biblioteca ----------
   // Si ya se exportó en el mismo formato, solo se vuelven a sacar las diapositivas que han cambiado (o las que
   // elija la persona en «solo»); las demás se quedan como estaban en la biblioteca. «todo» las saca todas.
@@ -621,7 +644,7 @@ Pasos: 1) Read de la referencia; 2) ver_kit_diseno (formato técnico de las diap
     return [...ids].map((id) => { try { return vista(leer(id)); } catch { return null; } }).filter(Boolean);
   }
 
-  return { listar, obtener, crear, generar: generarConClaude, trabajos, pararExportacion, deLaPieza, otraVersion, alEventoClaude, guardarDatos, exportar, borrar, rutaPrevia, tiposPortada, muestraPortada, guardarPlantillaPortada, borrarPlantillaPortada, crearPortada, exportarPortada, logos, guardarLogo, borrarLogo, ESTADOS };
+  return { listar, obtener, crear, generar: generarConClaude, trabajos, pararExportacion, deLaPieza, otraVersion, alEventoClaude, guardarDatos, fotogramas, exportar, borrar, rutaPrevia, tiposPortada, muestraPortada, guardarPlantillaPortada, borrarPlantillaPortada, crearPortada, exportarPortada, logos, guardarLogo, borrarLogo, ESTADOS };
 }
 
 const slug = (s) => String(s).normalize('NFD').replace(/[̀-ͯ]/g, '').replace(/[^A-Za-z0-9]+/g, '-').replace(/^-+|-+$/g, '').slice(0, 40).toLowerCase() || 'diseno';

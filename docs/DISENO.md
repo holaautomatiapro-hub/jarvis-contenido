@@ -5,8 +5,8 @@ En **Laboratorio → Diseño**, JARVIS convierte un guion en un **carrusel** (10
 ## Cómo se usa
 
 1. **Nuevo diseño**: elige carrusel o stories, la plantilla y el guion. Puede venir de una pieza del pipeline (la nota de `02-Guiones`) o pegado. Si quieres, añade indicaciones, por ejemplo: «palabra clave SETTER; en la portada usa mi vídeo de la biblioteca».
-2. **Claude (Opus) lo diseña** con tu guía y el ejemplo de la plantilla. Suele tardar 2-5 minutos. Cada versión aparece en cuanto la guarda.
-3. **Revisión automática**: JARVIS dibuja el último fotograma de cada diapositiva y avisa si un texto se sale de la imagen, no cabe en su caja, se monta sobre otro, queda fuera de la zona segura de las stories, o si una foto o un vídeo no cargan. Claude corrige esos avisos antes de terminar. Si queda alguno, pulsa **Pedir a Claude que lo corrija**.
+2. **Claude (Opus, pensando a fondo) lo diseña** con tu guía y el ejemplo de la plantilla, y antes de terminar mira cada diapositiva (el final y, en las más animadas, también a mitad de animación) y mejora lo que no esté a la altura del ejemplo. Suele tardar 4-8 minutos. Cada versión aparece en cuanto la guarda.
+3. **Revisión automática**: JARVIS dibuja el último fotograma de cada diapositiva y avisa si un texto se sale de la imagen, no cabe en su caja, se monta sobre otro (salvo que quede tapado por algo opaco, como el pie de un post bajo la hoja de comentarios), queda fuera de la zona segura de las stories, o si una foto o un vídeo no cargan. Claude corrige esos avisos antes de terminar. Si queda alguno, pulsa **Pedir a Claude que lo corrija**.
 4. **Ajusta en el chat** de la derecha: «en la 3 pon el chat más grande», «cambia leads por clientes»… Claude cambia solo eso y lo vuelve a dibujar.
 5. **Exporta a la biblioteca**:
    - **Imágenes (JPG)**: al momento.
@@ -50,10 +50,20 @@ Lo que lleva el .zip, todo dentro de una carpeta o en la raíz:
   "zonaSeguraStory": [270, 300],
   "plantillas": [
     { "id": "rejilla", "nombre": "Plantilla 1 · Rejilla", "descripcion": "…", "formatos": ["carrusel", "story"], "cabecera": true, "paginacion": true, "ejemplo": "ejemplos/plantilla-1.json" },
-    { "id": "cine", "nombre": "Plantilla 2 · Cine", "descripcion": "…", "formatos": ["carrusel"], "cabecera": false, "paginacion": false, "ejemplo": "ejemplos/plantilla-2.json" }
+    { "id": "cine", "nombre": "Plantilla 2 · Cine", "descripcion": "…", "formatos": ["carrusel"], "cabecera": false, "paginacion": false, "ejemplo": "ejemplos/plantilla-2.json", "ejemplos": ["ejemplos/plantilla-2-b.json"] }
+  ],
+  "piezas": [
+    { "archivo": "piezas/cta-comentarios.json", "nombre": "CTA de comentarios", "descripcion": "Post de Instagram recreado: se escribe la palabra clave en los comentarios y respondes" }
+  ],
+  "referencias": [
+    { "archivo": "referencias/plantilla-1.jpg", "descripcion": "Las 8 diapositivas de un carrusel de la plantilla 1" }
   ]
 }
 ```
+
+- **`ejemplos`**: más diseños completos de esa plantilla, además de `ejemplo`. Cuantos más y mejores, más se acerca Claude a tu nivel.
+- **`piezas`**: trozos de diapositiva que ya te funcionan (un CTA, un móvil con tu feed, un escenario…), en el mismo formato que una diapositiva. Claude los reutiliza adaptando el texto antes de inventar otra cosa.
+- **`referencias`**: imágenes que Claude mira antes de diseñar (hojas con tus carruseles buenos, portadas…).
 
 ## El formato de un diseño
 
@@ -65,6 +75,7 @@ Es el mismo que el de los `guion.json` de HyperFrames: lo que ya tengas hecho pa
 ```
 
 - El contenedor de cada diapositiva es `#s{n}-root` (n = posición).
+- Lo que va a sangre detrás del contenido (una foto o un vídeo a pantalla completa con su degradado) va en `"fondo"` de la diapositiva, fuera de `.content`.
 - Las animaciones van en la línea de tiempo de GSAP `tl`, que está en pausa. El vídeo se graba fotograma a fotograma moviendo esa línea de tiempo.
 - No uses `setTimeout`, animaciones CSS ni `Math.random`.
 - Las fotos y vídeos son los de tu biblioteca (`/api/contenido/archivos/…`) o los del propio kit.

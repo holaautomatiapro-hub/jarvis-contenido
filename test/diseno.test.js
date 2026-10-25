@@ -28,9 +28,11 @@ after(() => rmSync(dir, { recursive: true, force: true }));
 const KIT = {
   nombre: 'Marca de prueba', handle: '@prueba', verificado: true, duracion: 7, fps: 30, guia: 'GUIA.md', css: ['estilos.css'],
   plantillas: [
-    { id: 'rejilla', nombre: 'Rejilla', formatos: ['carrusel', 'story'], ejemplo: 'ejemplos/rejilla.json' },
+    { id: 'rejilla', nombre: 'Rejilla', formatos: ['carrusel', 'story'], ejemplo: 'ejemplos/rejilla.json', ejemplos: ['ejemplos/rejilla-2.json'] },
     { id: 'cine', nombre: 'Cine', formatos: ['carrusel'], cabecera: false, paginacion: false },
   ],
+  piezas: [{ archivo: 'piezas/cta.json', nombre: 'CTA de comentarios', descripcion: 'Post con comentarios' }, 'piezas/movil.json', { nada: 1 }],
+  referencias: [{ archivo: 'referencias/plantilla-1.jpg', descripcion: 'Las 8 diapositivas' }],
 };
 const zipDeKit = (extra = []) => crearZip([
   { nombre: 'mi-kit/kit.json', contenido: JSON.stringify(KIT) },
@@ -93,6 +95,15 @@ describe('motor: diseño y página', () => {
     assert.equal(d.formato, 'carrusel');
     assert.match(d.slides[0].html, /<p>a<\/p>\n<p>b<\/p>/);
     assert.equal(d.slides[0].bg, 'grey');
+    assert.equal(d.slides[0].fondo, '');
+  });
+
+  test('fondo: va a sangre entre .bg y la cabecera, fuera de .content, con sus estilos en el <head>', () => {
+    const d = normalizarDiseno({ plantilla: 'rejilla', slides: [{ bg: 'black', fondo: '<style>.s1-foto { inset: 0 }</style><img class="s1-foto" src="img/a.jpg">', html: '<p>Texto</p>' }] }, kit);
+    const p = paginaDiapositiva(kit, d, 1);
+    const i = (t) => p.indexOf(t);
+    assert.ok(i('class="bg bg-black"') < i('class="s1-foto"') && i('class="s1-foto"') < i('class="content"'), 'el fondo va detrás del contenido');
+    assert.ok(i('.s1-foto { inset: 0 }') < i('</head>'), 'sus estilos van al <head>');
   });
 
   test('marco: cabecera y puntos solo en carrusel, estilos al <head>, contenedor respetado al reordenar y scripts escapados', () => {
@@ -122,6 +133,7 @@ describe('diseños: API, exportar a la biblioteca y Claude', () => {
       dibujadas.push(ns);
       return { imagenes: d.slides.map((_, i) => (ns.includes(i + 1) ? Buffer.from('jpg') : null)), avisos: ns.includes(3) && d.slides.length > 2 ? [{ diapositiva: 3, texto: '«x» se sale de la imagen' }] : [] };
     },
+    fotogramas: async (d, n, segundos) => segundos.map((segundo) => ({ segundo, buffer: Buffer.from(`f${n}-${segundo}`) })),
     exportar: async (d, tipo, { alProgreso, solo }) => {
       alProgreso({ avance: 1 });
       const ns = d.slides.map((_, i) => i + 1).filter((n) => !solo || solo.includes(n));
@@ -171,6 +183,13 @@ describe('diseños: API, exportar a la biblioteca y Claude', () => {
     assert.equal(v.previas.length, 3);
     assert.equal((await fetch(base + v.previas[0])).status, 200);
     assert.equal((await fetch(`${base}/api/disenos/${d.id}/previas/..%2F..%2Fsecreto.jpg`)).status, 404);
+
+    const { data: f } = await api(`/api/disenos/${d.id}/fotogramas`, { diapositiva: 2, segundos: [1, 2.5] });
+    assert.deepEqual(f.fotogramas.map((x) => x.segundo), [1, 2.5]);
+    assert.equal(readFileSync(f.fotogramas[1].ruta, 'utf8'), 'f2-2.5');
+    assert.equal((await api(`/api/disenos/${d.id}/fotogramas`, { diapositiva: 9 })).status, 400);
+    const { data: v2 } = await api(`/api/disenos/${d.id}`);
+    assert.deepEqual(v2.previas, v.previas, 'los fotogramas no cambian las vistas previas');
 
     await api(`/api/disenos/${d.id}/exportar`, { tipo: 'jpg' });
     const e1 = await esperar(d.id);
@@ -437,6 +456,9 @@ describe('diseños: API, exportar a la biblioteca y Claude', () => {
     const json = async (name, args = {}) => { const r = await c.callTool({ name, arguments: args }); return { error: r.isError, datos: r.isError ? r.content[0].text : JSON.parse(r.content[0].text) }; };
     const k = (await json('ver_kit_diseno')).datos;
     assert.equal(k.nombre, 'Marca de prueba');
+    assert.deepEqual(k.plantillas[0].ejemplos, ['ejemplos/rejilla.json', 'ejemplos/rejilla-2.json']);
+    assert.deepEqual(k.piezas.map((p) => [p.archivo, p.nombre]), [['piezas/cta.json', 'CTA de comentarios'], ['piezas/movil.json', 'movil']]);
+    assert.ok(path.isAbsolute(k.referencias[0].ruta) && k.referencias[0].ruta.endsWith(path.join('referencias', 'plantilla-1.jpg')), 'la referencia se puede abrir con Read');
     assert.match(k.reglas, /tl\.fromTo/);
     assert.match((await json('leer_archivo_kit', { archivo: 'GUIA.md' })).datos.contenido, /Mostaza/);
     assert.ok((await json('leer_archivo_kit', { archivo: '../../../etc/hosts' })).error);
@@ -444,6 +466,8 @@ describe('diseños: API, exportar a la biblioteca y Claude', () => {
     await json('guardar_diseno', { id: 7, caption: 'c', slides: [slide(1)] });
     assert.deepEqual(llamadas.at(-1).slice(0, 2), ['PUT', '/api/disenos/7/datos']);
     assert.equal(llamadas.at(-1)[2].slides.length, 1);
+    await json('ver_fotogramas_diseno', { id: 7, diapositiva: 2, segundos: [1.5] });
+    assert.deepEqual(llamadas.at(-1), ['POST', '/api/disenos/7/fotogramas', { diapositiva: 2, segundos: [1.5] }]);
   });
 
   test('MCP: transcribir espera, preguntando, a que acabe la transcripción en segundo plano', async () => {
@@ -506,6 +530,18 @@ describe('motor con navegador', () => {
     const textos = malo.avisos.map((a) => a.texto).join('\n');
     assert.match(textos, /se sale de la imagen/);
     assert.match(textos, /«Uno» se monta sobre «Dos»|«Dos» se monta sobre «Uno»/);
+    // Un texto tapado por una capa opaca (el pie de un post bajo la hoja de comentarios) no se ve: no es que se pisen
+    const tapado = await motor.previsualizar({ ...d, slides: [{ bg: 'black', html: '<div style="position:relative;width:600px;height:300px"><p style="position:absolute;left:0;top:40px;margin:0;font-size:40px;color:#fff">Pie del post escondido</p><div style="position:absolute;inset:0;background:#1c1c1e"><p style="position:absolute;left:0;top:40px;margin:0;font-size:40px;color:#fff">Respuesta encima</p></div></div>' }] });
+    assert.deepEqual(tapado.avisos, []);
+  });
+
+  test('saca fotogramas a mitad de animación (distintos del final)', async (t) => {
+    if (!hayNavegador) return t.skip('No hay navegador en este equipo');
+    const d = JSON.parse(readFileSync('diseno/kit-ejemplo/ejemplos/basica.json', 'utf8'));
+    const f = await motor.fotogramas(d, 1, [0, 99]);
+    assert.deepEqual(f.map((x) => x.segundo), [0, 7], 'los segundos se ajustan a lo que dura la diapositiva');
+    assert.ok(f.every((x) => x.buffer[0] === 0xff && x.buffer[1] === 0xd8), 'son JPG');
+    assert.notDeepEqual(f[0].buffer, f[1].buffer, 'al principio y al final no se ve igual');
   });
 
   test('un vídeo MP4 de la biblioteca (H.264, como los del móvil) se ve en el diseño', async (t) => {
