@@ -12,6 +12,7 @@ Funciona en Windows nativo (sin WSL). Solo responde mientras el PC está encendi
 - "¿Qué reel debería impulsar?" / "Prepárame una campaña con 10 € al día para ese reel" → deja un **borrador**; la creas en pausa desde el dashboard.
 - "Convierte esta idea en un reel y adáptalo a todas mis redes" → las versiones quedan en la ficha de la pieza, en Contenido.
 - Notas de voz: las transcribe y responde a lo que dices.
+- **Publicar en Instagram con tu confirmación** (ver abajo): «publica el carrusel del setter mañana a las 10», o mándale las fotos con el texto y «publícalo».
 
 Y cada semana te escribe solo (tareas programadas, hora de Madrid):
 
@@ -23,6 +24,22 @@ Y cada semana te escribe solo (tareas programadas, hora de Madrid):
 | Planificación de la semana | Domingo, 18:50 | Qué grabar, editar y publicar cada día, y las 3 tareas clave del lunes |
 
 Ninguna publica, programa ni crea campañas.
+
+## Publicar en Instagram desde Telegram (con tu confirmación)
+
+1. **Las fotos o el vídeo**: mándaselos al bot (en un carrusel, en el orden de las diapositivas) con el texto, o dile qué pieza de tu biblioteca quieres publicar. Para la máxima calidad mándalas como *archivo* (si no, Telegram las comprime). Telegram no deja a los bots descargar archivos de más de 20 MB: un vídeo más grande, súbelo a JARVIS.
+2. **Pídele que lo publique**, ya o a una hora: «publícalo mañana a las 10».
+3. **JARVIS te escribe directamente** (con el mismo bot) las fotos, el texto, el día y la hora y un **código de un solo uso**: «Para publicarlo, responde: publica K7M2QX».
+4. **Revísalo y responde «publica K7M2QX»**. Solo entonces queda programado. Te escribe cuando sale (con el enlace) o si falla.
+
+Lo que lo hace seguro:
+- **La IA no ve el código.** Lo manda JARVIS al chat con el bot y Telegram no le pasa a Hermes los mensajes del propio bot: solo puede confirmarse con lo que escribes tú. Si una web, un comentario o un documento «le pide» publicar algo, no tiene el código.
+- El código **caduca a los 30 minutos**, vale **una sola vez** y solo para **esa pieza tal como estaba** (si cambian sus fotos o su texto, hay que pedirlo otra vez). Con 5 códigos equivocados se anulan las confirmaciones pendientes.
+- Con hora, tiene que ser **al menos 10 minutos después**; sin hora, sale unos minutos después de confirmar. Hasta entonces puedes pararlo: «cancela la publicación de…» (no necesita código) o en la ficha de la pieza.
+- Las fotos que guarda solo pueden salir de la carpeta donde Hermes deja lo que le mandas por Telegram (`~/.hermes/cache`), y solo si son fotos o vídeos.
+- Tras actualizar JARVIS, vuelve a ejecutar `npm run hermes` (le pone las reglas nuevas) y `hermes gateway restart`.
+
+JARVIS usa el bot y tu chat del `.env` de Hermes (`TELEGRAM_BOT_TOKEN` y `TELEGRAM_HOME_CHANNEL`, o el primero de `TELEGRAM_ALLOWED_USERS`); si prefieres otros, pon `TELEGRAM_BOT_TOKEN` y `TELEGRAM_CHAT_ID` en el `.env` de JARVIS. Esta seguridad cubre lo que la IA hace con sus herramientas de JARVIS; Hermes además te pide permiso antes de ejecutar comandos delicados en el servidor (no lo arranques con `--yolo`).
 
 ## Lo que cuesta
 
@@ -166,9 +183,9 @@ hermes cron doctor
 ## Seguridad
 
 - Solo responde a los IDs de tu lista de permitidos.
-- **No publica nada** y **no gasta dinero**: las campañas solo pueden quedarse en borrador, se crean en pausa cuando tú lo confirmas en el dashboard y el código rechaza cualquier campaña que no esté en pausa.
+- **No publica nada sin tu código** y **no gasta dinero**: en Instagram solo publica lo que confirmas con el código que te llega por Telegram (arriba); las campañas solo pueden quedarse en borrador, se crean en pausa cuando tú lo confirmas en el dashboard y el código rechaza cualquier campaña que no esté en pausa.
 - Hermes pide permiso antes de ejecutar comandos peligrosos en tu PC. No lo arranques con `--yolo`.
-- El token del bot y la API key del modelo viven en el `.env` de Hermes, no en el de JARVIS. El dashboard solo comprueba si existen; nunca lee ni muestra su valor.
+- El token del bot y la API key del modelo viven en el `.env` de Hermes, no en el de JARVIS. JARVIS solo usa el token del bot (en el servidor) para mandarte los códigos de confirmación y los avisos de publicación; nunca lo muestra.
 - Antes de mandar una captura a alguien (o a un chat de IA), mira que no se vea un token ni una clave. Si se ha visto: el token del bot se cambia en @BotFather con `/revoke` (y luego `hermes gateway setup`); la key de Anthropic, creando otra y borrando la vieja en la consola.
 
 ## Si algo falla
