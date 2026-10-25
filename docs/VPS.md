@@ -75,10 +75,7 @@ Esto quita el arranque automático y el acceso directo, pero tus datos del PC se
 
 ## 7. Hermes (Telegram) en el VPS
 
-1. Instala Hermes en el VPS con el instalador de Nous Research para Linux.
-2. Configura su modelo como hiciste en el PC (`hermes model`).
-3. En `~/JARVIS`, ejecuta `npm run hermes`. Le pone la personalidad, el MCP, las skills y las tareas programadas.
-4. Para el bot de Telegram en el PC (`hermes gateway stop`) y arráncalo en el VPS (`hermes gateway`). Así no responden dos.
+Para hablar con JARVIS por Telegram aunque tu PC esté apagado, instala Hermes en el VPS. El paso a paso, con lo que hay que elegir en cada pregunta, está en [HERMES.md → En un VPS](HERMES.md#en-un-vps-linux-paso-a-paso). Lo esencial: no uses las credenciales de Claude Code de JARVIS (una API key propia para Hermes), pon tu ID en los usuarios permitidos, `loginctl enable-linger` para que no se apague al cerrar la sesión y Groq para las notas de voz. Si tenías Hermes en el PC, páralo (`hermes gateway stop`) para que no respondan dos.
 
 ---
 
