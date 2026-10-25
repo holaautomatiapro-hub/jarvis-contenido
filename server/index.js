@@ -39,6 +39,7 @@ import { createAcceso } from './acceso.js';
 import { createStories, OBJETIVOS_STORIES, promptGuionStory } from './stories.js';
 import { createEstrategia, DIAS, FILAS, OBJETIVOS_SEMANA, PRINCIPIOS, TACTICAS, lunesDe } from './estrategia.js';
 import { createLaboratorio, carpetaPorDefecto } from './laboratorio.js';
+import { createFotosIa } from './fotos-ia.js';
 import { promptCaption, limpiarCaption, createContextoCaption } from './caption.js';
 import { createRecortador } from './recortar.js';
 import { createAdjuntos, textoAdjuntos } from './adjuntos.js';
@@ -56,7 +57,7 @@ const DIST = path.join(ROOT, 'web', 'dist');
 // Replicar con diseño de carruseles o stories: lo hace Opus, como en Diseño
 const modeloReplicar = (formatos, disenar) => { try { return seDisena(normalizarFormatos(formatos), disenar) ? 'opus' : undefined; } catch { return undefined; } };
 
-export function createApp({ jarvis, archivos, miniaturas = null, estrategia = null, stories = null, acceso = null, publicadorIg, asistente, instagram, competencia, ads, publicar, hermes, jobs, kit, disenos, recordatorios, laboratorio, resultados, adjuntos, preferencias, actualizar, conversiones, confirmacionesIg = null, port, onChange = () => {}, status, tts = sintetizar }) {
+export function createApp({ jarvis, archivos, miniaturas = null, estrategia = null, stories = null, acceso = null, publicadorIg, asistente, instagram, competencia, ads, publicar, hermes, jobs, kit, disenos, recordatorios, laboratorio, resultados, adjuntos, preferencias, actualizar, conversiones, confirmacionesIg = null, fotosIa = null, port, onChange = () => {}, status, tts = sintetizar }) {
   const estadoSistema = status || (() => systemStatus({ vaultPath: jarvis.vault.base, instagram: Boolean(instagram?.estado().conectado), ads: Boolean(ads?.estado().conectado && ads?.estado().cuenta), hermes: Boolean(hermes?.estado().gateway.online) }));
   const app = express();
 
@@ -489,6 +490,13 @@ export function createApp({ jarvis, archivos, miniaturas = null, estrategia = nu
     app.get('/api/disenos/:id', h((req) => disenos.obtener(req.params.id, { conDatos: req.query.datos === '1' })));
     // Lo usa guardar_diseno (MCP): guarda las diapositivas y devuelve la revisión de calidad
     app.put('/api/disenos/:id/datos', h((req) => disenos.guardarDatos(req.params.id, req.body || {}), true));
+    // Fotos con IA (Kie AI): las encarga generar_foto (MCP) y se guardan en la biblioteca
+    if (fotosIa) {
+      app.get('/api/fotos-ia', h(() => fotosIa.estado()));
+      app.post('/api/fotos-ia', h((req) => fotosIa.generar(req.body || {})));
+      app.put('/api/fotos-ia/identidad', h((req) => fotosIa.guardarIdentidad(req.body?.texto), true));
+      app.get('/api/fotos-ia/:id', h((req) => fotosIa.ver(req.params.id)));
+    }
     // Lo usa ver_fotogramas_diseno (MCP): la animación a mitad, para revisarla
     app.post('/api/disenos/:id/fotogramas', h((req) => disenos.fotogramas(req.params.id, { diapositiva: req.body?.diapositiva, segundos: req.body?.segundos })));
     app.post('/api/disenos/:id/generar', h((req) => disenos.generar(req.params.id, { indicaciones: req.body?.indicaciones }), true));
@@ -938,6 +946,7 @@ function main() {
   const motor = createMotor({ kit, archivos, log: (m) => console.log(`  [Diseño] ${m}`) });
   if (process.platform !== 'win32') setTimeout(() => motor.preparar(), 5000).unref();
   disenos = createDisenos({ db, jarvis, kit, motor, archivos, previasDir: path.join(cfg.vaultPath, '.jarvis', 'disenos'), recortarFoto: createRecortador({ archivos, python: () => laboratorio.python() }), asistente, emitir, alCambiar: onChange });
+  const fotosIa = createFotosIa({ jarvis, archivos, ajustesDb: ajustes(db), carpetaCara: path.join(laboratorio.dir, 'imagenes', '_mi-cara'), alCambiar: onChange, log: (m) => console.log(`  [Fotos IA] ${m}`) });
   const recordatorios = createRecordatorios({ db });
   const adjuntos = createAdjuntos({ archivos, vaultPath: cfg.vaultPath, python: () => laboratorio?.python?.() || null, alCambiar: () => emitir({ type: 'transcripcion' }) });
   const conversiones = createConversiones({ jarvis, archivos, disenos, emitir, alCambiar: onChange });
@@ -954,7 +963,7 @@ function main() {
   }
   const estrategia = createEstrategia({ db, jarvis });
   stories = createStories({ db, jarvis, asistente, alCambiar: onChange });
-  const server = createServer(createApp({ jarvis, archivos, miniaturas, estrategia, stories, acceso, publicadorIg, asistente, instagram, competencia, ads, publicar, hermes, jobs, kit, disenos, recordatorios, laboratorio, resultados, adjuntos, preferencias, actualizar, conversiones, confirmacionesIg, port: cfg.port, onChange }));
+  const server = createServer(createApp({ jarvis, archivos, miniaturas, estrategia, stories, acceso, publicadorIg, asistente, instagram, competencia, ads, publicar, hermes, jobs, kit, disenos, recordatorios, laboratorio, resultados, adjuntos, preferencias, actualizar, conversiones, confirmacionesIg, fotosIa, port: cfg.port, onChange }));
   // Solo el propio dashboard puede escuchar los eventos (otra web abierta en el navegador, no)
   const local = hostsPermitidos(cfg.port);
   wss = new WebSocketServer({ server, path: '/ws', verifyClient: ({ origin, req }) => local.has(req.headers.host) && (!origin || local.has(origin.replace(/^https?:\/\//, ''))) && acceso.autorizado(req) });

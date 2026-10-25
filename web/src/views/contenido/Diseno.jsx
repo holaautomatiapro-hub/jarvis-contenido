@@ -5,6 +5,7 @@ import { api, useMensajes, useRecurso } from '../../lib/api.js';
 import { Modal } from './comun.jsx';
 import { Visor } from './Editor.jsx';
 import { avanceDiseno } from '../../lib/avance.js';
+import FotosIa from './FotosIa.jsx';
 
 // Diseño: de un guion a un carrusel o unas stories con tu sistema de diseño. Claude lo diseña, JARVIS lo dibuja
 // y lo revisa; tú lo ajustas en el chat y lo exportas a la biblioteca (imágenes o vídeo) para programarlo.
@@ -186,6 +187,7 @@ export function Diseno({ piezas, ig, onAbrir, onProgramar }) {
       </div>
       {(aviso || errorCarga) && <div className={`aviso${/No se pudo|error/i.test(aviso || errorCarga) ? ' error' : ' ok'}`}>{aviso || `No se pudieron cargar los diseños. ${errorCarga}`}</div>}
       <Aprendido />
+      <FotosIa />
 
       <div className="diseno-grid">
         <div className="panel panel-pad diseno-lista">
