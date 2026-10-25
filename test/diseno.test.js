@@ -95,6 +95,15 @@ describe('motor: diseño y página', () => {
     assert.equal(d.formato, 'carrusel');
     assert.match(d.slides[0].html, /<p>a<\/p>\n<p>b<\/p>/);
     assert.equal(d.slides[0].bg, 'grey');
+    assert.equal(d.slides[0].fondo, '');
+  });
+
+  test('fondo: va a sangre entre .bg y la cabecera, fuera de .content, con sus estilos en el <head>', () => {
+    const d = normalizarDiseno({ plantilla: 'rejilla', slides: [{ bg: 'black', fondo: '<style>.s1-foto { inset: 0 }</style><img class="s1-foto" src="img/a.jpg">', html: '<p>Texto</p>' }] }, kit);
+    const p = paginaDiapositiva(kit, d, 1);
+    const i = (t) => p.indexOf(t);
+    assert.ok(i('class="bg bg-black"') < i('class="s1-foto"') && i('class="s1-foto"') < i('class="content"'), 'el fondo va detrás del contenido');
+    assert.ok(i('.s1-foto { inset: 0 }') < i('</head>'), 'sus estilos van al <head>');
   });
 
   test('marco: cabecera y puntos solo en carrusel, estilos al <head>, contenedor respetado al reordenar y scripts escapados', () => {
@@ -521,6 +530,9 @@ describe('motor con navegador', () => {
     const textos = malo.avisos.map((a) => a.texto).join('\n');
     assert.match(textos, /se sale de la imagen/);
     assert.match(textos, /«Uno» se monta sobre «Dos»|«Dos» se monta sobre «Uno»/);
+    // Un texto tapado por una capa opaca (el pie de un post bajo la hoja de comentarios) no se ve: no es que se pisen
+    const tapado = await motor.previsualizar({ ...d, slides: [{ bg: 'black', html: '<div style="position:relative;width:600px;height:300px"><p style="position:absolute;left:0;top:40px;margin:0;font-size:40px;color:#fff">Pie del post escondido</p><div style="position:absolute;inset:0;background:#1c1c1e"><p style="position:absolute;left:0;top:40px;margin:0;font-size:40px;color:#fff">Respuesta encima</p></div></div>' }] });
+    assert.deepEqual(tapado.avisos, []);
   });
 
   test('saca fotogramas a mitad de animación (distintos del final)', async (t) => {

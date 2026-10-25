@@ -53,7 +53,10 @@ export function normalizarDiseno(d, kit) {
       if (html.length > 300_000 || js.length > 100_000) throw new Error(`La diapositiva ${i + 1} es demasiado grande`);
       // Una diapositiva puede durar más que las demás (p. ej. la de un vídeo con alguien hablando): hasta 60 s
       const dur = Number(s?.duracion);
-      return { bg: token(s.bg, 'black'), glow: s.glow ? token(s.glow, null) : null, clase: token(s.clase, ''), html, js, duracion: Number.isFinite(dur) && dur > 0 ? Math.round(Math.min(MAX_DURACION, Math.max(2, dur)) * 10) / 10 : null };
+      // fondo: HTML a sangre que va detrás del contenido y fuera de su caja (una foto a pantalla completa y su degradado)
+      const fondo = typeof s?.fondo === 'string' ? s.fondo : '';
+      if (fondo.length > 100_000) throw new Error(`El fondo de la diapositiva ${i + 1} es demasiado grande`);
+      return { bg: token(s.bg, 'black'), glow: s.glow ? token(s.glow, null) : null, clase: token(s.clase, ''), fondo, html, js, duracion: Number.isFinite(dur) && dur > 0 ? Math.round(Math.min(MAX_DURACION, Math.max(2, dur)) * 10) / 10 : null };
     }),
   };
 }
@@ -68,9 +71,11 @@ export function paginaDiapositiva(kit, diseno, n) {
   const paginacion = !story && pl.paginacion && diseno.slides.length > 1;
   // Los <style> de la diapositiva van al <head>: dentro del contenido, el CSS del kit podría mostrarlos como texto
   const estilos = [];
-  const html = s.html.replace(/<style[^>]*>([\s\S]*?)<\/style>/gi, (_, css) => { estilos.push(css); return ''; });
+  const sinEstilos = (h) => h.replace(/<style[^>]*>([\s\S]*?)<\/style>/gi, (_, css) => { estilos.push(css); return ''; });
+  const fondo = sinEstilos(s.fondo || '');
+  const html = sinEstilos(s.html);
   // El CSS de cada diapositiva apunta a su contenedor (#s3-root…). Si se reordenan, se respeta el que usa.
-  const ref = /#s(\d+)-root\b/.exec(estilos.join('\n') + html + s.js);
+  const ref = /#s(\d+)-root\b/.exec(estilos.join('\n') + fondo + html + s.js);
   const raiz = `s${ref ? ref[1] : n}-root`;
   const clases = ['slide', `on-${s.bg}`, story ? 'fmt-story' : `fmt-${diseno.formato}`, `tpl-${pl.id}`, s.clase].filter(Boolean).join(' ');
   return `<!doctype html>
@@ -100,6 +105,7 @@ window.subtitulos = function (sel, lineas, inicio) {
 </head><body><div id="lienzo">
 <div class="${clases}" id="${raiz}">
 <div class="bg bg-${s.bg}"></div>
+${fondo}
 ${s.glow ? `<div class="glow ${s.glow}"></div>` : ''}
 ${cabecera ? `<div class="hdr"><span>${esc(kit.handle)}</span>${kit.verificado ? VERIFICADO : ''}</div>` : ''}
 <div class="content">
@@ -190,12 +196,34 @@ window.__revisar = function (zona) {
     }
     if (zona && t.lineas.some(function (r) { return r.top < zona[0] || r.bottom > H - zona[1]; })) avisos.push('«' + corto(t.texto) + '» está fuera de la zona segura de las stories');
   });
+  // Un texto tapado por algo opaco que tiene encima (p. ej. el pie de un post debajo de la hoja de comentarios) no se ve:
+  // no cuenta como texto que se monta sobre otro
+  var opaco = function (e) {
+    if (/^(IMG|VIDEO|CANVAS)$/.test(e.tagName)) return true;
+    var cs = getComputedStyle(e);
+    if (parseFloat(cs.opacity) < 0.6) return false;
+    if (cs.backgroundImage && cs.backgroundImage !== 'none' && cs.backgroundImage.indexOf('gradient') < 0) return true;
+    var m = cs.backgroundColor.match(/[\\d.]+/g);
+    return !!m && (m.length < 4 ? true : parseFloat(m[3]) >= 0.85) && cs.backgroundColor !== 'transparent';
+  };
+  var tapado = function (el, x, y) {
+    var pila = document.elementsFromPoint(x, y);
+    for (var k = 0; k < pila.length; k++) {
+      var e = pila[k];
+      if (e === el || el.contains(e)) return false;
+      if (e.contains(el)) continue;
+      if (opaco(e)) return true;
+    }
+    return false;
+  };
   for (var i = 0; i < textos.length; i++) for (var j = i + 1; j < textos.length; j++) {
     var A = textos[i], B = textos[j];
     if (A.el === B.el || A.el.contains(B.el) || B.el.contains(A.el)) continue;
     var pisa = A.lineas.some(function (ra) { return B.lineas.some(function (rb) {
       var x = Math.min(ra.right, rb.right) - Math.max(ra.left, rb.left), y = Math.min(ra.bottom, rb.bottom) - Math.max(ra.top, rb.top);
-      return x > 0 && y > 0 && x * y > 0.3 * Math.min(ra.width * ra.height, rb.width * rb.height);
+      if (!(x > 0 && y > 0 && x * y > 0.3 * Math.min(ra.width * ra.height, rb.width * rb.height))) return false;
+      var cx = Math.max(ra.left, rb.left) + x / 2, cy = Math.max(ra.top, rb.top) + y / 2;
+      return !tapado(A.el, cx, cy) && !tapado(B.el, cx, cy);
     }); });
     if (pisa) avisos.push('«' + corto(A.texto) + '» se monta sobre «' + corto(B.texto) + '»');
   }

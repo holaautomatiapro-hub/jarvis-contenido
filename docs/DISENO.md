@@ -6,7 +6,7 @@ En **Laboratorio → Diseño**, JARVIS convierte un guion en un **carrusel** (10
 
 1. **Nuevo diseño**: elige carrusel o stories, la plantilla y el guion. Puede venir de una pieza del pipeline (la nota de `02-Guiones`) o pegado. Si quieres, añade indicaciones, por ejemplo: «palabra clave SETTER; en la portada usa mi vídeo de la biblioteca».
 2. **Claude (Opus, pensando a fondo) lo diseña** con tu guía y el ejemplo de la plantilla, y antes de terminar mira cada diapositiva (el final y, en las más animadas, también a mitad de animación) y mejora lo que no esté a la altura del ejemplo. Suele tardar 4-8 minutos. Cada versión aparece en cuanto la guarda.
-3. **Revisión automática**: JARVIS dibuja el último fotograma de cada diapositiva y avisa si un texto se sale de la imagen, no cabe en su caja, se monta sobre otro, queda fuera de la zona segura de las stories, o si una foto o un vídeo no cargan. Claude corrige esos avisos antes de terminar. Si queda alguno, pulsa **Pedir a Claude que lo corrija**.
+3. **Revisión automática**: JARVIS dibuja el último fotograma de cada diapositiva y avisa si un texto se sale de la imagen, no cabe en su caja, se monta sobre otro (salvo que quede tapado por algo opaco, como el pie de un post bajo la hoja de comentarios), queda fuera de la zona segura de las stories, o si una foto o un vídeo no cargan. Claude corrige esos avisos antes de terminar. Si queda alguno, pulsa **Pedir a Claude que lo corrija**.
 4. **Ajusta en el chat** de la derecha: «en la 3 pon el chat más grande», «cambia leads por clientes»… Claude cambia solo eso y lo vuelve a dibujar.
 5. **Exporta a la biblioteca**:
    - **Imágenes (JPG)**: al momento.
@@ -75,6 +75,7 @@ Es el mismo que el de los `guion.json` de HyperFrames: lo que ya tengas hecho pa
 ```
 
 - El contenedor de cada diapositiva es `#s{n}-root` (n = posición).
+- Lo que va a sangre detrás del contenido (una foto o un vídeo a pantalla completa con su degradado) va en `"fondo"` de la diapositiva, fuera de `.content`.
 - Las animaciones van en la línea de tiempo de GSAP `tl`, que está en pausa. El vídeo se graba fotograma a fotograma moviendo esa línea de tiempo.
 - No uses `setTimeout`, animaciones CSS ni `Math.random`.
 - Las fotos y vídeos son los de tu biblioteca (`/api/contenido/archivos/…`) o los del propio kit.
