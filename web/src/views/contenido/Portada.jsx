@@ -29,6 +29,27 @@ export default function GenerarPortada({ pieza, onHecha, onClose, onSegundoPlano
     }).catch((e) => setError(e.message));
   }, [pieza.formato]);
 
+  // Tu logo (el archivo real): JARVIS lo pone tal cual en vez de intentar dibujarlo copiándolo de la referencia
+  const [logos, setLogos] = useState(null);
+  const [subiendoLogo, setSubiendoLogo] = useState(false);
+  const inputLogo = useRef(null);
+  useEffect(() => { api('/api/portadas/logos').then((r) => setLogos(r.logos)).catch(() => setLogos([])); }, []);
+  const subirLogo = async (file) => {
+    if (!file) return;
+    setSubiendoLogo(true); setError('');
+    try {
+      const r = await fetch(`/api/portadas/logos?${new URLSearchParams({ nombre_archivo: file.name })}`, { method: 'POST', headers: { 'content-type': 'application/octet-stream' }, body: file });
+      const d = await r.json().catch(() => ({}));
+      if (!r.ok) throw new Error(d.error || 'No se ha podido subir el logo');
+      setLogos(d.logos);
+    } catch (e) { setError(e.message); }
+    setSubiendoLogo(false);
+  };
+  const quitarLogo = async (l) => {
+    if (!window.confirm(`¿Quitar el logo «${l.nombre}»?`)) return;
+    try { setLogos((await api(`/api/portadas/logos?${new URLSearchParams({ path: l.path })}`, { method: 'DELETE' })).logos); } catch (e) { setError(e.message); }
+  };
+
   const fotosPieza = (pieza.archivos || []).filter((a) => !esVideo(a)).slice(0, 8);
   // Plantillas: subir o cambiar la imagen de referencia, añadir otra y borrar
   const ref = useRef(null);
@@ -144,6 +165,20 @@ export default function GenerarPortada({ pieza, onHecha, onClose, onSegundoPlano
             </div>
           )}
           {actual && !actual.muestra && <div className="ayuda">Sube la imagen de «{actual.nombre}»: JARVIS copiará su diseño y solo cambiará el texto y la foto.</div>}
+          <label className="campo-et">Tu logo<span className="ayuda" style={{ textTransform: 'none', letterSpacing: 0, fontWeight: 400 }}>Se pone tal cual: así no se deforma</span></label>
+          <div className="portada-logos">
+            {(logos || []).map((l) => (
+              <div key={l.path} className="portada-logo" title={l.nombre}>
+                <img src={l.url} alt="" />
+                <button type="button" className="icon-btn" onClick={() => quitarLogo(l)} aria-label={`Quitar ${l.nombre}`}>✕</button>
+              </div>
+            ))}
+            {(logos?.length || 0) < 4 && (
+              <button type="button" className="portada-logo portada-subir" onClick={() => inputLogo.current?.click()} disabled={subiendoLogo || !logos}><Icon name="plus" size={15} /><small>{subiendoLogo ? 'Subiendo…' : logos?.length ? 'Otra versión' : 'Subir logo'}</small></button>
+            )}
+            <input ref={inputLogo} type="file" accept="image/png,image/webp,image/jpeg" hidden onChange={(e) => { subirLogo(e.target.files?.[0]); e.target.value = ''; }} />
+          </div>
+          {logos && !logos.length && <div className="ayuda">Si tus portadas llevan el logo (de fondo o en una esquina), súbelo aquí en PNG sin fondo. Sin el archivo, JARVIS lo deja fuera en vez de inventárselo.</div>}
           <label className="campo-et">Título</label>
           <input className="campo" value={f.titulo} onChange={(e) => setF({ ...f, titulo: e.target.value })} placeholder="3 errores al contratar a tu primer setter" maxLength={160} />
           <label className="campo-et">Qué quieres</label>

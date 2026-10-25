@@ -499,6 +499,9 @@ export function createApp({ jarvis, archivos, miniaturas = null, estrategia = nu
     });
     app.post('/api/portadas/plantillas', express.raw({ type: () => true, limit: '25mb' }), h((req) => disenos.guardarPlantillaPortada({ id: String(req.query.id || ''), nombre: req.query.nombre, formato: req.query.formato, ext: String(req.query.nombre_archivo || '').split('.').pop(), datos: req.body }), true));
     app.delete('/api/portadas/plantillas/:id', h((req) => disenos.borrarPlantillaPortada(req.params.id), true));
+    app.get('/api/portadas/logos', h(() => ({ logos: disenos.logos() })));
+    app.post('/api/portadas/logos', express.raw({ type: () => true, limit: '12mb' }), h((req) => disenos.guardarLogo({ nombre: String(req.query.nombre_archivo || ''), datos: req.body }), true));
+    app.delete('/api/portadas/logos', h((req) => disenos.borrarLogo(String(req.query.path || '')), true));
     app.post('/api/portadas', h((req) => {
       const pid = Number(req.body?.pieza_id);
       const pieza = pid ? jarvis.listarPiezas().find((p) => p.id === pid) : req.body?.pieza || null;
