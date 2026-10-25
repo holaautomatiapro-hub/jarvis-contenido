@@ -1,4 +1,4 @@
-import { useState } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import Icon from '../components/Icon.jsx';
 import Sparkline from '../components/Sparkline.jsx';
 import { api, useRecurso } from '../lib/api.js';
@@ -9,6 +9,8 @@ import { redDe } from '../lib/redes.js';
 import { ParaProducir, TuSemana } from './inicio/Semana.jsx';
 import Actualizar from '../components/Actualizar.jsx';
 import ConectarClaudeCode from '../components/ConectarClaudeCode.jsx';
+import JarvisPresencia from '../components/JarvisPresencia.jsx';
+import { escuchar, reconocimientoDisponible } from '../lib/voz.js';
 
 function Kpi({ k, ir }) {
   const up = k.delta >= 0;
@@ -336,11 +338,22 @@ function AvisoInstagram() {
 
 export default function Inicio({ data, onAsk, acciones = {}, recargar = () => {} }) {
   const [q, setQ] = useState('');
+  const [escuchando, setEscuchando] = useState(false);
+  const [avisoVoz, setAvisoVoz] = useState('');
+  const escucha = useRef(null);
+  useEffect(() => () => escucha.current?.parar(), []);
   const submit = (text) => {
     const t = (text ?? q).trim();
     if (!t) return;
     onAsk?.(t);
     setQ('');
+  };
+  // Hablarle a JARVIS desde Inicio: lo que dices pasa al chat y te contesta allí
+  const micro = () => {
+    if (escuchando) { escucha.current?.parar(); return; }
+    setAvisoVoz('');
+    setEscuchando(true);
+    escucha.current = escuchar({ onParcial: setQ, onFinal: (t) => submit(t), onError: setAvisoVoz, onFin: () => setEscuchando(false) });
   };
   const allOn = data.sistema.length > 0 && data.sistema.every((s) => s.estado === 'on');
 
@@ -355,11 +368,16 @@ export default function Inicio({ data, onAsk, acciones = {}, recargar = () => {}
         </div>
 
         <div className="col">
-          <form className="ask ask-inicio panel" onSubmit={(e) => { e.preventDefault(); submit(); }}>
-            <Icon name="search" />
-            <input value={q} onChange={(e) => setQ(e.target.value)} placeholder={`${data.fecha ? diaLargo(data.fecha) : 'Hoy'} · Pregúntale a JARVIS lo que quieras…`} aria-label="Pregúntale a JARVIS" />
-            <button className="ask-send" type="submit" aria-label="Enviar"><Icon name="send" size={15} /></button>
-          </form>
+          <div className="panel hero jarvis-hero">
+            <JarvisPresencia estado={escuchando ? 'escuchando' : 'listo'} texto={avisoVoz || (escuchando ? (q ? `“${q}”` : 'Te escucho…') : 'Pregúntame, pídeme un guion o apunta una idea.')}
+              sub={data.fecha ? diaLargo(data.fecha) : 'Tu sistema operativo de contenido'} onMicro={micro} microDisponible={reconocimientoDisponible}>
+              <form className="ask ask-inicio" onSubmit={(e) => { e.preventDefault(); submit(); }}>
+                <Icon name="search" />
+                <input value={q} onChange={(e) => setQ(e.target.value)} placeholder="Pregúntale a JARVIS lo que quieras…" aria-label="Pregúntale a JARVIS" />
+                <button className="ask-send" type="submit" aria-label="Enviar"><Icon name="send" size={15} /></button>
+              </form>
+            </JarvisPresencia>
+          </div>
           <TuSemana semana={data.semana} recargar={recargar} ir={acciones.ir} />
           <div className="chips chips-inicio">
             <button className="chip" onClick={() => submit('¿Qué tengo que hacer hoy para no quedarme sin contenido?')}><Icon name="sparkle" />Qué hago hoy</button>
