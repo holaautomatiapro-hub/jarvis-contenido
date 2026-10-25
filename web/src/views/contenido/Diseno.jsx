@@ -346,8 +346,8 @@ export function DetalleDiseno({ d, kit, piezas, ig, progreso, onVisor, onAbrir, 
             </p>
           </div>
           <div className="diseno-botones">
-            <button className="btn btn-sec" onClick={() => exportar('jpg')} disabled={trabajando || Boolean(ocupado)}><Icon name="doc" size={14} />Imágenes (JPG){textoQue('jpg')}</button>
-            <button className="btn" onClick={() => exportar('mp4')} disabled={trabajando || Boolean(ocupado)}><Icon name="play" size={14} />Vídeo (MP4){textoQue('mp4')}</button>
+            <button className={`btn${anuncio && d.formato !== 'story' ? '' : ' btn-sec'}`} onClick={() => exportar('jpg')} disabled={trabajando || Boolean(ocupado)}><Icon name="doc" size={14} />Imágenes (JPG){textoQue('jpg')}</button>
+            <button className={`btn${anuncio && d.formato !== 'story' ? ' btn-sec' : ''}`} onClick={() => exportar('mp4')} disabled={trabajando || Boolean(ocupado)}><Icon name="play" size={14} />Vídeo (MP4){textoQue('mp4')}</button>
           </div>
         </div>
       )}
