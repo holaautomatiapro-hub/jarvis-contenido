@@ -1,6 +1,7 @@
 import { useState } from 'react';
 import Icon from '../components/Icon.jsx';
 import ChatJarvis from '../components/ChatJarvis.jsx';
+import Creativos from './ads/Creativos.jsx';
 import LineChart from '../components/charts/LineChart.jsx';
 import AnunciosCompetencia from './ads/AnunciosCompetencia.jsx';
 import Explorador from './ads/Explorador.jsx';
@@ -150,6 +151,7 @@ export default function Ads() {
           </div>
         )}
       </div>
+      <Creativos />
       <Explorador />
       <AnunciosCompetencia conectado={estado.conectado} />
     </section>

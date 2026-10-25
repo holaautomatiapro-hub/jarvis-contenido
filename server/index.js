@@ -487,6 +487,8 @@ export function createApp({ jarvis, archivos, miniaturas = null, estrategia = nu
   if (disenos) {
     app.get('/api/disenos', h(() => ({ kit: kit.estado(), disenos: disenos.listar() })));
     app.post('/api/disenos', h((req) => disenos.crear(req.body || {}), true));
+    // Meta Ads → Creativos: un diseño con la plantilla de anuncios de tu sistema
+    app.post('/api/anuncios/creativos', h((req) => disenos.crearAnuncio(req.body || {}), true));
     app.get('/api/disenos/:id', h((req) => disenos.obtener(req.params.id, { conDatos: req.query.datos === '1' })));
     // Lo usa guardar_diseno (MCP): guarda las diapositivas y devuelve la revisión de calidad
     app.put('/api/disenos/:id/datos', h((req) => disenos.guardarDatos(req.params.id, req.body || {}), true));
@@ -494,6 +496,7 @@ export function createApp({ jarvis, archivos, miniaturas = null, estrategia = nu
     if (fotosIa) {
       app.get('/api/fotos-ia', h(() => fotosIa.estado()));
       app.post('/api/fotos-ia', h((req) => fotosIa.generar(req.body || {})));
+      app.put('/api/fotos-ia/clave', h((req) => fotosIa.conectar(req.body || {})));
       app.put('/api/fotos-ia/identidad', h((req) => fotosIa.guardarIdentidad(req.body?.texto), true));
       app.get('/api/fotos-ia/:id', h((req) => fotosIa.ver(req.params.id)));
     }

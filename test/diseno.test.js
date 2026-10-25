@@ -30,6 +30,7 @@ const KIT = {
   plantillas: [
     { id: 'rejilla', nombre: 'Rejilla', formatos: ['carrusel', 'story'], ejemplo: 'ejemplos/rejilla.json', ejemplos: ['ejemplos/rejilla-2.json'] },
     { id: 'cine', nombre: 'Cine', formatos: ['carrusel'], cabecera: false, paginacion: false },
+    { id: 'anuncio', nombre: 'Anuncio', formatos: ['carrusel', 'story'], cabecera: false, paginacion: false, anuncio: true, guia: 'ANUNCIOS.md' },
   ],
   piezas: [{ archivo: 'piezas/cta.json', nombre: 'CTA de comentarios', descripcion: 'Post con comentarios' }, 'piezas/movil.json', { nada: 1 }],
   referencias: [{ archivo: 'referencias/plantilla-1.jpg', descripcion: 'Las 8 diapositivas' }],
@@ -63,7 +64,8 @@ describe('kit de diseño', () => {
     const e = kit.importar(zipDeKit());
     assert.equal(e.propio, true);
     assert.equal(e.nombre, 'Marca de prueba');
-    assert.deepEqual(e.plantillas.map((p) => p.id), ['rejilla', 'cine']);
+    assert.deepEqual(e.plantillas.map((p) => p.id), ['rejilla', 'cine', 'anuncio']);
+    assert.equal(e.plantillas[2].anuncio, true);
     assert.ok(existsSync(path.join(vault, '_diseno', 'GUIA.md')));
     assert.ok(!existsSync(path.join(vault, '_diseno', '__MACOSX')));
 
@@ -127,6 +129,7 @@ describe('diseños: API, exportar a la biblioteca y Claude', () => {
   // Motor sin navegador: devuelve imágenes y vídeos falsos
   const dibujadas = [];
   const exportadas = [];
+  const prompts = [];
   const motorFalso = {
     previsualizar: async (d, { solo } = {}) => {
       const ns = d.slides.map((_, i) => i + 1).filter((n) => !solo || solo.includes(n));
@@ -150,6 +153,7 @@ describe('diseños: API, exportar a la biblioteca y Claude', () => {
     kit.importar(zipDeKit());
     let disenos;
     const asistente = createAsistente({ db, jarvis, vaultPath: vault, emitir: (e) => disenos?.alEventoClaude(e), ejecutarImpl: (o) => {
+      prompts.push(o.prompt);
       // Claude falso: termina sin guardar nada
       queueMicrotask(() => { o.onEvento({ tipo: 'inicio', sesion: 's1' }); o.onEvento({ tipo: 'fin', texto: 'hecho', sesion: 's1' }); });
       return { cancelar() {}, terminado: Promise.resolve() };
@@ -209,6 +213,42 @@ describe('diseños: API, exportar a la biblioteca y Claude', () => {
     assert.ok(pieza.archivos.every((a) => a.mime === 'video/mp4'));
     assert.ok(viejos.every((p) => !archivos.existe(p)), 'los JPG anteriores se borran');
     assert.equal((await api(`/api/disenos/${d.id}/exportar`, { tipo: 'gif' })).status, 400);
+  });
+
+  test('creativos de anuncio: plantilla de anuncios, encargo propio y a la biblioteca como pieza «Anuncio»', async () => {
+    assert.equal((await api('/api/anuncios/creativos', { tipo: 'gif', brief: 'Un anuncio cualquiera' })).status, 400);
+    assert.match((await api('/api/anuncios/creativos', { tipo: 'imagen', brief: 'x' })).data.error, /Cuenta de qué va/);
+    const { status, data: d } = await api('/api/anuncios/creativos', { tipo: 'imagen', brief: 'Entrenadores que contestan mensajes todo el día', oferta: 'Prueba 14 días gratis', palabra: 'SETTER', variantes: 2, material: ['/api/contenido/archivos/2026-10/a.jpg', 'https://otra.web/x.jpg'] });
+    assert.equal(status, 200, JSON.stringify(d));
+    assert.equal(d.uso, 'anuncio');
+    assert.equal(d.plantilla, 'anuncio', 'usa la plantilla de anuncios aunque no se pida');
+    assert.equal(d.formato, 'carrusel');
+    await esperar(d.id, 'error'); // el Claude falso termina sin guardar
+    const p = prompts.at(-1);
+    assert.match(p, /^Diseña el creativo de anuncio #\d+/);
+    assert.match(p, /2 diapositivas, y cada una es un anuncio distinto/);
+    assert.match(p, /ANUNCIOS\.md/);
+    assert.match(p, /Prueba 14 días gratis/);
+    assert.match(p, /\/api\/contenido\/archivos\/2026-10\/a\.jpg/);
+    assert.doesNotMatch(p, /otra\.web/, 'solo material de la biblioteca');
+    assert.match(p, /Texto principal/);
+    // Un diseño normal nunca coge la plantilla de anuncios
+    const { data: normal } = await api('/api/disenos', { formato: 'story', guion: 'Stories normales', generar: false });
+    assert.equal(normal.plantilla, 'rejilla');
+    // Vídeo: 9:16, una diapositiva larga
+    const { data: v } = await api('/api/anuncios/creativos', { tipo: 'video', brief: 'Testimonio de Andrea con gráficos encima' });
+    assert.equal(v.formato, 'story');
+    await esperar(v.id, 'error');
+    assert.match(prompts.at(-1), /vídeo vertical 9:16/);
+    // Exportar: una pieza «Anuncio» con las variantes y los textos para Meta, en la carpeta Anuncios
+    await api(`/api/disenos/${d.id}/datos`, { caption: 'VARIANTE 1\nTexto principal: …', slides: [slide(1), slide(2)] }, 'PUT');
+    await api(`/api/disenos/${d.id}/exportar`, { tipo: 'jpg' });
+    const e = await esperar(d.id);
+    const pieza = jarvis.listarPiezas().find((x) => x.id === e.exportado.piezas[0]);
+    assert.equal(pieza.formato, 'Anuncio');
+    assert.equal(pieza.carpeta, 'Anuncios');
+    assert.equal(pieza.archivos.length, 2);
+    assert.match(pieza.caption, /Texto principal/);
   });
 
   test('editar una diapositiva: solo se dibuja esa y al exportar solo se saca y se sustituye esa', async () => {

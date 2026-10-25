@@ -5,7 +5,8 @@
 //   { "nombre", "handle", "verificado", "duracion": 7, "fps": 30, "guia": "CLAUDE.md",
 //     "css": ["estilos.css"], "fuentes": ["https://fonts.googleapis.com/css2?..."], "zonaSeguraStory": [250, 300],
 //     "plantillas": [{ "id", "nombre", "descripcion", "formatos": ["carrusel", "story"],
-//                      "cabecera": true, "paginacion": true, "ejemplo": "ejemplos/x.json", "ejemplos": ["ejemplos/y.json"] }],
+//                      "cabecera": true, "paginacion": true, "ejemplo": "ejemplos/x.json", "ejemplos": ["ejemplos/y.json"],
+//                      "anuncio": true, "guia": "ANUNCIOS.md" }],   ← plantilla de creativos para anuncios, con su guía
 //     "piezas": [{ "archivo": "piezas/cta-comentarios.json", "nombre", "descripcion" }],   ← trozos probados para reutilizar
 //     "referencias": [{ "archivo": "referencias/plantilla-1.jpg", "descripcion" }] }        ← imágenes para mirar con Read
 import path from 'node:path';
@@ -48,7 +49,7 @@ export function createKit({ vaultPath, ejemploDir = path.join(ROOT, 'diseno', 'k
     try {
       const k = leer();
       return { propio: k.propio, nombre: k.nombre, handle: k.handle, carpeta: k.propio ? CARPETA_KIT : null,
-        plantillas: k.plantillas.map(({ id, nombre, descripcion, formatos }) => ({ id, nombre, descripcion, formatos })) };
+        plantillas: k.plantillas.map(({ id, nombre, descripcion, formatos, anuncio }) => ({ id, nombre, descripcion, formatos, anuncio })) };
     } catch (e) {
       return { propio: true, error: e.message, plantillas: [] };
     }
@@ -103,6 +104,9 @@ function normalizar(d, { dir, propio }) {
       cabecera: p.cabecera !== false, paginacion: p.paginacion !== false,
       ejemplo: p.ejemplo ? String(p.ejemplo) : null,
       ejemplos: [...new Set([p.ejemplo, ...lista(p.ejemplos)].filter(Boolean).map(String))],
+      // Plantilla para creativos de anuncios (Meta Ads → Creativos), con su propia guía (reglas de anuncios, oferta, CTA)
+      anuncio: p.anuncio === true,
+      guia: p.guia ? String(p.guia) : null,
     };
   });
   // Piezas (trozos de diapositiva probados: un CTA, un móvil, un escenario…) e imágenes de referencia

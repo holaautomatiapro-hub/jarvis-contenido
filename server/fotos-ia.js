@@ -8,10 +8,12 @@ import { Readable } from 'node:stream';
 import { existsSync, readdirSync, readFileSync, statSync } from 'node:fs';
 import { createHash, randomBytes } from 'node:crypto';
 import { rutaFfmpeg } from './diseno/motor.js';
+import { guardarEnv } from './env-archivo.js';
 
 const SUBIR = 'https://kieai.redpandaai.co/api/file-base64-upload';
 const CREAR = 'https://api.kie.ai/api/v1/jobs/createTask';
 const INFO = 'https://api.kie.ai/api/v1/jobs/recordInfo';
+const CREDITOS = 'https://api.kie.ai/api/v1/chat/credit';
 export const MODELO_FOTOS = 'nano-banana-pro';
 export const FORMATOS_FOTO = ['4:5', '1:1', '9:16', '16:9', '3:4', '2:3', '3:2'];
 export const COSTE_FOTO_EUR = 0.12; // a 2K, aproximado
@@ -51,7 +53,7 @@ export async function aJpg(buf) {
   });
 }
 
-export function createFotosIa({ env = process.env, jarvis, archivos, ajustesDb, carpetaCara, fetchImpl = fetch, convertir = aJpg, esperaMs = 8000, primeraEsperaMs = 12_000, maxIntentos = 45, alCambiar = () => {}, log = () => {} }) {
+export function createFotosIa({ env = process.env, jarvis, archivos, ajustesDb, carpetaCara, fetchImpl = fetch, guardarClaves = (c) => guardarEnv(c), convertir = aJpg, esperaMs = 8000, primeraEsperaMs = 12_000, maxIntentos = 45, alCambiar = () => {}, log = () => {} }) {
   const trabajos = new Map();
   const clave = () => String(env.KIE_API_KEY || '').trim();
   const configurado = () => Boolean(clave());
@@ -73,7 +75,7 @@ export function createFotosIa({ env = process.env, jarvis, archivos, ajustesDb, 
   function estado() {
     const cara = fotosCara();
     return {
-      configurado: configurado(), modelo: MODELO_FOTOS, referencias: cara.length, maxReferencias: MAX_REFERENCIAS,
+      configurado: configurado(), final: configurado() ? `••••${clave().slice(-4)}` : null, modelo: MODELO_FOTOS, referencias: cara.length, maxReferencias: MAX_REFERENCIAS,
       fotosCara: cara.map((f) => ({ nombre: path.basename(f), ruta: `imagenes/_mi-cara/${path.basename(f)}` })),
       identidad: Boolean(identidad()), identidadTexto: identidad(), hoy: uso(), maxDia: maxDia(), costeAprox: COSTE_FOTO_EUR,
     };
@@ -174,6 +176,24 @@ export function createFotosIa({ env = process.env, jarvis, archivos, ajustesDb, 
     }
   }
 
+  // Pegar la clave desde el panel (sin entrar al servidor): se comprueba con Kie y se guarda en el .env
+  async function conectar({ clave: nueva } = {}) {
+    const c = String(nueva || '').trim();
+    if (!/^[A-Za-z0-9_-]{16,}$/.test(c)) throw new FotosIaError('Esa clave no parece de Kie AI (son letras y números, sin espacios)');
+    let creditos = null;
+    try {
+      const r = await fetchImpl(CREDITOS, { headers: { authorization: `Bearer ${c}` }, signal: AbortSignal.timeout(20_000) });
+      const j = await r.json().catch(() => null);
+      if (r.status === 401 || j?.code === 401) throw new FotosIaError('Kie AI no acepta esa clave. Cópiala otra vez de kie.ai → API Key.');
+      if (Number.isFinite(Number(j?.data))) creditos = Number(j.data);
+    } catch (e) {
+      if (e instanceof FotosIaError) throw e; // sin conexión: se guarda igual y se verá al generar
+    }
+    guardarClaves({ KIE_API_KEY: c });
+    env.KIE_API_KEY = c;
+    return { ...estado(), creditos };
+  }
+
   function generar({ descripcion, formato = '4:5', conmigo = false, cantidad = 1 } = {}) {
     if (!configurado()) throw new FotosIaError('Falta la clave de Kie AI: en el servidor, cd ~/JARVIS && npm run claves (KIE_API_KEY) y reinicia JARVIS.');
     const desc = String(descripcion || '').trim();
@@ -198,5 +218,5 @@ export function createFotosIa({ env = process.env, jarvis, archivos, ajustesDb, 
     return { id: t.id, descripcion, formato, conmigo, cantidad, estado: e, fotos, pieza_id, error, fallidas, segundos: Math.round(((t.fin || Date.now()) - inicio) / 1000) };
   }
 
-  return { configurado, estado, guardarIdentidad, generar, ver };
+  return { configurado, estado, conectar, guardarIdentidad, generar, ver };
 }
