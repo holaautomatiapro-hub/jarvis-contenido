@@ -267,6 +267,8 @@ export function EditorContenido({ pieza, carpetas, ig, onClose, onGuardado, onVi
     if (d.leadmagnet && d.leadmagnet_url && !/^https?:\/\//i.test(d.leadmagnet_url)) return setError('El enlace del lead magnet debe empezar por https://');
     const body = { ...d, categoria: d.categoria || null, pilar: d.pilar.trim() || null, objetivo: d.objetivo || null, gancho: d.gancho.trim() || null, cta: d.cta.trim() || null, ...(nueva && pieza.padre_id ? { padre_id: pieza.padre_id } : {}), ...(nueva && pieza.origen_ref ? { origen_ref: pieza.origen_ref } : {}), carpeta: d.carpeta || null, fecha: d.fecha || null, hora: d.hora || null, archivos, portada: esFormatoVideo(d.formato) ? portada : null, publicar_ig: ahora ? false : conIg ? d.publicar_ig : false, leadmagnet_url: d.leadmagnet ? d.leadmagnet_url.trim() || null : null };
     if (!conIg) delete body.publicar_ig;
+    // Elegir (o cambiar) su fase en la ficha la pone en el pipeline aunque no tenga fecha
+    if (d.estado !== (pieza.estado || 'idea') || (nueva && d.estado !== 'idea')) body.en_pipeline = true;
     try {
       await guion.current?.guardar();
       const r = nueva ? await api('/api/piezas', { method: 'POST', body }) : await api(`/api/piezas/${pieza.id}`, { method: 'PATCH', body });

@@ -21,14 +21,13 @@ export function EditorFases({ piezas = [], onClose, onGuardado }) {
   const subir = (i, d) => setLista((l) => {
     const n = [...l];
     const j = i + d;
-    // Idea siempre la primera y Publicado la última
-    if (j <= 0 || j >= n.length - 1) return l;
+    if (j < 0 || j >= n.length) return l;
     [n[i], n[j]] = [n[j], n[i]];
     return n;
   });
   const anadir = () => setLista((l) => {
     const n = [...l];
-    n.splice(n.length - 1, 0, { clave: `nueva-${Date.now()}`, label: 'Nueva fase', color: COLORES[(n.length + 2) % COLORES.length], icon: 'target', ayuda: '' });
+    n.splice(n.length, 0, { clave: `nueva-${Date.now()}`, label: 'Nueva fase', color: COLORES[(n.length + 2) % COLORES.length], icon: 'target', ayuda: '' });
     return n;
   });
   const borradas = actuales.filter((f) => !lista.some((x) => x.id === f.id));
@@ -47,15 +46,14 @@ export function EditorFases({ piezas = [], onClose, onGuardado }) {
 
   return (
     <Modal titulo={<><Icon name="layers" size={15} />Fases del pipeline</>} onClose={onClose} ancho={640} cerrarFuera={false}>
-      <p className="ayuda fases-intro">Añade, renombra, ordena o borra fases. <b>Idea</b>, <b>Listo</b> y <b>Publicado</b> las usa JARVIS (ideas nuevas, publicar en Instagram y Diseño): se pueden renombrar, pero no borrar.</p>
+      <p className="ayuda fases-intro">Añade, renombra, ordena (también arrastrando las columnas en el pipeline) o borra fases. <b>Idea</b>, <b>Listo</b> y <b>Publicado</b> las usa JARVIS (ideas nuevas, publicar en Instagram y Diseño): se pueden renombrar, pero no borrar.</p>
       <div className="fases-lista">
         {lista.map((f, i) => {
-          const fija = f.id === 'idea' || f.id === 'publicado';
           return (
             <div key={f.clave} className="fase-fila" style={{ '--c': f.color }}>
               <div className="fase-orden">
-                <button type="button" onClick={() => subir(i, -1)} disabled={fija || i <= 1} aria-label="Subir">▲</button>
-                <button type="button" onClick={() => subir(i, 1)} disabled={fija || i >= lista.length - 2} aria-label="Bajar">▼</button>
+                <button type="button" onClick={() => subir(i, -1)} disabled={i === 0} aria-label="Subir">▲</button>
+                <button type="button" onClick={() => subir(i, 1)} disabled={i === lista.length - 1} aria-label="Bajar">▼</button>
               </div>
               <button type="button" className="fase-icono" onClick={() => setAbierta(abierta === f.clave ? null : f.clave)} aria-label="Cambiar icono" title="Cambiar icono"><Icon name={f.icon} size={15} color={f.color} /></button>
               <div className="fase-campos">

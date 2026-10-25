@@ -118,7 +118,7 @@ export function buildServer(jarvis, { origen = 'claude', avisar = () => {}, inst
       padre_id: z.number().int().optional().describe('Si sale de otra pieza (p. ej. un clip de un vídeo largo o el carrusel de un reel), el id de esa pieza'),
       origen_ref: z.string().optional().describe('De dónde sale si no es de una pieza (p. ej. «Testimonio · Ana»)'),
     },
-    (a) => jarvis.crearPieza({ ...a, origen }), true);
+    (a) => jarvis.crearPieza({ ...a, origen, ...(a.estado && a.estado !== 'idea' ? { en_pipeline: true } : {}) }), true);
 
   tool('mover_pieza', 'Mueve una pieza a otra columna del pipeline o cambia sus datos.',
     {
@@ -136,7 +136,7 @@ export function buildServer(jarvis, { origen = 'claude', avisar = () => {}, inst
       ...estrategia,
       padre_id: z.number().int().nullable().optional().describe('Id de la pieza de la que sale (null para quitarlo)'),
     },
-    ({ id, ...cambios }) => jarvis.actualizarPieza(id, cambios, origen), true);
+    ({ id, ...cambios }) => jarvis.actualizarPieza(id, { ...cambios, ...(cambios.estado ? { en_pipeline: true } : {}) }, origen), true);
 
   tool('ver_pipeline', 'Fases del pipeline de contenido en orden (id y nombre). La persona las puede cambiar en el dashboard: usa siempre estos ids.', {},
     () => jarvis.pipeline.fases().map(({ id, label, ayuda, sistema }) => ({ id, nombre: label, ayuda, sistema })));

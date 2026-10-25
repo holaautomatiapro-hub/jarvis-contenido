@@ -6,7 +6,8 @@ import { celdasMes, diaCorto, diaLargo, hoyIso, mesDe, nombreMes, sumarMeses } f
 import { EditorFases } from './Fases.jsx';
 import { redDe } from '../../lib/redes.js';
 import { colorCategoria } from '../../lib/categorias.js';
-import { ChipEstado, MarcaLeadMagnet, Miniatura, useFases, Modal, esStory, estadoDe, objetivoDe, textoTipo, tipoDe } from './comun.jsx';
+import { ChipEstado, MarcaLeadMagnet, Miniatura, useFases, ponerFases, enPipeline, Modal, esStory, estadoDe, objetivoDe, textoTipo, tipoDe } from './comun.jsx';
+import { api } from '../../lib/api.js';
 
 const MAX_POR_DIA = 4;
 const DIAS = ['Lun', 'Mar', 'Mié', 'Jue', 'Vie', 'Sáb', 'Dom'];
@@ -285,17 +286,36 @@ function FilaDia({ p, redes, onAbrir }) {
 }
 
 // ---------- Pipeline (tablero por estados) ----------
-export function Pipeline({ piezas, onAbrir, onMover, onNuevaIdea, onBorrar }) {
+export function Pipeline({ piezas: todas, onAbrir, onMover: moverPieza, onNuevaIdea, onBorrar }) {
   const ESTADOS = useFases();
   const [sobre, setSobre] = useState(null);
   const [editandoFases, setEditandoFases] = useState(false);
+  const [aviso, setAviso] = useState('');
   const arrastrando = useRef(null);
+  const columna = useRef(null); // la columna que se está arrastrando (para cambiar el orden)
+  const piezas = useMemo(() => todas.filter(enPipeline), [todas]);
+  const soloBiblioteca = todas.length - piezas.length;
+  // Mover una pieza en el pipeline la deja en el pipeline aunque no tenga fecha
+  const onMover = (p, cambios) => moverPieza(p, { ...cambios, en_pipeline: true });
   const soltar = (estado) => (e) => {
     e.preventDefault();
     setSobre(null);
+    if (columna.current) { reordenar(columna.current, estado); columna.current = null; return; }
     const id = Number(e.dataTransfer.getData('text/plain') || arrastrando.current);
     const p = piezas.find((x) => x.id === id);
     if (p && p.estado !== estado) onMover(p, { estado });
+  };
+  // Arrastrar la cabecera de una columna sobre otra la pone en su sitio (el orden se guarda para todos)
+  const reordenar = async (desde, hasta) => {
+    if (desde === hasta) return;
+    const l = [...ESTADOS];
+    const j = l.findIndex((x) => x.id === hasta);
+    const [f] = l.splice(l.findIndex((x) => x.id === desde), 1);
+    l.splice(j, 0, f); // ocupa el sitio de la columna sobre la que la sueltas
+    const antes = ESTADOS;
+    ponerFases(l);
+    try { ponerFases(await api('/api/pipeline', { method: 'PUT', body: { fases: l.map(({ id, label, color, icon, ayuda }) => ({ id, label, color, icon, ayuda })), mover: {} } })); setAviso(''); }
+    catch (e) { ponerFases(antes); setAviso(`No se pudo cambiar el orden. ${e.message}`); }
   };
   return (
     <div className="panel panel-pad pipeline">
@@ -306,7 +326,9 @@ export function Pipeline({ piezas, onAbrir, onMover, onNuevaIdea, onBorrar }) {
           <button className="chip" onClick={onNuevaIdea}><Icon name="plus" />Nueva idea</button>
         </div>
       </div>
-      {editandoFases && <EditorFases piezas={piezas} onClose={() => setEditandoFases(false)} />}
+      <div className="ayuda pipeline-ayuda">Aquí sale lo que estás produciendo o tiene fecha. Arrastra una columna por su título para cambiarla de sitio.{soloBiblioteca > 0 && <> Hay {soloBiblioteca} {soloBiblioteca === 1 ? 'pieza' : 'piezas'} solo en la Biblioteca: salen aquí cuando les pones fecha o eliges su fase en la ficha.</>}</div>
+      {aviso && <div className="aviso error">{aviso}</div>}
+      {editandoFases && <EditorFases piezas={todas} onClose={() => setEditandoFases(false)} />}
       <div className="kanban" style={{ gridTemplateColumns: `repeat(${ESTADOS.length}, minmax(148px, 1fr))` }}>
         {ESTADOS.map((c, idx) => {
           const lista = piezas.filter((p) => p.estado === c.id).sort((a, b) => b.orden - a.orden || b.id - a.id);
@@ -319,7 +341,9 @@ export function Pipeline({ piezas, onAbrir, onMover, onNuevaIdea, onBorrar }) {
               onDragLeave={() => setSobre(null)}
               onDrop={soltar(c.id)}
             >
-              <div className="columna-head">
+              <div className="columna-head" draggable title="Arrastra para mover la columna"
+                onDragStart={(e) => { columna.current = c.id; e.dataTransfer.effectAllowed = 'move'; e.dataTransfer.setData('text/plain', `fase:${c.id}`); }}
+                onDragEnd={() => { columna.current = null; }}>
                 <Icon name={c.icon} size={13} color={c.color} />
                 <span>{c.label}</span>
                 <span className="cuenta">{lista.length}</span>
