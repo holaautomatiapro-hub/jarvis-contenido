@@ -560,6 +560,27 @@ export function buildServer(jarvis, { origen = 'claude', avisar = () => {}, inst
         }).passthrough()).min(1).max(20),
       },
       ({ id, ...datos }) => servidor('PUT', `/api/disenos/${id}/datos`, datos), true);
+    // Fotos con IA (Kie AI, nano-banana-pro): se encargan al dashboard y se espera aquí a que salgan (1-3 min)
+    tool('generar_foto', 'Genera una foto fotorrealista con IA (Kie AI, nano-banana-pro) y la guarda en la biblioteca (carpeta «Fotos con IA»); devuelve su url para ponerla tal cual en <img src> de un diseño. Úsala solo si no hay una foto real que sirva (listar_medios): el material real luce más. conmigo: true para que salga la persona con su cara (usa sus fotos de referencia). Cuesta dinero (~0,12 € por foto): pide 1 salvo que necesites elegir; como mucho 3 por diseño. Tarda 1-3 minutos. Mira la foto con Read antes de usarla (si la cara no es la suya, genera otra o no la uses).',
+      {
+        descripcion: z.string().describe('La escena en inglés, corta y concreta: dónde está, qué hace, qué lleva puesto, qué objetos hay, de dónde viene la luz y el tipo de foto. Termina con "sharp, shallow depth of field". Si va a llevar texto encima, di dónde dejar el hueco (p. ej. "the upper half is empty dark negative space for text").'),
+        conmigo: z.boolean().optional().describe('true si sale la persona (su cara)'),
+        formato: z.enum(['4:5', '1:1', '9:16', '16:9', '3:4', '2:3', '3:2']).optional().describe('Por defecto 4:5 (carrusel). 9:16 para stories; 16:9 para fotos que se recortan en una franja'),
+        cantidad: z.number().int().min(1).max(4).optional().describe('Variaciones (por defecto 1)'),
+      },
+      async (args) => {
+        const { id, costeAprox } = await servidor('POST', '/api/fotos-ia', args);
+        const hasta = Date.now() + 9 * 60_000;
+        for (;;) {
+          await new Promise((r) => setTimeout(r, diseno.cadaMs ?? 5000));
+          const t = await servidor('GET', `/api/fotos-ia/${id}`);
+          if (t.estado === 'listo') {
+            return { fotos: t.fotos.map(({ url, ruta }) => ({ url, ruta })), pieza_id: t.pieza_id, costeAprox, ...(t.fallidas ? { aviso: `${t.fallidas} no salieron` } : {}), como_mirarla: 'Lee con Read la ruta de cada foto para verla antes de usarla.' };
+          }
+          if (t.estado === 'error') throw new Error(t.error);
+          if (Date.now() > hasta) return { estado: 'generando', id, aviso: 'Sigue generándose: aparecerá en la biblioteca (carpeta «Fotos con IA»).' };
+        }
+      }, true);
     tool('ver_fotogramas_diseno', 'Dibuja una diapositiva ya guardada en varios momentos de su animación (por defecto a 1, 2,5 y 4 s) y devuelve las rutas de los JPG para mirarlos con Read. Úsalo para revisar la animación a mitad (textos que se cruzan al entrar, saltos, cosas que tapan a otras), no solo el final.',
       { id: z.number().int(), diapositiva: z.number().int().min(1), segundos: z.array(z.number().min(0).max(60)).max(6).optional() },
       ({ id, ...datos }) => servidor('POST', `/api/disenos/${id}/fotogramas`, datos));

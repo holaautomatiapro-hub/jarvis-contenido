@@ -88,3 +88,15 @@ Es el mismo que el de los `guion.json` de HyperFrames: lo que ya tengas hecho pa
 - `npm run doctor` te dice qué sistema de diseño está activo.
 
 **Seguridad**: cada diapositiva se dibuja en una página aislada. Solo puede cargar archivos del kit, GSAP, tus medios y Google Fonts, y no tiene acceso a la API de JARVIS.
+
+## Fotos con IA (Kie AI)
+
+Cuando un diseño necesita una foto que no tienes (una escena, tú en un sitio concreto), Claude la genera con **Kie AI** (modelo **nano-banana-pro**, el mismo que en Claude Code) con la herramienta `generar_foto`. Solo lo hace si no hay una foto real que sirva, como mucho 3 por diseño, y mira cada foto antes de usarla. Las fotos se guardan en la biblioteca, en la carpeta **Fotos con IA**.
+
+Para activarlo:
+1. Pon tu clave de Kie: en el servidor, `cd ~/JARVIS && npm run claves` (KIE_API_KEY) y reinicia con `sudo systemctl restart jarvis`.
+2. En **Laboratorio → Diseño → Fotos con IA**, sube tus fotos de referencia (hasta 8: cuerpo entero, medio cuerpo, cara de frente, de tres cuartos y de perfil). Con ellas sales tú con tu cara.
+3. Opcional: escribe ahí tus **correcciones** (en inglés): lo que la IA suele fallar contigo (color de ojos, pelo, barba, tatuajes…). Se guardan en la nota `_identidad-foto.md` de tu vault.
+4. Prueba con **Generar** antes de dejarlo en manos de Claude.
+
+Cuesta unos 0,12 € por foto (2K). Por defecto hay un máximo de 30 fotos al día; se cambia con `KIE_MAX_FOTOS_DIA` en `.env`.

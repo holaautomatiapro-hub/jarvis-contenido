@@ -2022,3 +2022,21 @@ button.est-boton:hover { background: color-mix(in srgb, var(--cat) 30%, transpar
 .pipeline-ayuda { margin: -4px 0 10px; }
 .columna-head[draggable="true"] { cursor: grab; }
 .columna-head[draggable="true"]:active { cursor: grabbing; }
+
+/* Fotos con IA (Laboratorio → Diseño) */
+.fotos-ia { display: flex; flex-direction: column; gap: 10px; }
+.fotos-ia-cab { display: grid; grid-template-columns: auto auto 1fr auto; align-items: center; gap: 10px; background: none; border: 0; padding: 0; color: inherit; text-align: left; cursor: pointer; font: inherit; }
+.fotos-ia-cab small { color: var(--dim); font-size: 12px; }
+.fotos-ia-flecha { display: inline-flex; transform: rotate(90deg); transition: transform .2s; }
+.fotos-ia-flecha.on { transform: rotate(-90deg); }
+.fotos-ia-cuerpo { display: flex; flex-direction: column; gap: 8px; margin-top: 6px; }
+.fotos-ia-caras { display: flex; flex-wrap: wrap; gap: 8px; }
+.fotos-ia-cara { position: relative; width: 72px; height: 90px; border-radius: 10px; background: var(--panel-2, rgba(255,255,255,.04)) center / cover no-repeat; border: 1px solid var(--line, rgba(255,255,255,.1)); }
+.fotos-ia-cara button { position: absolute; top: 4px; right: 4px; width: 20px; height: 20px; border-radius: 50%; border: 0; background: rgba(0,0,0,.6); color: #fff; display: grid; place-items: center; padding: 0; cursor: pointer; }
+.fotos-ia-cara.mas { display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 4px; color: var(--dim); font-size: 12px; cursor: pointer; }
+.fotos-ia-fila { display: flex; flex-wrap: wrap; align-items: center; gap: 10px; }
+.fotos-ia-fila select { width: auto; }
+.fotos-ia-check { display: inline-flex; align-items: center; gap: 6px; font-size: 13px; }
+.fotos-ia-resultado { display: flex; flex-wrap: wrap; gap: 8px; }
+.fotos-ia-resultado img { width: 160px; border-radius: 10px; display: block; }
+@media (max-width: 640px) { .fotos-ia-cab { grid-template-columns: auto 1fr auto; } .fotos-ia-cab small { grid-column: 1 / -1; grid-row: 2; } }

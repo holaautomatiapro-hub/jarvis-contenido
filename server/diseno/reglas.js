@@ -28,6 +28,7 @@ Reglas técnicas (si no se cumplen, el vídeo sale mal):
 - Las entradas, en los primeros 4-5 s; al final todo quieto y legible (el JPG y la vista previa son el último fotograma).
   Los vaivenes suaves (yoyo) pueden seguir hasta el final.
 - Sin recursos de internet. Imágenes y vídeos: los de la biblioteca (listar_medios → url, tal cual) o los del kit (ruta relativa al kit).
+  Si hace falta una foto que no existe (una escena, la persona en un sitio concreto), generar_foto la crea con IA y devuelve su url.
   Vídeos: <video src="…" muted playsinline data-start="0"></video> (el motor los sincroniza). data-start: segundo de la diapositiva en
   que empieza; data-from: segundo del vídeo desde el que se ve (para usar solo un trozo, p. ej. data-from="95.5").
   Con sonido: añade data-audio (o data-audio="0.8" para bajarlo): al exportar en MP4 se oye ese trozo del vídeo. Uno por diapositiva.
