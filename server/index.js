@@ -46,6 +46,8 @@ import { createPreferencias, AMBITOS } from './preferencias.js';
 import { createActualizar } from './actualizar.js';
 import { createConversiones } from './convertir.js';
 import { ENV_PATH, vigilarEnv } from './env-archivo.js';
+import { createTelegram } from './telegram.js';
+import { createConfirmacionesIg } from './confirmar-ig.js';
 
 dotenv.config({ path: path.join(ROOT, '.env'), quiet: true });
 
@@ -54,7 +56,7 @@ const DIST = path.join(ROOT, 'web', 'dist');
 // Replicar con diseño de carruseles o stories: lo hace Opus, como en Diseño
 const modeloReplicar = (formatos, disenar) => { try { return seDisena(normalizarFormatos(formatos), disenar) ? 'opus' : undefined; } catch { return undefined; } };
 
-export function createApp({ jarvis, archivos, miniaturas = null, estrategia = null, stories = null, acceso = null, publicadorIg, asistente, instagram, competencia, ads, publicar, hermes, jobs, kit, disenos, recordatorios, laboratorio, resultados, adjuntos, preferencias, actualizar, conversiones, port, onChange = () => {}, status, tts = sintetizar }) {
+export function createApp({ jarvis, archivos, miniaturas = null, estrategia = null, stories = null, acceso = null, publicadorIg, asistente, instagram, competencia, ads, publicar, hermes, jobs, kit, disenos, recordatorios, laboratorio, resultados, adjuntos, preferencias, actualizar, conversiones, confirmacionesIg = null, port, onChange = () => {}, status, tts = sintetizar }) {
   const estadoSistema = status || (() => systemStatus({ vaultPath: jarvis.vault.base, instagram: Boolean(instagram?.estado().conectado), ads: Boolean(ads?.estado().conectado && ads?.estado().cuenta), hermes: Boolean(hermes?.estado().gateway.online) }));
   const app = express();
 
@@ -177,6 +179,13 @@ export function createApp({ jarvis, archivos, miniaturas = null, estrategia = nu
       return { ...r, ...(publicadorIg?.reactivar() || {}) };
     }), true));
     app.post('/api/instagram/desconectar', h(() => instagram.desconectar(), true));
+    // Publicar desde Telegram con tu confirmación (código de un solo uso que te llega por Telegram)
+    if (confirmacionesIg) {
+      app.post('/api/instagram/confirmacion', h((req) => confirmacionesIg.solicitar(req.body || {})));
+      app.post('/api/instagram/confirmacion/confirmar', h((req) => confirmacionesIg.confirmar(req.body || {}), true));
+      app.post('/api/instagram/confirmacion/cancelar', h((req) => confirmacionesIg.cancelar(req.body || {}), true));
+      app.get('/api/instagram/programadas', h(() => confirmacionesIg.programadas()));
+    }
     app.post('/api/instagram/sincronizar', h(conMensaje(() => {
       if (!instagram.estado().conectado) throw new Error('Instagram no está conectado');
       jobs?.sincronizarAhora(); // en segundo plano; el progreso llega por WebSocket
@@ -915,7 +924,13 @@ function main() {
   const jobs = createJobs({ instagram, competencia, ads, asistente, resultados, skills: createSkills(cfg.vaultPath), vault: jarvis.vault, ajustesDb: ajustes(db) });
   jobs.iniciar();
   const hermes = createHermes({ vaultPath: cfg.vaultPath, mcpScript: cfg.mcpScript });
-  const publicadorIg = createPublicadorIg({ db, jarvis, instagram, almacen: createAlmacen({}), archivos, alCambiar: onChange });
+  // Telegram: el mismo bot de Hermes, solo para mandarte el código de confirmación y avisarte cuando algo sale
+  const telegram = createTelegram({});
+  const publicadorIg = createPublicadorIg({ db, jarvis, instagram, almacen: createAlmacen({}), archivos, alCambiar: onChange,
+    alPublicar: ({ pieza, ok, permalink, error }) => telegram.configurado() && telegram.enviar(ok
+      ? `✅ Publicado en Instagram: «${pieza.titulo}»${permalink ? `\n${permalink}` : ''}`
+      : `⚠️ No se ha podido publicar «${pieza.titulo}» en Instagram: ${error}\nÁbrela en JARVIS (Contenido) para reintentarlo.`) });
+  const confirmacionesIg = createConfirmacionesIg({ db, jarvis, publicadorIg, telegram, archivos });
   publicadorIg.iniciar();
   const kit = createKit({ vaultPath: cfg.vaultPath, copiasDir: path.join(path.dirname(cfg.dbPath), 'kits-anteriores') });
   const motor = createMotor({ kit, archivos, log: (m) => console.log(`  [Diseño] ${m}`) });
@@ -937,7 +952,7 @@ function main() {
   }
   const estrategia = createEstrategia({ db, jarvis });
   stories = createStories({ db, jarvis, asistente, alCambiar: onChange });
-  const server = createServer(createApp({ jarvis, archivos, miniaturas, estrategia, stories, acceso, publicadorIg, asistente, instagram, competencia, ads, publicar, hermes, jobs, kit, disenos, recordatorios, laboratorio, resultados, adjuntos, preferencias, actualizar, conversiones, port: cfg.port, onChange }));
+  const server = createServer(createApp({ jarvis, archivos, miniaturas, estrategia, stories, acceso, publicadorIg, asistente, instagram, competencia, ads, publicar, hermes, jobs, kit, disenos, recordatorios, laboratorio, resultados, adjuntos, preferencias, actualizar, conversiones, confirmacionesIg, port: cfg.port, onChange }));
   // Solo el propio dashboard puede escuchar los eventos (otra web abierta en el navegador, no)
   const local = hostsPermitidos(cfg.port);
   wss = new WebSocketServer({ server, path: '/ws', verifyClient: ({ origin, req }) => local.has(req.headers.host) && (!origin || local.has(origin.replace(/^https?:\/\//, ''))) && acceso.autorizado(req) });

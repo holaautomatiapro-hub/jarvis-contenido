@@ -7,7 +7,8 @@ import { row, rows } from '../db.js';
 import { prepararVideoIg } from './video-ig.js';
 
 // Publica en Instagram, con la API oficial, las piezas que TÚ marcas en el dashboard
-// («Publicar sola en Instagram» o «Publicar ahora»). Nada más puede activarlo: ni Hermes ni Claude Code.
+// («Publicar sola en Instagram» o «Publicar ahora»), o las que confirmas desde Telegram con el código de un solo uso
+// que te manda JARVIS (confirmar-ig.js). Ni Hermes ni Claude Code pueden activarlo por su cuenta.
 //
 // Pasos (se guardan en ig_contenedor para poder seguir si JARVIS se cierra a medias):
 //   1. subir los archivos a Supabase (Instagram los descarga de un enlace público)
@@ -20,7 +21,7 @@ export class PublicarError extends Error {}
 
 const MINUTO = 60000;
 
-export function createPublicadorIg({ db, jarvis, instagram, almacen, archivos, fetchImpl = fetch, alCambiar = () => {}, ahora = () => new Date(), dormir = (ms) => new Promise((ok) => setTimeout(ok, ms)), esperaMax = 10 * MINUTO, cadaCuanto = 5000, log = console, prepararVideo = prepararVideoIg }) {
+export function createPublicadorIg({ db, jarvis, instagram, almacen, archivos, fetchImpl = fetch, alCambiar = () => {}, ahora = () => new Date(), dormir = (ms) => new Promise((ok) => setTimeout(ok, ms)), esperaMax = 10 * MINUTO, cadaCuanto = 5000, log = console, prepararVideo = prepararVideoIg, alPublicar = () => {} }) {
   const q = {
     get: db.prepare('SELECT * FROM piezas WHERE id = ?'),
     pendientes: db.prepare("SELECT * FROM piezas WHERE publicar_ig = 1 AND (ig_estado IS NULL OR ig_estado = 'procesando') ORDER BY fecha, hora, id"),
@@ -183,6 +184,9 @@ export function createPublicadorIg({ db, jarvis, instagram, almacen, archivos, f
     return { listo: true, permalink };
   }
 
+  // Aviso de que ha salido (o ha fallado), p. ej. por Telegram. Si el aviso falla, la publicación no se entera.
+  const avisar = (d) => { try { Promise.resolve(alPublicar(d)).catch(() => {}); } catch { /* sin aviso */ } };
+
   // Lo que toca publicar: lo marcado cuya hora ya llegó, y lo que estaba a medias
   let trabajando = false;
   async function revisar() {
@@ -198,11 +202,14 @@ export function createPublicadorIg({ db, jarvis, instagram, almacen, archivos, f
         const p = leer(fila.id);
         try {
           const r = await procesar(p);
-          if (r.listo) publicadas++;
+          if (r.listo) { publicadas++; avisar({ pieza: p, ok: true, permalink: r.permalink || null }); }
         } catch (e) {
           const conocido = e instanceof MetaError || e instanceof AlmacenError || e instanceof PublicarError;
           if (e.reiniciar) set(p.id, { ig_contenedor: null, ig_estado: null });
-          else set(p.id, { ig_estado: 'error', ig_error: conocido ? e.message : `Error inesperado: ${e.message}` });
+          else {
+            set(p.id, { ig_estado: 'error', ig_error: conocido ? e.message : `Error inesperado: ${e.message}` });
+            avisar({ pieza: p, ok: false, error: conocido ? e.message : 'error inesperado (mira los registros de JARVIS)' });
+          }
           log.warn?.(`  Instagram · «${p.titulo}»: no se pudo publicar: ${e.message}`);
           if (!conocido) log.warn?.(`  Instagram (publicar): ${e.stack || e.message}`);
           if (e instanceof MetaError && e.caducado) { instagram?.marcarCaducada?.(e.message); alCambiar(); break; }
