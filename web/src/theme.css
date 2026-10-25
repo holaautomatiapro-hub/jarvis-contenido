@@ -2017,3 +2017,8 @@ button.est-boton:hover { background: color-mix(in srgb, var(--cat) 30%, transpar
 .menu-jarvis-lista button .tag { margin-left: auto; background: color-mix(in srgb, var(--orange) 22%, transparent); color: var(--orange); }
 .menu-jarvis-nombre { font-size: 11px; color: var(--muted); padding: 6px 10px 4px; }
 .modal .actualizar, .conectar-cc.fijo { background: none; border: 0; box-shadow: none; padding: 0; margin: 0; }
+
+/* Pipeline: ayuda y columnas que se arrastran por su título */
+.pipeline-ayuda { margin: -4px 0 10px; }
+.columna-head[draggable="true"] { cursor: grab; }
+.columna-head[draggable="true"]:active { cursor: grabbing; }

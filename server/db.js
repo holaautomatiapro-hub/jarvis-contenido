@@ -279,6 +279,9 @@ export function openDb(file) {
   migrar('ALTER TABLE piezas ADD COLUMN guion_nota TEXT');
   // El botón de la estrategia que cubre la pieza (LM, Viral, Educar, Testimonio…)
   migrar('ALTER TABLE piezas ADD COLUMN categoria TEXT');
+  // La pieza está en el pipeline porque la pusiste tú (moviéndola o eligiendo su fase): lo que solo está en la
+  // biblioteca (subidas, Laboratorio, Diseño, el conector de Claude) no sale en el pipeline hasta que tenga fecha o la muevas
+  migrar('ALTER TABLE piezas ADD COLUMN en_pipeline INTEGER DEFAULT 0');
   // La plantilla de semana que se puso en esa semana (su nombre)
   migrar('ALTER TABLE estrategia_semanas ADD COLUMN plantilla TEXT');
   // Guiones de stories (Laboratorio → Stories): de un carrusel, un reel o un tema; después se diseñan con el kit

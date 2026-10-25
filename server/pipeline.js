@@ -75,8 +75,8 @@ export function createPipeline({ db }) {
       };
     });
     for (const s of FASES_SISTEMA) if (!usados.has(s)) throw new PipelineError(`La fase «${etiqueta(s)}» es del sistema y no se puede borrar (sí renombrar)`);
-    // Idea siempre al principio y Publicado al final
-    const ordenadas = [nuevas.find((f) => f.id === 'idea'), ...nuevas.filter((f) => f.id !== 'idea' && f.id !== 'publicado'), nuevas.find((f) => f.id === 'publicado')];
+    // En el orden que elijas (cualquier columna se puede mover)
+    const ordenadas = nuevas;
 
     const borradas = ids().filter((id) => !usados.has(id));
     for (const id of borradas) {

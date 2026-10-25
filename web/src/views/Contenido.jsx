@@ -3,7 +3,7 @@ import Icon from '../components/Icon.jsx';
 import { api, useRecurso } from '../lib/api.js';
 import { hoyIso } from '../lib/fechas.js';
 import { useIr } from '../lib/ir.js';
-import { useFases } from './contenido/comun.jsx';
+import { useFases, enPipeline } from './contenido/comun.jsx';
 import { BancoIdeas, Calendario, Pipeline } from './contenido/Vistas.jsx';
 import { Biblioteca } from './contenido/Biblioteca.jsx';
 import { EditorContenido, ProgramarContenido, Visor } from './contenido/Editor.jsx';
@@ -58,7 +58,7 @@ export default function Contenido({ onCaptura }) {
     try { const copia = await api(`/api/piezas/${p.id}/duplicar`, { method: 'POST' }); setProgramando({ p: copia }); recargar(); }
     catch (e) { setAviso(`No se pudo copiar la pieza. ${e.message}`); }
   }, [recargar]);
-  const cuenta = (e) => piezas.filter((p) => p.estado === e).length;
+  const cuenta = (e) => piezas.filter((p) => p.estado === e && enPipeline(p)).length;
 
   // Cambio optimista (estado o fecha): se ve al momento y, si falla, se deshace
   const mover = useCallback(async (p, cambios) => {
