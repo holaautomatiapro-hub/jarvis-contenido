@@ -205,6 +205,13 @@ describe('MCP', () => {
     assert.equal(r.cuenta, '@automatia');
     assert.equal(r.datosDeEjemplo, false);
     assert.equal(r.piezas[0].id, 'm1');
+    assert.equal(r.totalPiezas, r.piezas.length);
+    const top = JSON.parse((await c.callTool({ name: 'metricas_instagram', arguments: { orden: 'comentarios', limite: 1 } })).content[0].text);
+    assert.equal(top.piezas.length, 1);
+    assert.equal(top.piezas[0].comentarios, Math.max(...r.piezas.map((p) => p.comentarios ?? -1)));
+    assert.ok('meGusta' in top.piezas[0]);
+    const busca = JSON.parse((await c.callTool({ name: 'metricas_instagram', arguments: { buscar: 'whatsapps' } })).content[0].text);
+    assert.deepEqual(busca.piezas.map((p) => p.id), ['m1']);
     const e = JSON.parse((await c.callTool({ name: 'etiquetar_publicaciones', arguments: { etiquetas: [{ id: 'm3', tema: 'Mentalidad' }] } })).content[0].text);
     assert.equal(e.etiquetadas, 1);
     assert.equal(ig.sinTema().length, 0);

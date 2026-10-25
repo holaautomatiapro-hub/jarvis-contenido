@@ -140,3 +140,21 @@ test('si fallan las métricas de la cuenta, las publicaciones se guardan y se av
   assert.equal(r.ok, true);
   assert.equal(ig.estado().error, null);
 });
+
+test('una sincronización que no trae me gusta ni comentarios no borra los que ya había', async () => {
+  const validos = new Set(['media_id', 'timestamp', 'media_type', 'media_reach', 'media_like_count', 'media_comments_count', 'media_saved', 'date', 'reach']);
+  const filas = {
+    media: [{ media_id: '333', timestamp: `${dia(3)}T10:00:00+0000`, media_type: 'CAROUSEL_ALBUM', media_reach: 400, media_like_count: 30, media_comments_count: 65, media_saved: 15 }],
+    cuenta: [{ date: dia(1), reach: 500 }],
+    historias: [],
+  };
+  const { fetchImpl } = windsorFalso({ validos, filas });
+  const db = openDb(':memory:');
+  const ig = createInstagram({ db, vault: null, env: { WINDSOR_API_KEY: 'clave-windsor-123456' }, fetchImpl });
+  await ig.sincronizar({ transcribir: false });
+  filas.media[0] = { ...filas.media[0], media_like_count: null, media_comments_count: null };
+  await ig.sincronizar({ transcribir: false });
+  const p = ig.resumen({ dias: 30 }).piezas.find((x) => x.id === '333');
+  assert.equal(p.comentarios, 65);
+  assert.equal(p.likes, 30);
+});
