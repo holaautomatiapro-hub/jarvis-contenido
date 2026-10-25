@@ -162,7 +162,7 @@ export function createDisenos({ db, jarvis, kit, motor, archivos = null, previas
 - Formato: ${f.nombre.toLowerCase()} (${f.ancho}×${f.alto} px)
 - Plantilla: ${pl?.nombre || r.plantilla} (id "${r.plantilla}")
 - Título: ${r.titulo}
-${indicaciones ? `- Indicaciones de la persona: ${String(indicaciones).slice(0, 2000)}\n` : ''}${r.formato === 'story' && tieneEstiloStories() ? `- Mi guía de estilo de stories está en ${ESTILO_STORIES}: léela con Read antes de diseñar y síguela en lo visual (colores, letras, composición, dónde va cada cosa); manda sobre el ejemplo de la plantilla.\n` : ''}${r.formato === 'story' && ejemplosStories(jarvis.vault).length ? `- Mis stories de ejemplo (míralas TODAS con Read antes de diseñar y copia su estilo visual: composición, tipografías, tamaños, colores, fondos, dónde va el texto, cómo uso fotos y stickers; que las nuevas parezcan de la misma cuenta): ${ejemplosStories(jarvis.vault).map((e) => e.ruta).join(', ')}\n` : ''}- Guion${r.nota ? ` (nota ${r.nota})` : ''}:
+${indicaciones ? `- Indicaciones de la persona: ${String(indicaciones).slice(0, 2000)}\n` : ''}${r.formato === 'story' && tieneEstiloStories() ? `- Mi guía de estilo de stories está en ${ESTILO_STORIES}: léela con Read antes de diseñar y síguela en lo visual (colores, letras, composición, dónde va cada cosa); manda sobre el ejemplo de la plantilla.\n` : ''}${instruccionLogo()}${r.formato === 'story' && ejemplosStories(jarvis.vault).length ? `- Mis stories de ejemplo (míralas TODAS con Read antes de diseñar y copia su estilo visual: composición, tipografías, tamaños, colores, fondos, dónde va el texto, cómo uso fotos y stickers; que las nuevas parezcan de la misma cuenta): ${ejemplosStories(jarvis.vault).map((e) => e.ruta).join(', ')}\n` : ''}- Guion${r.nota ? ` (nota ${r.nota})` : ''}:
 """
 ${r.guion}
 """
@@ -241,6 +241,73 @@ Pasos: 1) ver_kit_diseno; 2) lee con Read la guía del kit y el ejemplo de esta 
     emitir({ type: 'portada', diseno: id, pieza: pieza.id, titulo: pieza.titulo, archivo, comoPortada });
     avisar(id);
     return archivo;
+  }
+
+  // ---------- Tu logo ----------
+  // El logo de la marca va SIEMPRE como imagen (el archivo real): si Claude lo dibuja copiándolo de una referencia,
+  // sale deformado. Se suben en «Generar portada» (se guardan en la biblioteca y se apuntan en .jarvis/portadas/logos.json)
+  // y también valen los que haya en el sistema de diseño (archivos con «logo» en el nombre).
+  const logosIndice = path.join(portadasDir, 'logos.json');
+  const MAX_LOGOS = 4;
+  function logos() {
+    let l = [];
+    try { l = JSON.parse(readFileSync(logosIndice, 'utf8')); } catch { /* ninguno */ }
+    return (Array.isArray(l) ? l : []).filter((x) => x?.path && x?.url && (!archivos || archivos.existe(x.path)));
+  }
+  async function guardarLogo({ nombre, datos }) {
+    if (!archivos) throw new DisenoError('La biblioteca no está disponible');
+    if (!Buffer.isBuffer(datos) || !datos.length) throw new DisenoError('Sube el archivo de tu logo');
+    if (datos.length > 10 * 1024 ** 2) throw new DisenoError('El logo pesa más de 10 MB');
+    const e = String(nombre || '').split('.').pop().toLowerCase().replace('jpeg', 'jpg');
+    if (!['png', 'webp', 'jpg'].includes(e)) throw new DisenoError('Sube el logo en PNG (mejor sin fondo), WebP o JPG');
+    const actuales = logos();
+    if (actuales.length >= MAX_LOGOS) throw new DisenoError(`Como mucho ${MAX_LOGOS} versiones del logo: quita alguna`);
+    const a = await archivos.guardar(Readable.from([datos]), { nombre: String(nombre || `logo.${e}`).slice(0, 120), mime: '' });
+    mkdirSync(portadasDir, { recursive: true });
+    writeFileSync(logosIndice, JSON.stringify([...actuales, { path: a.path, url: a.url, nombre: a.nombre, mime: a.mime }], null, 2));
+    return { logos: logos() };
+  }
+  function borrarLogo(rel) {
+    const actuales = logos();
+    const quitado = actuales.find((x) => x.path === rel);
+    if (!quitado) throw new DisenoError('Ese logo ya no está');
+    writeFileSync(logosIndice, JSON.stringify(actuales.filter((x) => x !== quitado), null, 2));
+    archivos?.borrar(quitado.path);
+    return { logos: logos() };
+  }
+  // Los del sistema de diseño: se ponen con una ruta relativa (las diapositivas cargan el kit como base)
+  function logosDelKit() {
+    let k;
+    try { k = kit.leer(); } catch { return []; }
+    if (!k.propio) return [];
+    const out = [];
+    const buscar = (dir, rel, nivel) => {
+      let lista = [];
+      try { lista = readdirSync(dir, { withFileTypes: true }); } catch { return; }
+      for (const d of lista) {
+        if (out.length >= 6 || d.name.startsWith('.') || d.name === 'node_modules') continue;
+        const r = rel ? `${rel}/${d.name}` : d.name;
+        if (d.isDirectory() && nivel < 3) buscar(path.join(dir, d.name), r, nivel + 1);
+        else if (d.isFile() && /logo/i.test(r) && /\.(png|webp|jpe?g|svg)$/i.test(d.name)) out.push(r);
+      }
+    };
+    buscar(k.dir, '', 0);
+    return out;
+  }
+  // La instrucción para Claude (en portadas y en diseños)
+  function instruccionLogo({ referencia = false } = {}) {
+    const subidos = logos().map((x) => `${x.url} (${x.nombre})`);
+    const delKit = logosDelKit().map((r) => `${r} (del sistema de diseño)`);
+    const todos = [...subidos, ...delKit];
+    const nunca = 'NUNCA lo dibujes ni lo imites con SVG, CSS, formas, trazos o letras';
+    if (todos.length) {
+      return `- Mi logo: usa SIEMPRE el archivo real con <img src> (${nunca}): ${todos.join(', ')}. ${referencia
+        ? 'Si la referencia lleva el logo (de fondo, como marca de agua, en una esquina o junto al nombre), pon este archivo en el mismo sitio, con el mismo tamaño, recorte, giro, opacidad y color que allí'
+        : 'Ponlo solo donde lo pida la guía o la plantilla (si la plantilla ya lo trae, déjalo como está)'}; para cambiarle el color o aclararlo usa CSS sobre la imagen (opacity, filter: brightness(0) invert(1), mix-blend-mode, mask-image con degradado). Si hay varias versiones, elige la que mejor se vea sobre el fondo.\n`;
+    }
+    return referencia
+      ? `- Si la referencia lleva un logo o símbolo de marca, ${nunca}: déjalo fuera (si al lado va el nombre de la marca en texto, ese sí), y al terminar avisa de que puedo subir mi logo en «Generar portada» para que salga exacto.\n`
+      : `- Logo: si la plantilla del kit ya lo trae, déjalo como está; si no, ${nunca}: sin el archivo, pon solo el nombre de la marca en texto.\n`;
   }
 
   // ---------- Portadas (desde una pieza: «Generar portada») ----------
@@ -334,8 +401,8 @@ Pasos: 1) ver_kit_diseno; 2) lee con Read la guía del kit y el ejemplo de esta 
 - Título: ${tit}
 ${desc ? `- Qué quiero: ${desc}\n` : ''}${f ? (recortada
       ? `- Foto (YA SIN FONDO, PNG transparente con la persona recortada; ponla tal cual en <img src>): ${f.url}. Colócala como la persona de la referencia (mismo tamaño, posición y encuadre, con el mismo resplandor o luz detrás y el mismo fundido abajo), nunca dentro de un recuadro ni con fondo.\n`
-      : `- Foto que quiero usar (ponla tal cual en <img src>): ${f.url}.${sinFondo !== false ? ' Tiene fondo: intégrala lo más parecido a la referencia (sin recuadro; difumina sus bordes con una máscara o degradado hacia el fondo).' : ''}\n`) : ''}${pieza?.titulo ? `- Es la portada de la pieza «${pieza.titulo}» (${pieza.formato || 'pieza'}).${medios.length ? ` Sus archivos (puedes usar una foto o un fotograma de un vídeo si encaja): ${medios.join(', ')}` : ''}\n` : ''}
-Cómo: reproduce la referencia lo más fiel posible: misma composición y jerarquía, mismas tipografías (o las más parecidas de Google Fonts), mismos colores, mismos efectos (brillos, resplandores, degradados, fondos), mismo tipo de comillas, subrayados y marca; solo cambian el texto${f ? ' y la foto' : ''}. Si en «Qué quiero» pido algo distinto (por ejemplo, fondo blanco con letras negras), eso manda sobre la referencia. Usa la plantilla "${pl.id}" del kit solo como soporte técnico (tamaño, fuentes y CSS base); el aspecto es el de la referencia. Sin paginación ni cierre.
+      : `- Foto que quiero usar (ponla tal cual en <img src>): ${f.url}.${sinFondo !== false ? ' Tiene fondo: intégrala lo más parecido a la referencia (sin recuadro; difumina sus bordes con una máscara o degradado hacia el fondo).' : ''}\n`) : ''}${instruccionLogo({ referencia: true })}${pieza?.titulo ? `- Es la portada de la pieza «${pieza.titulo}» (${pieza.formato || 'pieza'}).${medios.length ? ` Sus archivos (puedes usar una foto o un fotograma de un vídeo si encaja): ${medios.join(', ')}` : ''}\n` : ''}
+Cómo: reproduce la referencia lo más fiel posible: misma composición y jerarquía, mismas tipografías (o las más parecidas de Google Fonts), mismos colores, mismos efectos (brillos, resplandores, degradados, fondos), mismo tipo de comillas, subrayados y marca (el logo, con su archivo: nunca dibujado); solo cambian el texto${f ? ' y la foto' : ''}. Si en «Qué quiero» pido algo distinto (por ejemplo, fondo blanco con letras negras), eso manda sobre la referencia. Usa la plantilla "${pl.id}" del kit solo como soporte técnico (tamaño, fuentes y CSS base); el aspecto es el de la referencia. Sin paginación ni cierre.
 Pasos: 1) Read de la referencia; 2) ver_kit_diseno (formato técnico de las diapositivas); 3) escribe la diapositiva y guárdala con guardar_diseno (id ${id}); 4) mira la vista previa con Read, compárala con la referencia y corrige lo que no se parezca (y los avisos); 5) termina con una línea diciendo qué has puesto.`;
     generarConClaude(id, { prompt });
     return { ...obtener(id), aviso, fotoSinFondo: recortada ? f : null };
@@ -553,7 +620,7 @@ Pasos: 1) Read de la referencia; 2) ver_kit_diseno (formato técnico de las diap
     return [...ids].map((id) => { try { return vista(leer(id)); } catch { return null; } }).filter(Boolean);
   }
 
-  return { listar, obtener, crear, generar: generarConClaude, trabajos, pararExportacion, deLaPieza, otraVersion, alEventoClaude, guardarDatos, exportar, borrar, rutaPrevia, tiposPortada, muestraPortada, guardarPlantillaPortada, borrarPlantillaPortada, crearPortada, exportarPortada, ESTADOS };
+  return { listar, obtener, crear, generar: generarConClaude, trabajos, pararExportacion, deLaPieza, otraVersion, alEventoClaude, guardarDatos, exportar, borrar, rutaPrevia, tiposPortada, muestraPortada, guardarPlantillaPortada, borrarPlantillaPortada, crearPortada, exportarPortada, logos, guardarLogo, borrarLogo, ESTADOS };
 }
 
 const slug = (s) => String(s).normalize('NFD').replace(/[̀-ͯ]/g, '').replace(/[^A-Za-z0-9]+/g, '-').replace(/^-+|-+$/g, '').slice(0, 40).toLowerCase() || 'diseno';

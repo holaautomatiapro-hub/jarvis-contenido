@@ -366,6 +366,32 @@ describe('diseños: API, exportar a la biblioteca y Claude', () => {
     assert.ok(!(await api('/api/disenos')).data.disenos.some((x) => x.id === d.id));
   });
 
+  test('logo: se sube su archivo y la portada lo pone tal cual (sin él, no se dibuja)', async () => {
+    const textos = [];
+    const asistenteFalso = { estado: () => ({ ocupado: false }), nuevaSesion() {}, preguntar: ({ texto }) => { textos.push(texto); return { id: 1 }; }, conversacionActiva: () => null };
+    const ds = createDisenos({ db, jarvis, kit: createKit({ vaultPath: vault }), motor: motorFalso, archivos, previasDir: path.join(vault, '.jarvis', 'disenos'), asistente: asistenteFalso });
+    await ds.crearPortada({ tipo: 'testimonio', titulo: 'Sin logo' });
+    assert.match(textos.at(-1), /NUNCA lo dibujes.*déjalo fuera/);
+    const subir = (nombre, cuerpo = Buffer.from('png')) => fetch(`${base}/api/portadas/logos?nombre_archivo=${nombre}`, { method: 'POST', headers: { 'content-type': 'application/octet-stream' }, body: cuerpo }).then(async (r) => ({ status: r.status, data: await r.json() }));
+    assert.equal((await subir('logo.svg')).status, 400, 'SVG no (se sirve como imagen de la biblioteca)');
+    const r = await subir('logo-blanco.png');
+    assert.equal(r.status, 200);
+    const [logo] = r.data.logos;
+    assert.match(logo.url, /^\/api\/contenido\/archivos\/.*logo-blanco\.png$/);
+    assert.ok(archivos.existe(logo.path));
+    await ds.crearPortada({ tipo: 'testimonio', titulo: 'Con logo' });
+    const p = textos.at(-1);
+    assert.ok(p.includes(logo.url), 'el prompt lleva el archivo del logo');
+    assert.match(p, /usa SIEMPRE el archivo real con <img src> \(NUNCA lo dibujes/);
+    assert.match(p, /mismo sitio, con el mismo tamaño/);
+    // Y en los diseños normales también
+    ds.crear({ formato: 'carrusel', plantilla: 'rejilla', guion: 'Con logo' });
+    assert.ok(textos.at(-1).includes(logo.url));
+    const fuera = await fetch(`${base}/api/portadas/logos?path=${encodeURIComponent(logo.path)}`, { method: 'DELETE' }).then((x) => x.json());
+    assert.deepEqual(fuera.logos, []);
+    assert.ok(!archivos.existe(logo.path), 'se borra de la biblioteca');
+  });
+
   test('portada en segundo plano: al terminar se pone sola en la pieza y sale en «Trabajando en…» mientras tanto', async () => {
     const emitidos = [];
     const asistenteFalso = { estado: () => ({ ocupado: false }), nuevaSesion() {}, preguntar: () => ({ id: 1 }), conversacionActiva: () => null };
