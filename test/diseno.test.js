@@ -28,9 +28,11 @@ after(() => rmSync(dir, { recursive: true, force: true }));
 const KIT = {
   nombre: 'Marca de prueba', handle: '@prueba', verificado: true, duracion: 7, fps: 30, guia: 'GUIA.md', css: ['estilos.css'],
   plantillas: [
-    { id: 'rejilla', nombre: 'Rejilla', formatos: ['carrusel', 'story'], ejemplo: 'ejemplos/rejilla.json' },
+    { id: 'rejilla', nombre: 'Rejilla', formatos: ['carrusel', 'story'], ejemplo: 'ejemplos/rejilla.json', ejemplos: ['ejemplos/rejilla-2.json'] },
     { id: 'cine', nombre: 'Cine', formatos: ['carrusel'], cabecera: false, paginacion: false },
   ],
+  piezas: [{ archivo: 'piezas/cta.json', nombre: 'CTA de comentarios', descripcion: 'Post con comentarios' }, 'piezas/movil.json', { nada: 1 }],
+  referencias: [{ archivo: 'referencias/plantilla-1.jpg', descripcion: 'Las 8 diapositivas' }],
 };
 const zipDeKit = (extra = []) => crearZip([
   { nombre: 'mi-kit/kit.json', contenido: JSON.stringify(KIT) },
@@ -445,6 +447,9 @@ describe('diseños: API, exportar a la biblioteca y Claude', () => {
     const json = async (name, args = {}) => { const r = await c.callTool({ name, arguments: args }); return { error: r.isError, datos: r.isError ? r.content[0].text : JSON.parse(r.content[0].text) }; };
     const k = (await json('ver_kit_diseno')).datos;
     assert.equal(k.nombre, 'Marca de prueba');
+    assert.deepEqual(k.plantillas[0].ejemplos, ['ejemplos/rejilla.json', 'ejemplos/rejilla-2.json']);
+    assert.deepEqual(k.piezas.map((p) => [p.archivo, p.nombre]), [['piezas/cta.json', 'CTA de comentarios'], ['piezas/movil.json', 'movil']]);
+    assert.ok(path.isAbsolute(k.referencias[0].ruta) && k.referencias[0].ruta.endsWith(path.join('referencias', 'plantilla-1.jpg')), 'la referencia se puede abrir con Read');
     assert.match(k.reglas, /tl\.fromTo/);
     assert.match((await json('leer_archivo_kit', { archivo: 'GUIA.md' })).datos.contenido, /Mostaza/);
     assert.ok((await json('leer_archivo_kit', { archivo: '../../../etc/hosts' })).error);

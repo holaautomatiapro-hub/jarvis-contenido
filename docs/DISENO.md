@@ -50,10 +50,20 @@ Lo que lleva el .zip, todo dentro de una carpeta o en la raíz:
   "zonaSeguraStory": [270, 300],
   "plantillas": [
     { "id": "rejilla", "nombre": "Plantilla 1 · Rejilla", "descripcion": "…", "formatos": ["carrusel", "story"], "cabecera": true, "paginacion": true, "ejemplo": "ejemplos/plantilla-1.json" },
-    { "id": "cine", "nombre": "Plantilla 2 · Cine", "descripcion": "…", "formatos": ["carrusel"], "cabecera": false, "paginacion": false, "ejemplo": "ejemplos/plantilla-2.json" }
+    { "id": "cine", "nombre": "Plantilla 2 · Cine", "descripcion": "…", "formatos": ["carrusel"], "cabecera": false, "paginacion": false, "ejemplo": "ejemplos/plantilla-2.json", "ejemplos": ["ejemplos/plantilla-2-b.json"] }
+  ],
+  "piezas": [
+    { "archivo": "piezas/cta-comentarios.json", "nombre": "CTA de comentarios", "descripcion": "Post de Instagram recreado: se escribe la palabra clave en los comentarios y respondes" }
+  ],
+  "referencias": [
+    { "archivo": "referencias/plantilla-1.jpg", "descripcion": "Las 8 diapositivas de un carrusel de la plantilla 1" }
   ]
 }
 ```
+
+- **`ejemplos`**: más diseños completos de esa plantilla, además de `ejemplo`. Cuantos más y mejores, más se acerca Claude a tu nivel.
+- **`piezas`**: trozos de diapositiva que ya te funcionan (un CTA, un móvil con tu feed, un escenario…), en el mismo formato que una diapositiva. Claude los reutiliza adaptando el texto antes de inventar otra cosa.
+- **`referencias`**: imágenes que Claude mira antes de diseñar (hojas con tus carruseles buenos, portadas…).
 
 ## El formato de un diseño
 

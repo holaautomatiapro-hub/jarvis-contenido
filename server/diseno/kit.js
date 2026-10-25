@@ -5,7 +5,9 @@
 //   { "nombre", "handle", "verificado", "duracion": 7, "fps": 30, "guia": "CLAUDE.md",
 //     "css": ["estilos.css"], "fuentes": ["https://fonts.googleapis.com/css2?..."], "zonaSeguraStory": [250, 300],
 //     "plantillas": [{ "id", "nombre", "descripcion", "formatos": ["carrusel", "story"],
-//                      "cabecera": true, "paginacion": true, "ejemplo": "ejemplos/x.json" }] }
+//                      "cabecera": true, "paginacion": true, "ejemplo": "ejemplos/x.json", "ejemplos": ["ejemplos/y.json"] }],
+//     "piezas": [{ "archivo": "piezas/cta-comentarios.json", "nombre", "descripcion" }],   ← trozos probados para reutilizar
+//     "referencias": [{ "archivo": "referencias/plantilla-1.jpg", "descripcion" }] }        ← imágenes para mirar con Read
 import path from 'node:path';
 import { cpSync, existsSync, mkdirSync, readFileSync, renameSync, rmSync, writeFileSync } from 'node:fs';
 import { ROOT } from '../config.js';
@@ -100,8 +102,13 @@ function normalizar(d, { dir, propio }) {
       formatos: formatos.length ? formatos : ['carrusel'],
       cabecera: p.cabecera !== false, paginacion: p.paginacion !== false,
       ejemplo: p.ejemplo ? String(p.ejemplo) : null,
+      ejemplos: [...new Set([p.ejemplo, ...lista(p.ejemplos)].filter(Boolean).map(String))],
     };
   });
+  // Piezas (trozos de diapositiva probados: un CTA, un móvil, un escenario…) e imágenes de referencia
+  const archivos = (v) => (Array.isArray(v) ? v : []).filter((x) => x && (typeof x === 'string' || x.archivo))
+    .map((x) => (typeof x === 'string' ? { archivo: x } : x))
+    .map((x) => ({ archivo: String(x.archivo), nombre: String(x.nombre || path.basename(String(x.archivo)).replace(/\.[^.]+$/, '')), descripcion: String(x.descripcion || '') }));
   if (!plantillas.length) throw new KitError('kit.json no tiene ninguna plantilla en "plantillas"');
   const num = (v, def, min, max) => (Number.isFinite(+v) && +v >= min && +v <= max ? +v : def);
   return {
@@ -117,5 +124,7 @@ function normalizar(d, { dir, propio }) {
     // Franjas de arriba y de abajo que tapa la interfaz de Instagram en las stories (px)
     zonaStory: Array.isArray(d.zonaSeguraStory) && d.zonaSeguraStory.length === 2 ? d.zonaSeguraStory.map((v) => num(v, 250, 0, 600)) : [250, 300],
     plantillas,
+    piezas: archivos(d.piezas),
+    referencias: archivos(d.referencias),
   };
 }

@@ -469,8 +469,10 @@ export function buildServer(jarvis, { origen = 'claude', avisar = () => {}, inst
         return {
           nombre: k.nombre, propio: k.propio, cuenta: k.handle, duracion_diapositiva: `${k.duracion} s`,
           guia: k.guia, css: k.css,
-          plantillas: k.plantillas.map(({ id, nombre, descripcion, formatos, ejemplo }) => ({ id, nombre, descripcion, formatos, ejemplo })),
-          como_leer: 'Lee la guía y el ejemplo de la plantilla con leer_archivo_kit (el ejemplo es un diseño completo hecho a mano: imítalo).',
+          plantillas: k.plantillas.map(({ id, nombre, descripcion, formatos, ejemplos }) => ({ id, nombre, descripcion, formatos, ejemplos })),
+          ...(k.piezas.length ? { piezas: k.piezas.map(({ archivo, nombre, descripcion }) => ({ archivo, nombre, descripcion })) } : {}),
+          ...(k.referencias.length ? { referencias: k.referencias.map(({ archivo, descripcion }) => ({ ruta: path.join(k.dir, archivo), descripcion })) } : {}),
+          como_leer: 'Lee con leer_archivo_kit la guía y los ejemplos de la plantilla (diseños completos hechos a mano: imita su nivel de detalle y de animación, no solo los colores). Si hay referencias, míralas con Read. Si hay piezas, son trozos ya probados (un CTA, un móvil, un escenario…): léelas y reutilízalas adaptando el texto antes de inventar otra cosa.',
           reglas: reglasDiseno(k),
         };
       });

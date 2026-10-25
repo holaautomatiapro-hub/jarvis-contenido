@@ -167,7 +167,7 @@ ${indicaciones ? `- Indicaciones de la persona: ${String(indicaciones).slice(0, 
 ${r.guion}
 """
 
-Pasos: 1) ver_kit_diseno; 2) lee con Read la guía del kit y el ejemplo de esta plantilla; 3) si te sirve material propio (fotos o vídeos), listar_medios;
+Pasos: 1) ver_kit_diseno; 2) lee con leer_archivo_kit la guía del kit y los ejemplos de esta plantilla, mira con Read sus referencias si las hay, y lee las piezas reutilizables que encajen (úsalas antes de inventar otra cosa); 3) si te sirve material propio (fotos, vídeos, capturas), listar_medios: el material real luce más que el inventado;
 4) escribe el diseño y guárdalo con guardar_diseno (id ${r.id}), con su caption;
 5) mira con Read TODAS las vistas previas que devuelve y júzgalas como un diseñador exigente frente al ejemplo de la plantilla: jerarquía y tamaño de los textos, aire y márgenes, alineación, contraste, que cada diapositiva dibuje la idea (no solo texto) y que parezcan de la misma cuenta. Mira también la animación a mitad con ver_fotogramas_diseno en las diapositivas con más movimiento (nada debe taparse ni cruzarse al entrar). Corrige lo que no esté a la altura del ejemplo y los avisos, y vuelve a guardar (hasta 2 rondas; mira solo las que cambies);
 6) termina con un resumen de 2-3 líneas: qué hay en cada diapositiva y si queda algún aviso.`;
