@@ -262,11 +262,28 @@ export function buildServer(jarvis, { origen = 'claude', avisar = () => {}, inst
       temas: r.temas,
       mejoresGanchos: r.ganchos,
       medias: r.medias,
-      piezas: r.piezas.slice(0, 40).map((p) => ({ id: p.id, fecha: p.fecha.slice(0, 10), formato: p.formato, tema: p.tema, gancho: p.gancho, alcance: p.alcance, views: p.views, interacciones: p.interacciones, guardados: p.guardados, compartidos: p.compartidos, tasa: p.tasa, vsMedia: p.vsMedia, enlace: p.permalink, nota: p.nota })),
+      piezas: r.piezas.map((p) => ({ id: p.id, fecha: p.fecha.slice(0, 10), formato: p.formato, tema: p.tema, gancho: p.gancho, alcance: p.alcance, views: p.views, interacciones: p.interacciones, meGusta: p.likes, comentarios: p.comentarios, guardados: p.guardados, compartidos: p.compartidos, tiempoMedioSeg: p.ver_medio_ms != null ? Math.round(p.ver_medio_ms / 100) / 10 : null, tasa: p.tasa, vsMedia: p.vsMedia, enlace: p.permalink, nota: p.nota })),
     });
-    tool('metricas_instagram', 'Métricas reales de Instagram: KPIs del periodo, formatos, temas, mejores ganchos y rendimiento de cada pieza (vsMedia = % de alcance frente a la media). Si datosDeEjemplo es true, la cuenta aún no está conectada: dilo.',
-      { dias: z.number().int().min(7).max(90).optional().describe('Periodo, por defecto 30') },
-      ({ dias = 30 }) => compacto(instagram.resumen({ dias })));
+    // Mismas columnas que la tabla «Análisis de contenido»: la IA ordena y filtra aquí en vez de pedir capturas
+    const ORDEN_IG = { fecha: 'fecha', alcance: 'alcance', visualizaciones: 'views', interacciones: 'interacciones', me_gusta: 'meGusta', comentarios: 'comentarios', guardados: 'guardados', compartidos: 'compartidos', tiempo_medio: 'tiempoMedioSeg', tasa: 'tasa' };
+    tool('metricas_instagram', 'Métricas reales de Instagram: KPIs del periodo, formatos, temas, mejores ganchos y TODAS las publicaciones del periodo con las columnas de la tabla «Análisis de contenido» (alcance, visualizaciones, interacciones, me gusta, comentarios, guardados, compartidos, tiempo medio, % interacción; vsMedia = % de alcance frente a la media). Para un ranking («las que más comentarios tienen») usa orden y limite: no pidas capturas. totalPiezas dice cuántas hay; null en una métrica = Instagram no la da para esa publicación. Si datosDeEjemplo es true, la cuenta aún no está conectada: dilo.',
+      {
+        dias: z.number().int().min(7).max(90).optional().describe('Periodo, por defecto 30'),
+        orden: z.enum(Object.keys(ORDEN_IG)).optional().describe('Ordena las publicaciones de mayor a menor (por defecto, por fecha)'),
+        formato: z.enum(['Reels', 'Carruseles', 'Imágenes']).optional(),
+        buscar: z.string().optional().describe('Texto del caption, gancho o tema'),
+        limite: z.number().int().min(1).max(300).optional().describe('Cuántas publicaciones devolver, por defecto todas hasta 300'),
+      },
+      ({ dias = 30, orden = 'fecha', formato, buscar, limite = 300 }) => {
+        const res = instagram.resumen({ dias });
+        const t = buscar?.trim().toLowerCase();
+        const r = compacto({ ...res, piezas: res.piezas
+          .filter((p) => !formato || p.formato === formato)
+          .filter((p) => !t || [p.caption, p.gancho, p.tema].some((x) => x && String(x).toLowerCase().includes(t))) });
+        const k = ORDEN_IG[orden];
+        const lista = r.piezas.sort((a, b) => (orden === 'fecha' ? b.fecha.localeCompare(a.fecha) : (b[k] ?? -1) - (a[k] ?? -1)));
+        return { ...r, totalPiezas: lista.length, piezas: lista.slice(0, limite) };
+      });
     tool('publicaciones_sin_tema', 'Publicaciones de Instagram que aún no tienen tema asignado (para clasificarlas).',
       { limite: z.number().int().min(1).max(60).optional() },
       ({ limite = 30 }) => instagram.sinTema(limite));

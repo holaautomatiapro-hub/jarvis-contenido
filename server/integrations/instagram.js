@@ -32,7 +32,7 @@ export function createInstagram({ db, vault, env = process.env, fetchImpl = fetc
     upsert: db.prepare(`INSERT INTO ig_media (id, tipo, formato, caption, permalink, miniatura, media_url, fecha, likes, comentarios, alcance, views, guardados, compartidos, interacciones, ver_medio_ms, gancho, extra)
       VALUES (@id, @tipo, @formato, @caption, @permalink, @miniatura, @media_url, @fecha, @likes, @comentarios, @alcance, @views, @guardados, @compartidos, @interacciones, @ver_medio_ms, @gancho, @extra)
       ON CONFLICT(id) DO UPDATE SET caption = excluded.caption, permalink = excluded.permalink, miniatura = COALESCE(excluded.miniatura, miniatura), media_url = COALESCE(excluded.media_url, media_url), extra = COALESCE(excluded.extra, extra),
-        likes = excluded.likes, comentarios = excluded.comentarios, alcance = COALESCE(excluded.alcance, alcance), views = COALESCE(excluded.views, views),
+        likes = COALESCE(excluded.likes, likes), comentarios = COALESCE(excluded.comentarios, comentarios), alcance = COALESCE(excluded.alcance, alcance), views = COALESCE(excluded.views, views),
         guardados = COALESCE(excluded.guardados, guardados), compartidos = COALESCE(excluded.compartidos, compartidos),
         interacciones = COALESCE(excluded.interacciones, interacciones), ver_medio_ms = COALESCE(excluded.ver_medio_ms, ver_medio_ms),
         gancho = COALESCE(gancho, excluded.gancho), actualizado = datetime('now','localtime')`),
