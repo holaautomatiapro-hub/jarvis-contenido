@@ -5,7 +5,7 @@ En **Laboratorio → Diseño**, JARVIS convierte un guion en un **carrusel** (10
 ## Cómo se usa
 
 1. **Nuevo diseño**: elige carrusel o stories, la plantilla y el guion. Puede venir de una pieza del pipeline (la nota de `02-Guiones`) o pegado. Si quieres, añade indicaciones, por ejemplo: «palabra clave SETTER; en la portada usa mi vídeo de la biblioteca».
-2. **Claude (Opus) lo diseña** con tu guía y el ejemplo de la plantilla. Suele tardar 2-5 minutos. Cada versión aparece en cuanto la guarda.
+2. **Claude (Opus, pensando a fondo) lo diseña** con tu guía y el ejemplo de la plantilla, y antes de terminar mira cada diapositiva (el final y, en las más animadas, también a mitad de animación) y mejora lo que no esté a la altura del ejemplo. Suele tardar 4-8 minutos. Cada versión aparece en cuanto la guarda.
 3. **Revisión automática**: JARVIS dibuja el último fotograma de cada diapositiva y avisa si un texto se sale de la imagen, no cabe en su caja, se monta sobre otro, queda fuera de la zona segura de las stories, o si una foto o un vídeo no cargan. Claude corrige esos avisos antes de terminar. Si queda alguno, pulsa **Pedir a Claude que lo corrija**.
 4. **Ajusta en el chat** de la derecha: «en la 3 pon el chat más grande», «cambia leads por clientes»… Claude cambia solo eso y lo vuelve a dibujar.
 5. **Exporta a la biblioteca**:

@@ -14,12 +14,13 @@ const citar = (a) => (esWindows && /[\s&()^|<>"]/.test(a) ? `"${a.replace(/"/g, 
 
 // herramientasExtra: permisos de más para una conversación concreta (p. ej. el Laboratorio puede ejecutar
 // python y ffmpeg con reglas "Bash(python:*)"); sin ellos, Bash sigue prohibido. pluginDirs: plugins de Claude Code.
-export function argumentos({ modelo, sesion, mcpConfig, sistema, herramientasExtra = [], pluginDirs = [] }) {
+export function argumentos({ modelo, sesion, mcpConfig, sistema, herramientasExtra = [], pluginDirs = [], esfuerzo = null }) {
   const conBash = herramientasExtra.some((h) => /^Bash\(/.test(h));
   const args = ['-p', '--output-format', 'stream-json', '--verbose', '--include-partial-messages',
     '--permission-mode', 'acceptEdits', '--allowedTools', ...HERRAMIENTAS, ...herramientasExtra, ...(conBash ? [] : ['--disallowedTools', 'Bash'])];
   for (const d of pluginDirs) args.push('--plugin-dir', d);
   if (modelo) args.push('--model', modelo);
+  if (esfuerzo) args.push('--effort', esfuerzo);
   if (sesion) args.push('--resume', sesion);
   if (mcpConfig) args.push('--mcp-config', mcpConfig);
   if (sistema) args.push('--append-system-prompt', sistema);
@@ -51,8 +52,22 @@ const resumenEntrada = (input = {}) => {
  *  {tipo:'herramienta', nombre, detalle} · {tipo:'resultado_herramienta', ok}
  *  {tipo:'fin', texto, coste, duracion, sesion} · {tipo:'error', mensaje}
  */
-export function ejecutar({ prompt, cwd, modelo, sesion, mcpConfig, sistema, herramientasExtra, pluginDirs, bin = process.env.JARVIS_CLAUDE_BIN || 'claude', env = {}, onEvento }) {
-  const args = argumentos({ modelo, sesion, mcpConfig, sistema, herramientasExtra, pluginDirs });
+// --effort (cuánto piensa Claude) solo existe en las versiones recientes de Claude Code: se mira una vez en su ayuda
+// y, mientras no se sabe o si no lo tiene, no se pasa (una opción desconocida haría fallar la petición).
+const conEsfuerzo = new Map();
+function admiteEsfuerzo(bin) {
+  if (!conEsfuerzo.has(bin)) {
+    conEsfuerzo.set(bin, false);
+    const [cmd, ...pre] = bin.split('|');
+    execFile(citar(cmd), [...pre, '--help'].map(citar), { shell: esWindows, windowsHide: true, timeout: 20_000 }, (e, out) => {
+      if (!e) conEsfuerzo.set(bin, /--effort\b/.test(String(out)));
+    });
+  }
+  return conEsfuerzo.get(bin);
+}
+
+export function ejecutar({ prompt, cwd, modelo, sesion, mcpConfig, sistema, herramientasExtra, pluginDirs, esfuerzo, bin = process.env.JARVIS_CLAUDE_BIN || 'claude', env = {}, onEvento }) {
+  const args = argumentos({ modelo, sesion, mcpConfig, sistema, herramientasExtra, pluginDirs, esfuerzo: esfuerzo && admiteEsfuerzo(bin) ? esfuerzo : null });
   const [cmd, ...pre] = bin.split('|'); // permite "node|ruta/al/simulador.js" en tests
   const child = spawn(citar(cmd), [...pre, ...args].map(citar), {
     cwd,

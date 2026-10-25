@@ -558,6 +558,9 @@ export function buildServer(jarvis, { origen = 'claude', avisar = () => {}, inst
         }).passthrough()).min(1).max(20),
       },
       ({ id, ...datos }) => servidor('PUT', `/api/disenos/${id}/datos`, datos), true);
+    tool('ver_fotogramas_diseno', 'Dibuja una diapositiva ya guardada en varios momentos de su animación (por defecto a 1, 2,5 y 4 s) y devuelve las rutas de los JPG para mirarlos con Read. Úsalo para revisar la animación a mitad (textos que se cruzan al entrar, saltos, cosas que tapan a otras), no solo el final.',
+      { id: z.number().int(), diapositiva: z.number().int().min(1), segundos: z.array(z.number().min(0).max(60)).max(6).optional() },
+      ({ id, ...datos }) => servidor('POST', `/api/disenos/${id}/fotogramas`, datos));
   }
 
   // Laboratorio: testimonios, reels, clips, imágenes y lead magnets. Lo hace el Laboratorio del dashboard (Claude con el

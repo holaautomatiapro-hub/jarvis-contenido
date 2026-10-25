@@ -438,6 +438,30 @@ export function createMotor({ kit: kitApi, archivos = null, lanzar = lanzarNaveg
     });
   }
 
+  // Fotogramas de una diapositiva en los segundos pedidos (para revisar la animación a mitad, no solo el final)
+  function fotogramas(diseno, n, segundos, { calidad = 82 } = {}) {
+    return enCola(async () => {
+      const kit = kitApi.leer();
+      const d = normalizarDiseno(diseno, kit);
+      if (!d.slides[n - 1]) throw new Error(`No hay diapositiva ${n}`);
+      await prepararVideos(d);
+      const dur = duracionDe(kit, d.slides[n - 1]);
+      try {
+        return await conDiapositiva(kit, d, n, async (page) => {
+          const salida = [];
+          for (const t of segundos) {
+            const s = Math.min(Math.max(Number(t) || 0, 0), dur);
+            await page.evaluate((x) => window.__seek(x), s);
+            salida.push({ segundo: s, buffer: await page.screenshot({ type: 'jpeg', quality: calidad }) });
+          }
+          return salida;
+        });
+      } finally {
+        soltarNavegador();
+      }
+    });
+  }
+
   // Archivos finales: un JPG o un MP4 por diapositiva. Devuelve [{ nombre, mime, buffer | ruta }];
   // las rutas de los MP4 son temporales: quien llama las guarda y las borra con limpiar().
   // solo: las diapositivas (desde 1) que hay que volver a sacar; cada archivo lleva su número (n)
@@ -530,7 +554,7 @@ export function createMotor({ kit: kitApi, archivos = null, lanzar = lanzarNaveg
     }
   }
 
-  return { previsualizar, exportar, cerrar, preparar, mediosDePagina };
+  return { previsualizar, fotogramas, exportar, cerrar, preparar, mediosDePagina };
 }
 
 // El sonido de los vídeos marcados con data-audio, mezclado en el MP4 ya grabado de la diapositiva: cada uno

@@ -51,6 +51,7 @@ Cuando la persona dé el guion por bueno o pida guardarlo, guárdalo con crear_n
   // un montaje largo no bloquea el resto de JARVIS. El entorno (carpeta, plugin, permisos) lo pone server/laboratorio.js.
   laboratorio: {
     modeloFijo: 'opus',
+    esfuerzo: 'high',
     carril: 'laboratorio',
     sistema: `Estás en el LABORATORIO de JARVIS: conviertes entrevistas de clientes en clips, stories, carruseles en vídeo, portadas y captions con el plugin «testimonios», y editas los reels de la persona.
 - No tienes AskUserQuestion ni SendUserFile: pregunta en el chat (pocas preguntas, con opciones numeradas y una recomendada) y di qué archivos has generado; la persona los ve en el Laboratorio.
@@ -60,13 +61,14 @@ Cuando la persona dé el guion por bueno o pida guardarlo, guárdalo con crear_n
   },
   diseno: {
     modeloFijo: 'opus',
+    esfuerzo: 'high', // como la skill carrusel-video de Claude Code: diseñar bien pide pensar más
     sistema: `Estás en DISEÑO de JARVIS: conviertes guiones en carruseles y stories con el sistema de diseño de la persona (el kit de _diseno/).
-Herramientas del MCP jarvis: ver_kit_diseno (plantillas, guía, ejemplos y reglas técnicas: léelo siempre antes de diseñar), ver_diseno, guardar_diseno, listar_medios, ver_pieza.
+Herramientas del MCP jarvis: ver_kit_diseno (plantillas, guía, ejemplos y reglas técnicas: léelo siempre antes de diseñar), ver_diseno, guardar_diseno, ver_fotogramas_diseno, listar_medios, ver_pieza.
 - Para mirar un carrusel o reel que ya está en la biblioteca (aunque sus diapositivas sean vídeos), usa ver_pieza y lee con Read las imágenes que devuelve.
 - Una diapositiva con alguien hablando: dale su "duracion" (hasta 60 s), el vídeo con data-from (desde qué segundo) y data-audio (se oye al exportar en MP4), y los subtítulos con subtitulos_video + subtitulos() (lo explican las reglas de ver_kit_diseno). Se exporta en MP4.
 - Sigue la guía del kit al pie de la letra (colores, tipografías, tamaños, composición, animación y caption) y copia la forma de trabajar de su ejemplo.
 - Cada diapositiva dibuja la idea (tarjetas, chats, gráficas, contadores), no solo texto.
-- Guarda siempre con guardar_diseno y corrige los avisos que devuelva antes de terminar. Después de guardar, mira SIEMPRE con Read las vistas previas de las diapositivas que hayas cambiado y compáralas con el ejemplo de la plantilla: si alguna no está a su altura (jerarquía, tamaños, aire, alineación, contraste), mejórala y vuelve a guardar. No des un diseño por terminado sin haberlo visto.
+- Guarda siempre con guardar_diseno y corrige los avisos que devuelva antes de terminar. Después de guardar, mira SIEMPRE con Read las vistas previas de las diapositivas que hayas cambiado y compáralas con el ejemplo de la plantilla: si alguna no está a su altura (jerarquía, tamaños, aire, alineación, contraste), mejórala y vuelve a guardar. En las que tengan más movimiento, mira también la animación a mitad con ver_fotogramas_diseno. No des un diseño por terminado sin haberlo visto.
 - Si la persona pide cambios, usa ver_diseno, cambia solo lo pedido y vuelve a guardar con el mismo id. Las diapositivas que no toques déjalas exactamente igual (copia su html y su js tal cual): JARVIS solo vuelve a dibujar y a exportar las que cambian, y así tarda mucho menos.
 - Tú no exportas ni publicas: la persona lo exporta a la biblioteca y lo programa desde la pestaña Contenido.
 - Responde breve, en español.`,
@@ -118,6 +120,7 @@ export function createAsistente({ db, jarvis, vaultPath, emitir = () => {}, ejec
       pluginDirs: extra.pluginDirs,
       herramientasExtra: extra.herramientasExtra,
       modelo: decision.modelo,
+      esfuerzo: conv.esfuerzo || null,
       sesion: conv.sinMemoria ? null : sesiones[conversacion],
       sistema: [conv.sistema, extra.sistema].filter(Boolean).join('\n\n') || null,
       mcpConfig: mcpConfigDe(vaultPath),

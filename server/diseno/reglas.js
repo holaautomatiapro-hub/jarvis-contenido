@@ -36,5 +36,6 @@ Reglas técnicas (si no se cumplen, el vídeo sale mal):
 - Sin emojis en el diseño salvo que la guía del kit diga lo contrario. Textos del guion; no inventes cifras ni clientes.
 - Carrusel: 2-10 diapositivas (lo normal, 5-8). Stories: una por pantalla, hasta 20.
 - Al guardar, el motor dibuja el último fotograma y te devuelve avisos (textos que se salen, que no caben o que se pisan, medios que no cargan).
-  Corrígelos y vuelve a guardar con el mismo id. Puedes mirar las vistas previas con Read (te da sus rutas).`;
+  Corrígelos y vuelve a guardar con el mismo id. Mira las vistas previas con Read (te da sus rutas) y, para ver la animación a mitad,
+  ver_fotogramas_diseno (la diapositiva en los segundos que elijas).`;
 }

@@ -122,6 +122,7 @@ describe('diseños: API, exportar a la biblioteca y Claude', () => {
       dibujadas.push(ns);
       return { imagenes: d.slides.map((_, i) => (ns.includes(i + 1) ? Buffer.from('jpg') : null)), avisos: ns.includes(3) && d.slides.length > 2 ? [{ diapositiva: 3, texto: '«x» se sale de la imagen' }] : [] };
     },
+    fotogramas: async (d, n, segundos) => segundos.map((segundo) => ({ segundo, buffer: Buffer.from(`f${n}-${segundo}`) })),
     exportar: async (d, tipo, { alProgreso, solo }) => {
       alProgreso({ avance: 1 });
       const ns = d.slides.map((_, i) => i + 1).filter((n) => !solo || solo.includes(n));
@@ -171,6 +172,13 @@ describe('diseños: API, exportar a la biblioteca y Claude', () => {
     assert.equal(v.previas.length, 3);
     assert.equal((await fetch(base + v.previas[0])).status, 200);
     assert.equal((await fetch(`${base}/api/disenos/${d.id}/previas/..%2F..%2Fsecreto.jpg`)).status, 404);
+
+    const { data: f } = await api(`/api/disenos/${d.id}/fotogramas`, { diapositiva: 2, segundos: [1, 2.5] });
+    assert.deepEqual(f.fotogramas.map((x) => x.segundo), [1, 2.5]);
+    assert.equal(readFileSync(f.fotogramas[1].ruta, 'utf8'), 'f2-2.5');
+    assert.equal((await api(`/api/disenos/${d.id}/fotogramas`, { diapositiva: 9 })).status, 400);
+    const { data: v2 } = await api(`/api/disenos/${d.id}`);
+    assert.deepEqual(v2.previas, v.previas, 'los fotogramas no cambian las vistas previas');
 
     await api(`/api/disenos/${d.id}/exportar`, { tipo: 'jpg' });
     const e1 = await esperar(d.id);
@@ -444,6 +452,8 @@ describe('diseños: API, exportar a la biblioteca y Claude', () => {
     await json('guardar_diseno', { id: 7, caption: 'c', slides: [slide(1)] });
     assert.deepEqual(llamadas.at(-1).slice(0, 2), ['PUT', '/api/disenos/7/datos']);
     assert.equal(llamadas.at(-1)[2].slides.length, 1);
+    await json('ver_fotogramas_diseno', { id: 7, diapositiva: 2, segundos: [1.5] });
+    assert.deepEqual(llamadas.at(-1), ['POST', '/api/disenos/7/fotogramas', { diapositiva: 2, segundos: [1.5] }]);
   });
 
   test('MCP: transcribir espera, preguntando, a que acabe la transcripción en segundo plano', async () => {
@@ -506,6 +516,15 @@ describe('motor con navegador', () => {
     const textos = malo.avisos.map((a) => a.texto).join('\n');
     assert.match(textos, /se sale de la imagen/);
     assert.match(textos, /«Uno» se monta sobre «Dos»|«Dos» se monta sobre «Uno»/);
+  });
+
+  test('saca fotogramas a mitad de animación (distintos del final)', async (t) => {
+    if (!hayNavegador) return t.skip('No hay navegador en este equipo');
+    const d = JSON.parse(readFileSync('diseno/kit-ejemplo/ejemplos/basica.json', 'utf8'));
+    const f = await motor.fotogramas(d, 1, [0, 99]);
+    assert.deepEqual(f.map((x) => x.segundo), [0, 7], 'los segundos se ajustan a lo que dura la diapositiva');
+    assert.ok(f.every((x) => x.buffer[0] === 0xff && x.buffer[1] === 0xd8), 'son JPG');
+    assert.notDeepEqual(f[0].buffer, f[1].buffer, 'al principio y al final no se ve igual');
   });
 
   test('un vídeo MP4 de la biblioteca (H.264, como los del móvil) se ve en el diseño', async (t) => {
