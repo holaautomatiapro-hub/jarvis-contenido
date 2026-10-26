@@ -185,7 +185,7 @@ export function Diseno({ piezas, ig, onAbrir, onProgramar }) {
         <button className="btn btn-sec" onClick={() => zip.current?.click()} disabled={importando}><Icon name="folder" size={14} />{importando ? 'Importando…' : kit?.propio ? 'Cambiar sistema (.zip)' : 'Importar mi sistema (.zip)'}</button>
         <button className="btn" onClick={() => setNuevo(true)} disabled={!kit || Boolean(kit.error)}><Icon name="plus" size={14} />Nuevo diseño</button>
       </div>
-      {(aviso || errorCarga) && <div className={`aviso${/No se pudo|error/i.test(aviso || errorCarga) ? ' error' : ' ok'}`}>{aviso || `No se pudieron cargar los diseños. ${errorCarga}`}</div>}
+      {(aviso || errorCarga) && <div className={`aviso${/No se pudo|No se ha podido|error/i.test(aviso || errorCarga) ? ' error' : ' ok'}`}>{aviso || `No se pudieron cargar los diseños. ${errorCarga}`}</div>}
       <Aprendido />
       <FotosIa />
 
