@@ -100,3 +100,17 @@ Para activarlo:
 4. Prueba con **Generar** antes de dejarlo en manos de Claude.
 
 Cuesta unos 0,12 € por foto (2K). Por defecto hay un máximo de 30 fotos al día; se cambia con `KIE_MAX_FOTOS_DIA` en `.env`.
+
+## Higgsfield en el chat de Diseño
+
+Si tienes el conector de Higgsfield en Claude Code (el mismo que usa el Laboratorio), el chat de Diseño también puede
+crear imágenes y vídeos con él. Claude te dice cuántos créditos va a gastar, genera, y guarda el resultado en la
+biblioteca (carpeta «Imágenes IA») con `guardar_imagen_url` para poder usarlo en el diseño. Solo se descargan enlaces
+https de internet, nunca de la red local, y solo imágenes o vídeos de hasta 300 MB.
+
+Si dice que Higgsfield no está conectado, en el servidor:
+
+```bash
+claude mcp add --transport http --scope user higgsfield https://mcp.higgsfield.ai/mcp
+claude mcp login higgsfield --no-browser
+```

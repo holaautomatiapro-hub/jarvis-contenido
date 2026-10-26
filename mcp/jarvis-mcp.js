@@ -581,6 +581,9 @@ export function buildServer(jarvis, { origen = 'claude', avisar = () => {}, inst
           if (Date.now() > hasta) return { estado: 'generando', id, aviso: 'Sigue generándose: aparecerá en la biblioteca (carpeta «Fotos con IA»).' };
         }
       }, true);
+    tool('guardar_imagen_url', 'Guarda en la biblioteca (carpeta «Imágenes IA») una imagen o un vídeo de un enlace https, p. ej. lo que devuelve Higgsfield, y devuelve su url para usarla tal cual en un diseño (<img src> o <video src>) y su ruta para mirarla con Read.',
+      { url: z.string().describe('El enlace https de la imagen o el vídeo'), nombre: z.string().optional().describe('Nombre corto del archivo'), titulo: z.string().optional().describe('Título de la pieza en la biblioteca') },
+      (a) => servidor('POST', '/api/biblioteca/desde-url', a), true);
     tool('ver_fotogramas_diseno', 'Dibuja una diapositiva ya guardada en varios momentos de su animación (por defecto a 1, 2,5 y 4 s) y devuelve las rutas de los JPG para mirarlos con Read. Úsalo para revisar la animación a mitad (textos que se cruzan al entrar, saltos, cosas que tapan a otras), no solo el final.',
       { id: z.number().int(), diapositiva: z.number().int().min(1), segundos: z.array(z.number().min(0).max(60)).max(6).optional() },
       ({ id, ...datos }) => servidor('POST', `/api/disenos/${id}/fotogramas`, datos));
