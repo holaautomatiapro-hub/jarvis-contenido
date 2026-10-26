@@ -137,7 +137,7 @@ export function leerEstado({ home = hermesHome(), vaultPath } = {}) {
       permitidos: env.has('TELEGRAM_ALLOWED_USERS'),
       canal: env.has('TELEGRAM_HOME_CHANNEL'),
     },
-    mcp: /^\s{2,}jarvis:\s*$/m.test(config) && /mcp_servers:/.test(config),
+    mcp: /^\s{2,}jarvis:\s*$/m.test(config) && /mcp_servers:/.test(config) && /JARVIS_ORIGEN['"]?:\s*['"]?hermes/.test(config),
     soul: /\bJARVIS\b/.test(soul),
     skills: Boolean(skillsVault && dirs.some((d) => normalizaRuta(d) === normalizaRuta(skillsVault))),
     otrasSkills: dirs.length > 0,

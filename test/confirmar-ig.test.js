@@ -12,7 +12,7 @@ import { createPublicadorIg } from '../server/integrations/publicar-ig.js';
 import { getConfig } from '../server/config.js';
 import { configTelegram, createTelegram } from '../server/telegram.js';
 import { createConfirmacionesIg, limpiarCodigo } from '../server/confirmar-ig.js';
-import { medioPermitido } from '../server/medios-telegram.js';
+import { medioPermitido, lanzadoPorHermes, raicesPermitidas } from '../server/medios-telegram.js';
 import { buildServer } from '../mcp/jarvis-mcp.js';
 import { Client } from '@modelcontextprotocol/sdk/client/index.js';
 import { InMemoryTransport } from '@modelcontextprotocol/sdk/inMemory.js';
@@ -193,6 +193,31 @@ describe('fotos que llegan por Telegram', () => {
     assert.throws(() => medioPermitido(path.join(cache, '..', '..', '..', 'secreto.jpg'), { raices }), /caché/);
   });
 
+  test('también la caché de las instalaciones antiguas de Hermes (image_cache/)', () => {
+    const h = path.join(dir, 'antiguo');
+    mkdirSync(path.join(h, 'image_cache'), { recursive: true });
+    writeFileSync(path.join(h, 'image_cache', 'img_1.jpg'), 'x');
+    writeFileSync(path.join(h, '.env'), 'x');
+    const raices = raicesPermitidas({ HERMES_HOME: h });
+    assert.equal(medioPermitido(path.join(h, 'image_cache', 'img_1.jpg'), { raices }).mime, 'image/jpeg');
+    assert.throws(() => medioPermitido(path.join(h, '.env'), { raices }), /caché/);
+  });
+
+  test('reconoce que lo ha arrancado Hermes por el programa del padre o del abuelo, no por sus argumentos', () => {
+    const procesos = (tabla) => (f) => {
+      const [, pid, que] = /\/proc\/(\d+)\/(\w+)/.exec(f);
+      const p = tabla[pid];
+      if (!p) throw new Error('no existe');
+      return que === 'cmdline' ? p.cmd.join('\0') : `${pid} (x y) S ${p.padre} 1 1`;
+    };
+    const hermes = { 10: { cmd: ['node', '/j/mcp/jarvis-mcp.js'], padre: 20 }, 20: { cmd: ['/home/u/.hermes/hermes-agent/venv/bin/python', '/home/u/.local/bin/hermes', 'gateway', 'run'], padre: 1 } };
+    assert.equal(lanzadoPorHermes({ pid: 20, leer: procesos(hermes) }), true);
+    assert.equal(lanzadoPorHermes({ pid: 10, leer: procesos(hermes) }), true, 'a través de un intermediario');
+    const claude = { 30: { cmd: ['claude', '-p', '--append-system-prompt', 'Eres JARVIS; Hermes te escribe por Telegram'], padre: 40 }, 40: { cmd: ['node', '/home/u/JARVIS/server/index.js'], padre: 1 } };
+    assert.equal(lanzadoPorHermes({ pid: 30, leer: procesos(claude) }), false);
+    assert.equal(lanzadoPorHermes({ pid: 99, leer: procesos({}) }), false, 'sin /proc (Windows, Mac)');
+  });
+
   test('las herramientas de publicar solo están en Hermes, y guardar_fotos_en_pieza crea la pieza', async () => {
     const db = openDb(':memory:');
     const jarvis = createJarvis({ db, vault: createVault(path.join(dir, 'V')) });
@@ -205,6 +230,10 @@ describe('fotos que llegan por Telegram', () => {
     };
     const sinHermes = await conectar({});
     assert.ok(!(await sinHermes.listTools()).tools.some((t) => t.name === 'publicar_en_instagram'));
+    // Guardar fotos en una pieza no depende de que sea Hermes (solo acepta las de su caché)
+    const soloMedios = (await (await conectar({ medios: { subirLocal: async () => ({}) } })).listTools()).tools.map((t) => t.name);
+    assert.ok(soloMedios.includes('guardar_fotos_en_pieza'));
+    assert.ok(!soloMedios.includes('publicar_en_instagram'));
 
     const llamadas = [];
     const publicarIg = {

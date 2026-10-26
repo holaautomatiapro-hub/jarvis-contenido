@@ -54,6 +54,9 @@ describe('Hermes', () => {
     assert.equal(vacio.instalado, false); assert.equal(vacio.gateway.online, false); assert.equal(vacio.mcp, false);
     const caido = leerEstado({ home: homeFalso({ gateway: { pid: 999999999, gateway_state: 'running' } }), vaultPath: VAULT });
     assert.equal(caido.gateway.online, false);
+    // MCP jarvis sin JARVIS_ORIGEN=hermes (configuración antigua): hay que volver a configurarlo
+    const viejo = leerEstado({ home: homeFalso({ config: 'mcp_servers:\n  jarvis:\n    command: node\n' }), vaultPath: VAULT });
+    assert.equal(viejo.mcp, false);
   });
 
   test('plan: MCP con JARVIS_ORIGEN=hermes, skills del vault, zona horaria y las 4 tareas sin duplicar', () => {
