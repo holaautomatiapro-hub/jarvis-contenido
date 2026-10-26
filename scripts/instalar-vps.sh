@@ -131,6 +131,12 @@ else
   ok "JARVIS en https://$NOMBRE (solo desde tus dispositivos con Tailscale)"
 fi
 
+# Hermes (el bot de Telegram) arranca su propia copia de JARVIS: que use ya la versión nueva
+if [ -f "$HOME/.hermes/config.yaml" ] || [ -n "${HERMES_HOME:-}" ]; then
+  paso "Hermes (Telegram)"
+  (cd "$DIR" && node --disable-warning=ExperimentalWarning scripts/refrescar-hermes.js) || aviso "Reinicia Hermes a mano:  hermes gateway restart"
+fi
+
 # Los otros JARVIS de este VPS (otro-jarvis.sh, p. ej. el de tu pareja) se ponen al día a la vez que el tuyo
 for UNIDAD in /etc/systemd/system/jarvis-*.service; do
   [ -f "$UNIDAD" ] && grep -q '^# JARVIS extra' "$UNIDAD" || continue

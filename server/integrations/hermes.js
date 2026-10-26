@@ -1,6 +1,6 @@
 import os from 'node:os';
 import path from 'node:path';
-import { existsSync, readFileSync, writeFileSync, copyFileSync } from 'node:fs';
+import { existsSync, readFileSync, writeFileSync, copyFileSync, renameSync } from 'node:fs';
 import { execFile } from 'node:child_process';
 import { ROOT } from '../config.js';
 
@@ -173,6 +173,21 @@ export function planConfiguracion({ home, vaultPath, mcpScript, nodePath = proce
   return pasos;
 }
 
+// Hermes guarda en cache/mcp_schema_cache.json la lista de herramientas de cada MCP y, al arrancar, usa esa copia sin
+// preguntar al MCP. La copia solo se renueva si cambia el comando o sus argumentos: una herramienta nueva de JARVIS
+// no le llega aunque reinicies Hermes. Se borra la de jarvis para que la vuelva a pedir. Devuelve si había algo que borrar.
+export function olvidarHerramientasJarvis(home) {
+  const ruta = path.join(home, 'cache', 'mcp_schema_cache.json');
+  let datos;
+  try { datos = JSON.parse(readFileSync(ruta, 'utf8').replace(/^\uFEFF/, '')); } catch { return false; }
+  if (!datos || typeof datos !== 'object' || !('jarvis' in datos)) return false;
+  delete datos.jarvis;
+  const tmp = `${ruta}.jarvis-tmp`;
+  writeFileSync(tmp, JSON.stringify(datos), { mode: 0o600 });
+  renameSync(tmp, ruta);
+  return true;
+}
+
 function ejecutar(bin, args, timeout = 120000) {
   return new Promise((resolve) => {
     // Sin shell: los argumentos llegan tal cual (rutas con espacios, JSON, prompts con comillas)
@@ -214,6 +229,8 @@ export function createHermes({ env = process.env, vaultPath, mcpScript, home = h
         const r = await run(bin, p.args);
         resultado.push({ ...p, estado: r.ok ? 'ok' : (p.verificacion ? 'aviso' : 'error'), salida: r.salida, error: r.error });
       }
+      // Que Hermes vuelva a pedir la lista de herramientas de JARVIS (las nuevas no le llegan si no)
+      if (!simular) olvidarHerramientasJarvis(home);
       const fallos = resultado.filter((p) => p.estado === 'error');
       return { ok: fallos.length === 0, version, pasos: resultado.map(({ archivo, ...p }) => p), estado: estado() };
     } finally {
