@@ -6,7 +6,7 @@ import { celdasMes, diaCorto, diaLargo, hoyIso, mesDe, nombreMes, sumarMeses } f
 import { EditorFases } from './Fases.jsx';
 import { redDe } from '../../lib/redes.js';
 import { colorCategoria } from '../../lib/categorias.js';
-import { ChipEstado, MarcaLeadMagnet, Miniatura, useFases, ponerFases, enPipeline, Modal, esStory, estadoDe, objetivoDe, textoTipo, tipoDe } from './comun.jsx';
+import { ChipEstado, MarcaLeadMagnet, Miniatura, useFases, ponerFases, enPipeline, esIdea, Modal, esStory, estadoDe, objetivoDe, textoTipo, tipoDe } from './comun.jsx';
 import { api } from '../../lib/api.js';
 
 const MAX_POR_DIA = 4;
@@ -386,7 +386,8 @@ export function BancoIdeas({ piezas, onAbrir, onMover, onNuevaIdea, onBorrar }) 
   const siguiente = ESTADOS[ESTADOS.findIndex((e) => e.id === 'idea') + 1];
   const ideas = useMemo(() => {
     const b = normaliza(busca.trim());
-    return piezas.filter((p) => p.estado === 'idea' && (!b || normaliza(`${p.titulo}\n${p.pilar || ''}\n${p.gancho || ''}`).includes(b)))
+    // Solo las ideas: los huecos del calendario (con día y sin nada dentro) se quedan en el calendario
+    return piezas.filter((p) => esIdea(p) && (!b || normaliza(`${p.titulo}\n${p.pilar || ''}\n${p.gancho || ''}`).includes(b)))
       .sort((a, b2) => b2.id - a.id);
   }, [piezas, busca]);
   const grupos = useMemo(() => {
