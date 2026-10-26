@@ -3,7 +3,7 @@ import assert from 'node:assert/strict';
 import os from 'node:os';
 import path from 'node:path';
 import { spawnSync } from 'node:child_process';
-import { mkdtempSync, rmSync, existsSync, writeFileSync } from 'node:fs';
+import { mkdtempSync, rmSync, existsSync, writeFileSync, statSync } from 'node:fs';
 import { rutaFfmpeg } from '../server/diseno/motor.js';
 import { analizarVideo, cumpleInstagram, prepararVideoIg } from '../server/integrations/video-ig.js';
 
@@ -16,7 +16,7 @@ test('un vídeo se deja como lo quiere Instagram (H.264 + audio AAC) antes de su
     // Como los que exportaba el diseño: H.264 sin audio → se le añade una pista en silencio sin volver a codificar
     const sinAudio = hacer('diseno.mp4', ['-f', 'lavfi', '-i', 'testsrc=duration=3:size=1080x1350:rate=30', '-c:v', 'libx264', '-pix_fmt', 'yuv420p', '-an']);
     if (!sinAudio) return t.skip('No hay ffmpeg con H.264');
-    assert.deepEqual({ ...info(sinAudio), fps: Math.round(info(sinAudio).fps) }, { codec: 'h264', pix: 'yuv420p', ancho: 1080, alto: 1350, fps: 30, audio: null });
+    assert.deepEqual({ ...info(sinAudio), fps: Math.round(info(sinAudio).fps), duracion: Math.round(info(sinAudio).duracion) }, { codec: 'h264', pix: 'yuv420p', ancho: 1080, alto: 1350, fps: 30, audio: null, duracion: 3 });
     assert.equal(cumpleInstagram(info(sinAudio)), false);
     const r1 = await prepararVideoIg(sinAudio);
     assert.equal(r1.cambiado, true);
@@ -37,6 +37,19 @@ test('un vídeo se deja como lo quiere Instagram (H.264 + audio AAC) antes de su
     const r3 = await prepararVideoIg(bueno);
     assert.equal(r3.ruta, bueno);
     assert.equal(r3.cambiado, false);
+    // Ya cumple pero pesa más de lo que deja Supabase → se comprime hasta que quepa, con la misma duración
+    const pesado = hacer('pesado.mp4', ['-f', 'lavfi', '-i', 'testsrc2=duration=6:size=720x1280:rate=30', '-f', 'lavfi', '-i', 'sine=duration=6', '-shortest', '-vf', 'noise=alls=80:allf=t', '-c:v', 'libx264', '-crf', '12', '-pix_fmt', 'yuv420p', '-c:a', 'aac']);
+    const max = 1_500_000;
+    assert.ok(statSync(pesado).size > max, `el de prueba pesa ${statSync(pesado).size}`);
+    assert.ok(cumpleInstagram(info(pesado)));
+    const r4 = await prepararVideoIg(pesado, { maxBytes: max });
+    assert.equal(r4.cambiado, true);
+    assert.ok(statSync(r4.ruta).size <= max, `comprimido pesa ${statSync(r4.ruta).size}`);
+    assert.ok(cumpleInstagram(info(r4.ruta)));
+    assert.ok(Math.abs(info(r4.ruta).duracion - 6) < 0.3, 'misma duración');
+    r4.limpiar();
+    // Si cabe, no se toca
+    assert.equal((await prepararVideoIg(pesado, { maxBytes: 500_000_000 })).cambiado, false);
     // Lo que no es un vídeo se deja estar (que lo diga Instagram)
     writeFileSync(path.join(dir, 'nada.mp4'), 'x');
     assert.equal((await prepararVideoIg(path.join(dir, 'nada.mp4'))).cambiado, false);
