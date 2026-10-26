@@ -4,7 +4,7 @@ import os from 'node:os';
 import path from 'node:path';
 import http from 'node:http';
 import { mkdtempSync, mkdirSync, writeFileSync, readFileSync, existsSync } from 'node:fs';
-import { hermesHome, leerEstado, planConfiguracion, createHermes, TAREAS_PROGRAMADAS, SOUL_ORIGEN } from '../server/integrations/hermes.js';
+import { olvidarHerramientasJarvis, hermesHome, leerEstado, planConfiguracion, createHermes, TAREAS_PROGRAMADAS, SOUL_ORIGEN } from '../server/integrations/hermes.js';
 import { openDb } from '../server/db.js';
 import { createVault, ensureVault } from '../server/vault.js';
 import { createJarvis } from '../server/jarvis.js';
@@ -94,7 +94,14 @@ describe('Hermes', () => {
     assert.ok(sim.pasos.every((p) => ['pendiente', 'hecho', 'manual'].includes(p.estado)));
     assert.equal(readFileSync(path.join(home, 'SOUL.md'), 'utf8'), 'Mi personalidad anterior');
 
+    // Hermes guarda la lista de herramientas del MCP: al configurar se borra la de jarvis (para que vea las nuevas)
+    mkdirSync(path.join(home, 'cache'), { recursive: true });
+    const cache = path.join(home, 'cache', 'mcp_schema_cache.json');
+    writeFileSync(cache, JSON.stringify({ jarvis: { fingerprint: 'a', tools: [] }, otro: { fingerprint: 'b', tools: [] } }));
     const r = await hermes.configurar();
+    assert.deepEqual(Object.keys(JSON.parse(readFileSync(cache, 'utf8'))), ['otro']);
+    assert.equal(olvidarHerramientasJarvis(home), false, 'ya no estaba');
+    assert.equal(olvidarHerramientasJarvis(path.join(home, 'no-existe')), false);
     assert.equal(r.ok, true);
     assert.equal(r.version, 'Hermes Agent v1.0');
     assert.equal(readFileSync(path.join(home, 'SOUL.md'), 'utf8'), readFileSync(SOUL_ORIGEN, 'utf8'));

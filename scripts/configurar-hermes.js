@@ -37,5 +37,6 @@ if (falta.length) {
   console.log('\n  Te falta:');
   for (const f of falta) console.log(`   → ${f}`);
 }
+if (!simular && e.gateway.online) console.log('\n  Reinicia Hermes para que use lo nuevo:  hermes gateway restart   (y en Telegram, /new)');
 console.log(simular ? '\n  (Simulación: no se ha cambiado nada)\n' : `\n  ${r.ok ? 'Listo.' : 'Hay pasos con error (arriba).'} Prueba: manda "idea: test desde Telegram" a tu bot y mira Inicio.\n`);
 process.exit(r.ok ? 0 : 1);

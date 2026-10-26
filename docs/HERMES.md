@@ -37,7 +37,7 @@ Lo que lo hace seguro:
 - El código **caduca a los 30 minutos**, vale **una sola vez** y solo para **esa pieza tal como estaba** (si cambian sus fotos o su texto, hay que pedirlo otra vez). Con 5 códigos equivocados se anulan las confirmaciones pendientes.
 - Con hora, tiene que ser **al menos 10 minutos después**; sin hora, sale unos minutos después de confirmar. Hasta entonces puedes pararlo: «cancela la publicación de…» (no necesita código) o en la ficha de la pieza.
 - Las fotos que guarda solo pueden salir de la carpeta donde Hermes deja lo que le mandas por Telegram (`~/.hermes/cache`), y solo si son fotos o vídeos.
-- Tras actualizar JARVIS, vuelve a ejecutar `npm run hermes` (le pone las reglas nuevas) y `hermes gateway restart`.
+- Tras actualizar JARVIS en el VPS, Hermes se reinicia solo y recoge las herramientas nuevas (en Telegram, escribe `/new` para empezar una conversación limpia). En Windows o a mano: `npm run hermes` y `hermes gateway restart`. Hermes guarda la lista de herramientas de JARVIS en `cache/mcp_schema_cache.json`; `npm run hermes` la borra para que la vuelva a pedir.
 
 JARVIS usa el bot y tu chat del `.env` de Hermes (`TELEGRAM_BOT_TOKEN` y `TELEGRAM_HOME_CHANNEL`, o el primero de `TELEGRAM_ALLOWED_USERS`); si prefieres otros, pon `TELEGRAM_BOT_TOKEN` y `TELEGRAM_CHAT_ID` en el `.env` de JARVIS. Esta seguridad cubre lo que la IA hace con sus herramientas de JARVIS; Hermes además te pide permiso antes de ejecutar comandos delicados en el servidor (no lo arranques con `--yolo`).
 
