@@ -241,6 +241,13 @@ export function DetalleDiseno({ d, kit, piezas, ig, progreso, onVisor, onAbrir, 
     try { await fn(); recargar(); } catch (e) { onAviso(e.message); }
     setOcupado('');
   };
+  // Tiene diapositivas pero no vistas previas (el dibujo falló en su momento): se vuelven a dibujar al abrirlo, una vez
+  const sinPrevias = d.diapositivas > 0 && !d.previas.length && !trabajando;
+  const redibujar = () => accion('redibujar', () => api(`/api/disenos/${d.id}/redibujar`, { method: 'POST' }));
+  const intentado = useRef(new Set());
+  useEffect(() => {
+    if (sinPrevias && !d.error && !intentado.current.has(d.id)) { intentado.current.add(d.id); redibujar(); }
+  }, [d.id, sinPrevias]); // eslint-disable-line react-hooks/exhaustive-deps
   // Diapositivas marcadas para volver a exportar solo esas (si no hay ninguna, solo las que han cambiado)
   const [marcadas, setMarcadas] = useState([]);
   useEffect(() => setMarcadas([]), [d.id]);
@@ -316,7 +323,9 @@ export function DetalleDiseno({ d, kit, piezas, ig, progreso, onVisor, onAbrir, 
             </div>
           ))}
         </div>
-      ) : !trabajando && <p className="ayuda">Este diseño aún no tiene diapositivas. Pulsa <b>Rediseñar</b> o pídeselo a Claude en el chat.</p>}
+      ) : !trabajando && (d.diapositivas > 0
+        ? <p className="ayuda">{ocupado === 'redibujar' ? `Dibujando sus ${d.diapositivas} diapositivas…` : <>Tiene {d.diapositivas} diapositivas, pero no se han podido dibujar las vistas previas. <button type="button" className="link-btn" onClick={redibujar} disabled={Boolean(ocupado)}>Volver a dibujarlas</button></>}</p>
+        : <p className="ayuda">Este diseño aún no tiene diapositivas. Pulsa <b>Rediseñar</b> o pídeselo a Claude en el chat.</p>)}
 
       {d.avisos.length > 0 && (
         <div className="diseno-avisos">

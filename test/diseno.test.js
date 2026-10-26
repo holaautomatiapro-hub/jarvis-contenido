@@ -296,6 +296,20 @@ describe('diseños: API, exportar a la biblioteca y Claude', () => {
     assert.deepEqual(exportadas.at(-1), [1, 2, 3, 4, 5]);
   });
 
+  test('un diseño con diapositivas pero sin vistas previas se vuelve a dibujar', async () => {
+    const { data: d } = await api('/api/disenos', { formato: 'carrusel', plantilla: 'rejilla', guion: 'Sin previas', generar: false });
+    assert.equal((await api(`/api/disenos/${d.id}/redibujar`, {})).status, 400, 'sin diapositivas no hay nada que dibujar');
+    await api(`/api/disenos/${d.id}/datos`, { caption: 'Mi caption', slides: [slide(1), slide(2), slide(3), slide(4)] }, 'PUT');
+    db.prepare("UPDATE disenos SET previas = '[]', huellas = '[]' WHERE id = ?").run(d.id); // el dibujo falló
+    assert.equal((await api(`/api/disenos/${d.id}`)).data.previas.length, 0);
+    const { status, data: r } = await api(`/api/disenos/${d.id}/redibujar`, {});
+    assert.equal(status, 200, JSON.stringify(r));
+    const { data: v } = await api(`/api/disenos/${d.id}`);
+    assert.equal(v.previas.length, 4);
+    assert.equal(v.caption, 'Mi caption', 'no se pierde nada');
+    assert.equal(v.diapositivas, 4);
+  });
+
   test('otra versión desde el diseño: sabe de qué diseño sale una pieza y no toca ni la pieza ni lo exportado', async () => {
     const ds = createDisenos({ db, jarvis, kit: createKit({ vaultPath: vault }), motor: motorFalso, archivos, previasDir: path.join(vault, '.jarvis', 'disenos') });
     const d = ds.crear({ formato: 'carrusel', plantilla: 'rejilla', guion: 'Para convertir', generar: false });

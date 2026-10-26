@@ -60,6 +60,20 @@ describe('Pipeline configurable', () => {
   });
 });
 
+describe('Qué sale en Ideas', () => {
+  test('los huecos del calendario (con día y vacíos) no son ideas; una idea con día y nota, sí', async () => {
+    const { esIdea, esHueco } = await import('../web/src/lib/pipeline.js');
+    const hueco = { estado: 'idea', fecha: '2026-11-29', titulo: 'Post · Conexión', archivos: [] };
+    assert.equal(esHueco(hueco), true);
+    assert.equal(esIdea(hueco), false);
+    assert.equal(esIdea({ estado: 'idea', titulo: 'Idea suelta', archivos: [] }), true);
+    assert.equal(esIdea({ ...hueco, nota: '01-Ideas/idea.md' }), true, 'con su nota es una idea con día');
+    assert.equal(esIdea({ ...hueco, archivos: [{ url: 'x' }] }), true);
+    assert.equal(esIdea({ ...hueco, gancho: 'Si contestas tú…' }), true);
+    assert.equal(esIdea({ estado: 'guion', archivos: [] }), false);
+  });
+});
+
 describe('Qué sale en el pipeline', () => {
   test('lo que solo está en la biblioteca no; lo que mueves tú o eliges su fase, sí', async () => {
     const { enPipeline } = await import('../web/src/lib/pipeline.js');

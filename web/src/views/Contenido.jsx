@@ -3,7 +3,7 @@ import Icon from '../components/Icon.jsx';
 import { api, useRecurso } from '../lib/api.js';
 import { hoyIso } from '../lib/fechas.js';
 import { useIr } from '../lib/ir.js';
-import { useFases, enPipeline } from './contenido/comun.jsx';
+import { useFases, enPipeline, esIdea } from './contenido/comun.jsx';
 import { BancoIdeas, Calendario, Pipeline } from './contenido/Vistas.jsx';
 import { Biblioteca } from './contenido/Biblioteca.jsx';
 import { EditorContenido, ProgramarContenido, Visor } from './contenido/Editor.jsx';
@@ -45,7 +45,7 @@ export default function Contenido({ onCaptura }) {
   const carpetas = data?.carpetas || [];
   // Biblioteca: lo que tiene archivos o ya está en marcha y aún no tiene día. Las ideas sin archivos van a «Ideas».
   const biblioteca = useMemo(() => piezas.filter((p) => !p.fecha && p.estado !== 'publicado' && (p.estado !== 'idea' || p.archivos.length)), [piezas]);
-  const ideas = useMemo(() => piezas.filter((p) => p.estado === 'idea').length, [piezas]);
+  const ideas = useMemo(() => piezas.filter(esIdea).length, [piezas]);
   const publicados = useMemo(() => piezas.filter((p) => p.estado === 'publicado' || p.ig_estado === 'publicado'), [piezas]);
   // Lo que se está publicando ahora, lo que falló y lo recién publicado (últimos 30 min)
   const enCurso = piezas.filter((p) => p.ig_estado === 'procesando');

@@ -548,6 +548,15 @@ Pasos: 1) Read de la referencia; 2) ver_kit_diseno (formato técnico de las diap
     };
   }
 
+  // Un diseño con diapositivas guardadas pero sin vistas previas (el dibujo falló o se borró): se vuelven a dibujar
+  function redibujar(id) {
+    const r = leer(id);
+    const d = json(r.datos, null);
+    if (!d?.slides?.length) throw new DisenoError('Este diseño aún no tiene diapositivas');
+    if (['generando', 'renderizando', 'exportando'].includes(r.estado)) throw new DisenoError('Espera a que termine lo que está haciendo');
+    return guardarDatos(r.id, { titulo: r.titulo, caption: r.caption, slides: d.slides });
+  }
+
   // ---------- Exportar a la biblioteca ----------
   // Si ya se exportó en el mismo formato, solo se vuelven a sacar las diapositivas que han cambiado (o las que
   // elija la persona en «solo»); las demás se quedan como estaban en la biblioteca. «todo» las saca todas.
@@ -701,7 +710,7 @@ Pasos: 1) Read de la referencia; 2) ver_kit_diseno (formato técnico de las diap
     return [...ids].map((id) => { try { return vista(leer(id)); } catch { return null; } }).filter(Boolean);
   }
 
-  return { listar, obtener, crear, crearAnuncio, generar: generarConClaude, trabajos, pararExportacion, deLaPieza, otraVersion, alEventoClaude, guardarDatos, fotogramas, exportar, borrar, rutaPrevia, tiposPortada, muestraPortada, guardarPlantillaPortada, borrarPlantillaPortada, crearPortada, exportarPortada, logos, guardarLogo, borrarLogo, ESTADOS };
+  return { listar, obtener, crear, crearAnuncio, generar: generarConClaude, trabajos, pararExportacion, deLaPieza, otraVersion, alEventoClaude, guardarDatos, redibujar, fotogramas, exportar, borrar, rutaPrevia, tiposPortada, muestraPortada, guardarPlantillaPortada, borrarPlantillaPortada, crearPortada, exportarPortada, logos, guardarLogo, borrarLogo, ESTADOS };
 }
 
 const slug = (s) => String(s).normalize('NFD').replace(/[̀-ͯ]/g, '').replace(/[^A-Za-z0-9]+/g, '-').replace(/^-+|-+$/g, '').slice(0, 40).toLowerCase() || 'diseno';
