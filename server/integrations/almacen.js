@@ -36,7 +36,7 @@ export function createAlmacen({ env = process.env, fetchImpl = fetch, reintentos
     }
     if (!r.ok) {
       const t = await r.text().catch(() => '');
-      if (r.status === 413 || /too large|exceeded the maximum/i.test(t)) throw new AlmacenError('El archivo pesa más de lo que admite tu Supabase (el plan gratis deja 50 MB). Exporta el vídeo más ligero.');
+      if (r.status === 413 || /too large|exceeded the maximum/i.test(t)) throw new AlmacenError('El archivo pesa más de lo que admite tu Supabase (el plan gratis deja 50 MB por archivo) y ni comprimiéndolo cabe. Acórtalo o súbelo más ligero; si tu plan deja más, pon cuánto en SUPABASE_MAX_MB.');
       if (r.status === 401 || r.status === 403) throw new AlmacenError('Supabase no deja subir archivos con esa clave al bucket. Revisa CRM_SUPABASE_ANON_KEY o las políticas del bucket.');
       throw Object.assign(new AlmacenError(motivo(r.status, t)), { reintentar: pasajero(r.status) });
     }
@@ -49,7 +49,7 @@ export function createAlmacen({ env = process.env, fetchImpl = fetch, reintentos
     const b64 = (v) => Buffer.from(String(v)).toString('base64');
     const tus = { ...cabeceras(), 'tus-resumable': '1.0.0' };
     const fallo = (r, t) => {
-      if (r.status === 413 || /too large|exceeded the maximum/i.test(t)) return new AlmacenError('El archivo pesa más de lo que admite tu Supabase (el plan gratis deja 50 MB). Exporta el vídeo más ligero.');
+      if (r.status === 413 || /too large|exceeded the maximum/i.test(t)) return new AlmacenError('El archivo pesa más de lo que admite tu Supabase (el plan gratis deja 50 MB por archivo) y ni comprimiéndolo cabe. Acórtalo o súbelo más ligero; si tu plan deja más, pon cuánto en SUPABASE_MAX_MB.');
       if (r.status === 401 || r.status === 403) return new AlmacenError('Supabase no deja subir archivos con esa clave al bucket. Revisa CRM_SUPABASE_ANON_KEY o las políticas del bucket.');
       return Object.assign(new AlmacenError(motivo(r.status, t)), { reintentar: pasajero(r.status) });
     };
