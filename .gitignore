@@ -8,6 +8,7 @@ config/config.json
 .DS_Store
 Thumbs.db
 data/*.pid
+data/*.key
 data/*.vbs
 data/contenido/
 __pycache__/
