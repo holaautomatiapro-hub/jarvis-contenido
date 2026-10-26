@@ -194,6 +194,10 @@ describe('diseños: API, exportar a la biblioteca y Claude', () => {
     assert.equal((await api(`/api/disenos/${d.id}/fotogramas`, { diapositiva: 9 })).status, 400);
     const { data: v2 } = await api(`/api/disenos/${d.id}`);
     assert.deepEqual(v2.previas, v.previas, 'los fotogramas no cambian las vistas previas');
+    // Y después de mirar fotogramas se puede volver a guardar (antes fallaba: «Path is a directory»)
+    const { status: st3, data: g3 } = await api(`/api/disenos/${d.id}/datos`, { caption: 'Comenta SETTER 👇', slides: [slide(1), slide(2, { bg: 'grey' }), slide(3)] }, 'PUT');
+    assert.equal(st3, 200, JSON.stringify(g3));
+    assert.equal(g3.diapositivas, 3);
 
     await api(`/api/disenos/${d.id}/exportar`, { tipo: 'jpg' });
     const e1 = await esperar(d.id);

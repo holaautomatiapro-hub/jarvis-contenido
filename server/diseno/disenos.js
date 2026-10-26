@@ -505,7 +505,8 @@ Pasos: 1) Read de la referencia; 2) ver_kit_diseno (formato técnico de las diap
         writeFileSync(path.join(dir, f), res.imagenes[i]);
         return f;
       });
-      for (const f of readdirSync(dir)) if (!nombres.includes(f)) rmSync(path.join(dir, f), { force: true });
+      // Fuera las vistas previas viejas; la carpeta «fotogramas» (ver_fotogramas_diseno) se deja
+      for (const f of readdirSync(dir)) if (!nombres.includes(f) && f !== 'fotogramas') rmSync(path.join(dir, f), { force: true, recursive: true });
       const avisos = [...antes.avisos.filter((a) => iguales[a.diapositiva - 1]), ...res.avisos].sort((a, b) => a.diapositiva - b.diapositiva);
       res.avisos = avisos;
       res.redibujadas = solo;
