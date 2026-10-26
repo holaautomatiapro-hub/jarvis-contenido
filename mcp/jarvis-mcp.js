@@ -27,13 +27,13 @@ import { createKit } from '../server/diseno/kit.js';
 import { createRecordatorios } from '../server/recordatorios.js';
 import { createPreferencias, AMBITOS } from '../server/preferencias.js';
 import { reglasDiseno } from '../server/diseno/reglas.js';
-import { medioPermitido } from '../server/medios-telegram.js';
+import { medioPermitido, lanzadoPorHermes } from '../server/medios-telegram.js';
 import { createReadStream, existsSync, readFileSync, statSync } from 'node:fs';
 import { Readable } from 'node:stream';
 
 dotenv.config({ path: path.join(ROOT, '.env'), quiet: true });
 
-export function buildServer(jarvis, { origen = 'claude', avisar = () => {}, instagram = null, competencia = null, ads = null, publicar = null, diseno = null, recordatorios = null, resultados = null, laboratorio = null, preferencias = null, calendario = null, stories = null, publicarIg = null } = {}) {
+export function buildServer(jarvis, { origen = 'claude', avisar = () => {}, instagram = null, competencia = null, ads = null, publicar = null, diseno = null, recordatorios = null, resultados = null, laboratorio = null, preferencias = null, calendario = null, stories = null, publicarIg = null, medios = publicarIg } = {}) {
   const server = new McpServer({ name: 'jarvis', version: '0.2.0' });
 
   const tool = (name, description, inputSchema, fn, escribe = false) =>
@@ -384,8 +384,8 @@ export function buildServer(jarvis, { origen = 'claude', avisar = () => {}, inst
       (a) => ads.proponer(a, origen), true);
   }
 
-  // Publicar en Instagram desde Telegram, con la confirmación de la persona (solo en Hermes)
-  if (publicarIg) {
+  // Las fotos y vídeos que llegan por Telegram, a una pieza (solo se aceptan los de la caché de Hermes)
+  if (medios) {
     tool('guardar_fotos_en_pieza', 'Guarda en la biblioteca de JARVIS las fotos o vídeos que la persona te ha mandado por Telegram (las rutas locales de los archivos que te llegan) y los pone en una pieza: nueva (con título, formato y caption) o añadidos al final de una que ya existe (pieza_id). En un carrusel, el orden de las rutas es el de las diapositivas. Las fotos se pasan a JPG (Instagram solo admite JPG). No publica nada.',
       {
         rutas: z.array(z.string()).min(1).max(10).describe('Rutas de las fotos o vídeos que te han llegado por Telegram, en orden'),
@@ -396,7 +396,7 @@ export function buildServer(jarvis, { origen = 'claude', avisar = () => {}, inst
       },
       async ({ rutas, pieza_id, titulo, formato, caption }) => {
         const nuevos = [];
-        for (const r of rutas) nuevos.push(await publicarIg.subirLocal(r));
+        for (const r of rutas) nuevos.push(await medios.subirLocal(r));
         if (pieza_id) {
           const p = jarvis.leerPieza(pieza_id);
           const q = jarvis.actualizarPieza(p.id, { archivos: [...(p.archivos || []), ...nuevos], ...(caption ? { caption } : {}) }, origen);
@@ -407,6 +407,10 @@ export function buildServer(jarvis, { origen = 'claude', avisar = () => {}, inst
         const p = jarvis.crearPieza({ titulo: titulo || `Desde Telegram · ${new Date().toLocaleDateString('es-ES')}`, estado: 'listo', formato: formatoFinal, caption: caption || null, archivos: nuevos, origen });
         return { pieza: { id: p.id, titulo: p.titulo, formato: p.formato, archivos: nuevos.length }, aviso: 'Está en la biblioteca (Contenido). Para publicarla, usa publicar_en_instagram.' };
       }, true);
+  }
+
+  // Publicar en Instagram desde Telegram, con la confirmación de la persona (solo en Hermes)
+  if (publicarIg) {
     tool('publicar_en_instagram', 'Prepara la publicación de una pieza en Instagram y pide a la persona que la CONFIRME: JARVIS le manda por Telegram (directamente, tú no lo ves) las fotos, el texto, el día y la hora con un código de un solo uso. Úsala solo cuando la persona te pida publicar o programar una pieza en Instagram. Sin fecha ni hora, sale en cuanto lo confirme. Luego dile que revise ese mensaje y, si está bien, responda «publica» seguido del código. Nada se publica sin ese código.',
       {
         pieza_id: z.number().int().describe('La pieza (con sus fotos o vídeo y su caption). Si no la tienes, búscala con listar_pipeline o créala con guardar_fotos_en_pieza'),
@@ -669,7 +673,7 @@ async function main() {
   const competencia = createCompetencia({ db, instagram, vault });
   const ads = createAds({ db, instagram });
   const publicar = createPublicar({ db, jarvis, vault });
-  const origen = process.env.JARVIS_ORIGEN || 'claude';
+  const origen = process.env.JARVIS_ORIGEN || (lanzadoPorHermes() ? 'hermes' : 'claude');
   // Avisa al dashboard (si está abierto) para que se refresque al instante
   // Si JARVIS tiene contraseña, las llamadas desde este mismo servidor llevan su clave local
   const local = { 'x-jarvis-local': claveLocal(path.dirname(cfg.dbPath)) };
@@ -716,7 +720,7 @@ async function main() {
     return j;
   };
   const publicarIg = origen === 'hermes' ? { servidor, subirLocal } : null;
-  await buildServer(jarvis, { origen, avisar, instagram, competencia, ads, publicar, diseno, recordatorios, resultados, laboratorio: { servidor, subir }, publicarIg, preferencias: createPreferencias({ db }), calendario: createEstrategia({ db, jarvis }), stories: createStories({ db, jarvis }) }).connect(new StdioServerTransport());
+  await buildServer(jarvis, { origen, avisar, instagram, competencia, ads, publicar, diseno, recordatorios, resultados, laboratorio: { servidor, subir }, publicarIg, medios: { subirLocal }, preferencias: createPreferencias({ db }), calendario: createEstrategia({ db, jarvis }), stories: createStories({ db, jarvis }) }).connect(new StdioServerTransport());
 }
 
 const esPrincipal = process.argv[1] && path.resolve(process.argv[1]) === fileURLToPath(import.meta.url);
