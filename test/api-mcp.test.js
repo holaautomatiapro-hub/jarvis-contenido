@@ -108,6 +108,21 @@ describe('MCP jarvis', () => {
     assert.ok(r.pipeline.grabar >= 1);
   });
 
+  test('Depósito: publicaciones en reserva hasta que se les pone día', async () => {
+    const { data: p } = await call('crear_pieza', { titulo: 'Carrusel guardado', formato: 'Carrusel', caption: 'Hola', deposito: true });
+    assert.equal(p.deposito, 1);
+    assert.equal(p.estado, 'listo', 'lo del depósito está terminado');
+    const { data: d1 } = await call('ver_deposito');
+    assert.ok(d1.some((x) => x.id === p.id && x.caption === 'Hola'));
+    // Con día sale del depósito (va al calendario)
+    await call('mover_pieza', { id: p.id, fecha: '2026-11-20', hora: '18:00' });
+    const { data: d2 } = await call('ver_deposito');
+    assert.ok(!d2.some((x) => x.id === p.id));
+    // Y se puede sacar del depósito a la biblioteca
+    const { data: q } = await call('mover_pieza', { id: p.id, fecha: '', deposito: false });
+    assert.equal(q.deposito, 0);
+  });
+
   test('errores devueltos como error de herramienta, no como caída', async () => {
     const r = await call('leer_nota', { ruta: '../fuera.md' });
     assert.equal(r.error, true);

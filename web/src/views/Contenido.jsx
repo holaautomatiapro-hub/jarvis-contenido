@@ -14,6 +14,7 @@ import ProgramarStories from './contenido/ProgramarStories.jsx';
 const VISTAS = [
   { id: 'calendario', label: 'Calendario', icon: 'calendar' },
   { id: 'biblioteca', label: 'Biblioteca', icon: 'book' },
+  { id: 'deposito', label: 'Depósito', icon: 'box' },
   { id: 'ideas', label: 'Ideas', icon: 'bulb' },
   { id: 'pipeline', label: 'Pipeline', icon: 'skills' },
 ];
@@ -44,7 +45,10 @@ export default function Contenido({ onCaptura }) {
   });
   const carpetas = data?.carpetas || [];
   // Biblioteca: lo que tiene archivos o ya está en marcha y aún no tiene día. Las ideas sin archivos van a «Ideas».
-  const biblioteca = useMemo(() => piezas.filter((p) => !p.fecha && p.estado !== 'publicado' && (p.estado !== 'idea' || p.archivos.length)), [piezas]);
+  const sinDia = useMemo(() => piezas.filter((p) => !p.fecha && p.estado !== 'publicado' && (p.estado !== 'idea' || p.archivos.length)), [piezas]);
+  const biblioteca = useMemo(() => sinDia.filter((p) => !p.deposito), [sinDia]);
+  // Depósito: publicaciones terminadas en reserva; al ponerles día pasan al calendario
+  const deposito = useMemo(() => sinDia.filter((p) => p.deposito), [sinDia]);
   const ideas = useMemo(() => piezas.filter(esIdea).length, [piezas]);
   const publicados = useMemo(() => piezas.filter((p) => p.estado === 'publicado' || p.ig_estado === 'publicado'), [piezas]);
   // Lo que se está publicando ahora, lo que falló y lo recién publicado (últimos 30 min)
@@ -124,7 +128,7 @@ export default function Contenido({ onCaptura }) {
         <div className="seg">
           {VISTAS.map((v) => (
             <button key={v.id} className={vista === v.id ? 'on' : ''} onClick={() => setVista(v.id)}>
-              <Icon name={v.icon} />{v.label}{v.id === 'biblioteca' && biblioteca.length > 0 && <span className="seg-n">· {biblioteca.length}</span>}{v.id === 'ideas' && ideas > 0 && <span className="seg-n">· {ideas}</span>}
+              <Icon name={v.icon} />{v.label}{v.id === 'biblioteca' && biblioteca.length > 0 && <span className="seg-n">· {biblioteca.length}</span>}{v.id === 'deposito' && deposito.length > 0 && <span className="seg-n">· {deposito.length}</span>}{v.id === 'ideas' && ideas > 0 && <span className="seg-n">· {ideas}</span>}
             </button>
           ))}
         </div>
@@ -133,6 +137,7 @@ export default function Contenido({ onCaptura }) {
       {vista === 'calendario' && <Calendario piezas={piezas} versiones={data?.versiones || []} carpetas={carpetas} dia={dia} setDia={setDia} onAbrir={setEditando} onNuevo={nuevo} onMover={mover} onProgramar={(p, f) => setProgramando({ p, f })} />}
       {vista === 'biblioteca' && <Biblioteca piezas={biblioteca} publicados={publicados} carpetas={carpetas} onAbrir={setEditando} onProgramar={(p) => setProgramando({ p })} onRepublicar={republicar} recargar={recargar} />}
       {vista === 'biblioteca' && <LeadMagnetsBiblioteca />}
+      {vista === 'deposito' && <Biblioteca deposito piezas={deposito} carpetas={carpetas} onAbrir={setEditando} onProgramar={(p) => setProgramando({ p })} onNuevo={() => setEditando({ fecha: '', estado: 'listo', deposito: true, archivos: [] })} recargar={recargar} />}
       {vista === 'ideas' && <BancoIdeas piezas={piezas} onAbrir={setEditando} onMover={mover} onNuevaIdea={() => onCaptura('idea')} onBorrar={borrar} />}
       {vista === 'pipeline' && <Pipeline piezas={piezas} onAbrir={setEditando} onMover={mover} onNuevaIdea={() => onCaptura('idea')} onBorrar={borrar} />}
 

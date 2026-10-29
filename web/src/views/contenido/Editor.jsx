@@ -128,6 +128,7 @@ export function EditorContenido({ pieza, carpetas, ig, onClose, onGuardado, onVi
     estado: pieza.estado || 'idea', fecha: pieza.fecha || '', hora: pieza.hora || '', caption: pieza.caption || '', video_url: pieza.video_url || '',
     publicar_ig: Boolean(pieza.publicar_ig), leadmagnet: Boolean(pieza.leadmagnet), leadmagnet_url: pieza.leadmagnet_url || '',
     pilar: pieza.pilar || '', objetivo: pieza.objetivo || '', gancho: pieza.gancho || '', cta: pieza.cta || '', categoria: pieza.categoria || '',
+    deposito: Boolean(pieza.deposito),
   }));
   const padre = pieza.padre_id ? piezas.find((p) => p.id === pieza.padre_id) : null;
   const derivadas = pieza.id ? piezas.filter((p) => p.padre_id === pieza.id) : [];
@@ -297,7 +298,7 @@ export function EditorContenido({ pieza, carpetas, ig, onClose, onGuardado, onVi
   // Una story solo lleva título, fecha, tipo de contenido y guion (el resto, con «Ver todos los campos»)
   const soloStory = d.formato === 'Story' && !fichaCompleta;
   return (
-    <Modal titulo={nueva ? 'Nuevo contenido' : soloStory ? 'Story' : 'Editar contenido'} onClose={cerrar} ancho={soloStory ? 860 : 960} cerrarFuera={false} clase="editor-c">
+    <Modal titulo={nueva ? (d.deposito ? 'Nueva publicación en el Depósito' : 'Nuevo contenido') : soloStory ? 'Story' : 'Editar contenido'} onClose={cerrar} ancho={soloStory ? 860 : 960} cerrarFuera={false} clase="editor-c">
       <form className={`editor-grid${soloStory ? ' solo-story' : ''}`} onSubmit={guardar}>
         <div className="editor-datos">
           <label className="campo-et">Título</label>
@@ -340,7 +341,7 @@ export function EditorContenido({ pieza, carpetas, ig, onClose, onGuardado, onVi
               <input type="time" className="campo" value={d.hora} onChange={cambia('hora')} />
             </div>
           </div>
-          {!d.fecha && <div className="ayuda">Sin fecha se queda en la biblioteca hasta que la programes.</div>}
+          {!d.fecha && <div className="ayuda">Sin fecha se queda en {d.deposito ? "el Depósito" : "la biblioteca"} hasta que la programes.</div>}
           {!soloStory && (
             <>
               <label className="campo-et">Objetivo</label>
@@ -354,6 +355,13 @@ export function EditorContenido({ pieza, carpetas, ig, onClose, onGuardado, onVi
             </>
           )}
           <CampoCategoria valor={d.categoria} story={d.formato === 'Story'} onCambio={(v) => setD((x) => ({ ...x, categoria: v }))} />
+          {/* Depósito: terminada y en reserva, sin día. Al ponerle fecha pasa al calendario */}
+          {d.estado !== 'publicado' && (
+            <label className="lm-check deposito-check" title="Publicaciones terminadas que guardas en reserva: cuando quieras, le pones día y hora">
+              <input type="checkbox" checked={d.deposito} onChange={(e) => setD((x) => ({ ...x, deposito: e.target.checked, estado: e.target.checked && x.estado === 'idea' ? 'listo' : x.estado }))} />
+              <Icon name="box" size={13} />En el Depósito{d.deposito && d.fecha ? ' (con día: está en el calendario)' : ''}
+            </label>
+          )}
           <label className="campo-et">Guion</label>
           {nueva ? <div className="ayuda">Guarda la pieza y vuelve a abrirla para escribir su guion (a mano o con IA).</div> : <CajaGuion ref={guion} pieza={pieza} />}
           {/* Una story también se sube y se programa: su archivo va a la derecha y aquí, publicarla sola en Instagram */}

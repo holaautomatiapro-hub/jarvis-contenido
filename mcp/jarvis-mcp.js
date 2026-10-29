@@ -114,11 +114,12 @@ export function buildServer(jarvis, { origen = 'claude', avisar = () => {}, inst
       nota: z.string().optional().describe('Ruta de la nota asociada en el vault'),
       leadmagnet: z.boolean().optional().describe('Si la pieza lleva lead magnet (p. ej. «comenta GUÍA y te la mando»)'),
       leadmagnet_url: z.string().optional().describe('Enlace del lead magnet (https://…)'),
+      deposito: z.boolean().optional().describe('En el Depósito: publicación terminada que se guarda en reserva, sin fecha, hasta que la persona le pone día y hora'),
       ...estrategia,
       padre_id: z.number().int().optional().describe('Si sale de otra pieza (p. ej. un clip de un vídeo largo o el carrusel de un reel), el id de esa pieza'),
       origen_ref: z.string().optional().describe('De dónde sale si no es de una pieza (p. ej. «Testimonio · Ana»)'),
     },
-    (a) => jarvis.crearPieza({ ...a, origen, ...(a.estado && a.estado !== 'idea' ? { en_pipeline: true } : {}) }), true);
+    (a) => jarvis.crearPieza({ ...(a.deposito && !a.estado ? { estado: 'listo' } : {}), ...a, origen, ...((a.estado && a.estado !== 'idea') || a.deposito ? { en_pipeline: true } : {}) }), true);
 
   tool('mover_pieza', 'Mueve una pieza a otra columna del pipeline o cambia sus datos.',
     {
@@ -133,6 +134,7 @@ export function buildServer(jarvis, { origen = 'claude', avisar = () => {}, inst
       nota: z.string().optional(),
       leadmagnet: z.boolean().optional(),
       leadmagnet_url: z.string().optional().describe('Enlace del lead magnet (https://…)'),
+      deposito: z.boolean().optional().describe('En el Depósito: publicación terminada que se guarda en reserva, sin fecha, hasta que la persona le pone día y hora'),
       ...estrategia,
       padre_id: z.number().int().nullable().optional().describe('Id de la pieza de la que sale (null para quitarlo)'),
     },
@@ -144,6 +146,10 @@ export function buildServer(jarvis, { origen = 'claude', avisar = () => {}, inst
   tool('listar_pipeline', 'Lista las piezas del pipeline de contenido, opcionalmente filtradas por estado.',
     { estado: z.string().optional().describe('Fase del pipeline (id). Usa ver_pipeline para ver las fases') },
     ({ estado }) => jarvis.listarPiezas({ estado }));
+
+  tool('ver_deposito', 'El DEPÓSITO: publicaciones terminadas que la persona guarda en reserva (sin fecha). Para sacar una, ponle fecha y hora con mover_pieza (y, si quiere que salga sola en Instagram, publicar_en_instagram).', {},
+    () => jarvis.listarPiezas().filter((p) => p.deposito && !p.fecha && p.estado !== 'publicado')
+      .map((p) => ({ id: p.id, titulo: p.titulo, formato: p.formato, caption: p.caption || null, archivos: p.archivos.length, creado: p.creado })));
 
   const plazo = {
     plazo_tipo: z.enum(PLAZOS).nullable().optional().describe('Fecha límite: dia (un día concreto), semana o mes; null = sin fecha. Por defecto, un día'),
@@ -393,8 +399,9 @@ export function buildServer(jarvis, { origen = 'claude', avisar = () => {}, inst
         titulo: z.string().optional().describe('Título de la pieza nueva'),
         formato: z.enum(['Post', 'Carrusel', 'Reel', 'Story']).optional().describe('Formato de la pieza nueva (varias fotos = Carrusel)'),
         caption: z.string().optional().describe('Texto de la publicación'),
+        deposito: z.boolean().optional().describe('Pieza nueva en el Depósito (reserva sin fecha), si la persona lo pide'),
       },
-      async ({ rutas, pieza_id, titulo, formato, caption }) => {
+      async ({ rutas, pieza_id, titulo, formato, caption, deposito }) => {
         const nuevos = [];
         for (const r of rutas) nuevos.push(await medios.subirLocal(r));
         if (pieza_id) {
@@ -404,8 +411,8 @@ export function buildServer(jarvis, { origen = 'claude', avisar = () => {}, inst
         }
         const fotos = nuevos.filter((a) => /^image\//.test(a.mime)).length;
         const formatoFinal = formato || (nuevos.length > 1 ? 'Carrusel' : fotos ? 'Post' : 'Reel');
-        const p = jarvis.crearPieza({ titulo: titulo || `Desde Telegram · ${new Date().toLocaleDateString('es-ES')}`, estado: 'listo', formato: formatoFinal, caption: caption || null, archivos: nuevos, origen });
-        return { pieza: { id: p.id, titulo: p.titulo, formato: p.formato, archivos: nuevos.length }, aviso: 'Está en la biblioteca (Contenido). Para publicarla, usa publicar_en_instagram.' };
+        const p = jarvis.crearPieza({ titulo: titulo || `Desde Telegram · ${new Date().toLocaleDateString('es-ES')}`, estado: 'listo', formato: formatoFinal, caption: caption || null, archivos: nuevos, origen, ...(deposito ? { deposito: true } : {}) });
+        return { pieza: { id: p.id, titulo: p.titulo, formato: p.formato, archivos: nuevos.length }, aviso: deposito ? 'Está en el Depósito (Contenido). Cuando la persona quiera, ponle fecha y hora con mover_pieza.' : 'Está en la biblioteca (Contenido). Para publicarla, usa publicar_en_instagram.' };
       }, true);
   }
 
