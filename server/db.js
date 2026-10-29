@@ -277,6 +277,8 @@ export function openDb(file) {
   )`);
   // La nota de 02-Guiones con el guion de la pieza (cuando su "nota" es otra: la idea de la que sale)
   migrar('ALTER TABLE piezas ADD COLUMN guion_nota TEXT');
+  // Depósito: publicaciones terminadas que se guardan en reserva hasta que se les pone día
+  migrar('ALTER TABLE piezas ADD COLUMN deposito INTEGER NOT NULL DEFAULT 0');
   // El botón de la estrategia que cubre la pieza (LM, Viral, Educar, Testimonio…)
   migrar('ALTER TABLE piezas ADD COLUMN categoria TEXT');
   // La pieza está en el pipeline porque la pusiste tú (moviéndola o eligiendo su fase): lo que solo está en la

@@ -148,6 +148,7 @@ export function createJarvis({ db, vault }) {
       else set[k] = typeof v === 'string' ? (k === 'caption' ? v : v.trim()) || null : v ?? null;
     }
     if ('en_pipeline' in c) set.en_pipeline = c.en_pipeline ? 1 : 0;
+    if ('deposito' in c) set.deposito = c.deposito ? 1 : 0;
     // Portada (de un reel): una imagen de la biblioteca, o null para quitarla
     if ('portada' in c) {
       const a = c.portada;

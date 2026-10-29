@@ -50,7 +50,7 @@ function MiniLocal({ f }) {
   return <div className="miniatura-c mini-local">{/^video\//.test(mimeDe(f)) ? <video src={`${url}#t=0.1`} preload="metadata" muted /> : <img src={url} alt="" />}</div>;
 }
 
-function VentanaCarpeta({ carpeta, quedan, carpetas, dentro = null, onCancelar, onSaltar, onHecho }) {
+function VentanaCarpeta({ carpeta, quedan, carpetas, dentro = null, extra = { estado: 'editar' }, conCarpetas = true, onCancelar, onSaltar, onHecho }) {
   const propuesta = dentro ? `${dentro}/${carpeta.nombre}` : carpeta.nombre;
   const [lista, setLista] = useState(() => carpeta.archivos.filter(esMedio).sort((a, b) => ordenNatural(a.name, b.name)));
   const puedeCarrusel = lista.length >= 2 && lista.length <= 10;
@@ -69,14 +69,14 @@ function VentanaCarpeta({ carpeta, quedan, carpetas, dentro = null, onCancelar, 
     if (!lista.length) return setError('No queda ningún archivo.');
     if (modo === 'carrusel' && !puedeCarrusel) return setError('Un carrusel lleva entre 2 y 10 archivos.');
     setError('');
-    if (destino && !carpetas.some((c) => c.nombre === destino)) await api('/api/contenido/carpetas', { method: 'POST', body: { nombre: destino } }).catch(() => {});
+    if (conCarpetas && destino && !carpetas.some((c) => c.nombre === destino)) await api('/api/contenido/carpetas', { method: 'POST', body: { nombre: destino } }).catch(() => {});
     const subidos = [];
     try {
       for (let i = 0; i < lista.length; i++) {
         setProgreso(`Subiendo ${i + 1} de ${lista.length}…`);
         subidos.push(await subirArchivo(lista[i]));
       }
-      const comun = { estado: 'editar', carpeta: destino || null };
+      const comun = { ...extra, carpeta: conCarpetas ? destino || null : null };
       if (modo === 'carrusel') await api('/api/piezas', { method: 'POST', body: { ...comun, titulo: titulo.trim() || carpeta.nombre, formato: 'Carrusel', archivos: subidos } });
       else {
         for (const a of subidos) {
@@ -129,14 +129,14 @@ function VentanaCarpeta({ carpeta, quedan, carpetas, dentro = null, onCancelar, 
             <input className="campo" value={titulo} onChange={(e) => setTitulo(e.target.value)} />
           </div>
         )}
-        <div>
+        {conCarpetas && <div>
           <label className="campo-et">Guardar en la carpeta</label>
           <select className="campo" value={destino} onChange={(e) => setDestino(e.target.value)}>
             {!existe && <option value={propuesta}>{rutaLegible(propuesta)} (nueva)</option>}
             <OpcionesCarpetas carpetas={carpetas} />
             <option value="">Sin carpeta</option>
           </select>
-        </div>
+        </div>}
       </div>
       {error && <div className="caja-error">{error}</div>}
       <div className="modal-pie">
@@ -151,7 +151,10 @@ function VentanaCarpeta({ carpeta, quedan, carpetas, dentro = null, onCancelar, 
 }
 
 // ---------- Biblioteca: lo que aún no tiene día ----------
-export function Biblioteca({ piezas, publicados = [], carpetas, onAbrir, onProgramar, onRepublicar, recargar }) {
+// deposito: la misma vista para el Depósito (publicaciones terminadas en reserva, sin carpetas): lo que se sube
+// entra listo y en el depósito, y «Programar» le pone día y hora.
+export function Biblioteca({ piezas, publicados = [], carpetas, onAbrir, onProgramar, onRepublicar, onNuevo, recargar, deposito = false }) {
+  const extra = deposito ? { estado: 'listo', deposito: true } : { estado: 'editar' };
   const [abierta, setAbierta] = useState(null); // null = todas · '' = sin carpeta · nombre
   const [busca, setBusca] = useState('');
   const [marcadas, setMarcadas] = useState([]); // en el orden en que se marcan (= orden del carrusel)
@@ -194,7 +197,7 @@ export function Biblioteca({ piezas, publicados = [], carpetas, onAbrir, onProgr
       setEstado(`Subiendo ${i + 1} de ${medios.length}…`);
       try {
         const a = await subirArchivo(medios[i]);
-        await api('/api/piezas', { method: 'POST', body: { titulo: tituloDeArchivo(a.nombre), formato: esVideo(a) ? 'Reel' : 'Post', estado: 'editar', carpeta: carpeta || null, archivos: [a] } });
+        await api('/api/piezas', { method: 'POST', body: { ...extra, titulo: tituloDeArchivo(a.nombre), formato: esVideo(a) ? 'Reel' : 'Post', carpeta: carpeta || null, archivos: [a] } });
       } catch (e) { errs.push(e.message); }
     }
     setEstado(null);
@@ -223,6 +226,7 @@ export function Biblioteca({ piezas, publicados = [], carpetas, onAbrir, onProgr
   };
   const juntar = () => accion(() => api('/api/contenido/juntar', { method: 'POST', body: { ids: marcadas } }), 'No se pudieron juntar.');
   const moverA = (c) => accion(() => api('/api/contenido/mover', { method: 'POST', body: { ids: marcadas, carpeta: c || null } }), 'No se pudieron mover.');
+  const alDeposito = (v) => accion(async () => { for (const id of marcadas) await api(`/api/piezas/${id}`, { method: 'PATCH', body: v ? { deposito: true, estado: 'listo' } : { deposito: false } }); }, 'No se pudieron mover.');
   const eliminar = () => {
     if (!window.confirm(`¿Eliminar ${marcadas.length} pieza${marcadas.length === 1 ? '' : 's'} y sus archivos?`)) return;
     accion(() => api('/api/contenido/borrar', { method: 'POST', body: { ids: marcadas } }), 'No se pudieron eliminar.');
@@ -268,9 +272,10 @@ export function Biblioteca({ piezas, publicados = [], carpetas, onAbrir, onProgr
             : (
               <>
                 <Icon name="share" size={22} color="var(--accent-2)" />
-                <b>Arrastra aquí tus vídeos y fotos, o carpetas enteras</b>
-                <span className="ayuda">{carpeta ? `Lo que subas suelto irá a la carpeta «${rutaLegible(carpeta)}».` : 'Con una carpeta podrás ordenar sus archivos y elegir si es un carrusel o stories.'}</span>
+                <b>{deposito ? 'Arrastra aquí las publicaciones que quieres guardar en reserva' : 'Arrastra aquí tus vídeos y fotos, o carpetas enteras'}</b>
+                <span className="ayuda">{deposito ? 'Cada foto o vídeo suelto, una publicación. Una carpeta, un carrusel (podrás ordenarlo). Cuando quieras sacarla, pulsa «Programar» y elige día y hora.' : carpeta ? `Lo que subas suelto irá a la carpeta «${rutaLegible(carpeta)}».` : 'Con una carpeta podrás ordenar sus archivos y elegir si es un carrusel o stories.'}</span>
                 <div style={{ display: 'flex', gap: 8, marginTop: 6 }}>
+                  {deposito && onNuevo && <button className="btn" onClick={onNuevo} title="Con sus archivos, el caption y el tipo"><Icon name="plus" size={13} />Nueva publicación</button>}
                   <button className="btn btn-sec" onClick={() => inputArchivos.current?.click()}>Elegir archivos</button>
                   <button className="btn btn-sec" onClick={() => inputCarpeta.current?.click()}>Añadir una carpeta</button>
                 </div>
@@ -281,7 +286,7 @@ export function Biblioteca({ piezas, publicados = [], carpetas, onAbrir, onProgr
       </div>
       {errores.length > 0 && <div className="caja-error">{errores.join('\n')}</div>}
 
-      <div className="carpetas-chips">
+      {!deposito && <div className="carpetas-chips">
         <button className={`chip${abierta === null ? ' on' : ''}`} onClick={() => setAbierta(null)}>Todas <span className="cuenta">{piezas.length}</span></button>
         {publicados.length > 0 && <button className={`chip chip-publicados${verPublicados ? ' on' : ''}`} onClick={() => { setAbierta(PUBLICADOS); setMarcadas([]); }} title="Lo que ya publicaste, para volver a subirlo otro día"><Icon name="checkCircle" />Publicados <span className="cuenta">{publicados.length}</span></button>}
         {carpetas.length > 0 && <button className={`chip${abierta === '' ? ' on' : ''}`} onClick={() => setAbierta('')}>Sin carpeta <span className="cuenta">{sinCarpeta}</span></button>}
@@ -295,7 +300,7 @@ export function Biblioteca({ piezas, publicados = [], carpetas, onAbrir, onProgr
             <button className="link-btn" onClick={() => setNueva(null)}>Cancelar</button>
           </span>
         )}
-      </div>
+      </div>}
 
       {carpeta && (
         <>
@@ -339,18 +344,23 @@ export function Biblioteca({ piezas, publicados = [], carpetas, onAbrir, onProgr
           <>
             <b>{marcadas.length} marcada{marcadas.length === 1 ? '' : 's'}</b>
             <button className="btn btn-sec" disabled={marcadas.length < 2} onClick={juntar} title="En el orden en que las has marcado"><Icon name="layers" size={13} />Juntar en un carrusel</button>
-            <select className="campo" value="-" onChange={(e) => moverA(e.target.value === '__sin' ? '' : e.target.value)} style={{ width: 180 }} aria-label="Mover a carpeta">
-              <option value="-" disabled>Mover a carpeta…</option>
-              <OpcionesCarpetas carpetas={carpetas} />
-              <option value="__sin">Sin carpeta</option>
-            </select>
+            {deposito ? <button className="btn btn-sec" onClick={() => alDeposito(false)} title="Vuelven a la Biblioteca"><Icon name="book" size={13} />Sacar del depósito</button> : (
+              <>
+                <select className="campo" value="-" onChange={(e) => moverA(e.target.value === '__sin' ? '' : e.target.value)} style={{ width: 180 }} aria-label="Mover a carpeta">
+                  <option value="-" disabled>Mover a carpeta…</option>
+                  <OpcionesCarpetas carpetas={carpetas} />
+                  <option value="__sin">Sin carpeta</option>
+                </select>
+                <button className="btn btn-sec" onClick={() => alDeposito(true)} title="Publicaciones terminadas que guardas en reserva"><Icon name="box" size={13} />Al depósito</button>
+              </>
+            )}
             <button className="btn btn-sec peligro" onClick={eliminar}>Eliminar</button>
             <button className="link-btn" onClick={() => setMarcadas([])}>Desmarcar</button>
           </>
         ) : (
           <>
-            <div className="buscar-mini"><Icon name="search" size={13} /><input placeholder="Buscar en la biblioteca" value={busca} onChange={(e) => setBusca(e.target.value)} /></div>
-            <span className="ayuda" style={{ marginLeft: 'auto' }}>{verPublicados ? `${publicados.length} ya publicados · «Volver a publicar» hace una copia con los mismos archivos` : `${piezas.length} sin programar`}</span>
+            <div className="buscar-mini"><Icon name="search" size={13} /><input placeholder={deposito ? 'Buscar en el depósito' : 'Buscar en la biblioteca'} value={busca} onChange={(e) => setBusca(e.target.value)} /></div>
+            <span className="ayuda" style={{ marginLeft: 'auto' }}>{verPublicados ? `${publicados.length} ya publicados · «Volver a publicar» hace una copia con los mismos archivos` : deposito ? `${piezas.length} en reserva` : `${piezas.length} sin programar`}</span>
           </>
         )}
       </div>
@@ -373,8 +383,8 @@ export function Biblioteca({ piezas, publicados = [], carpetas, onAbrir, onProgr
                   </>
                 ) : (
                   <>
-                    <div className="fila-c-txt"><b>{p.titulo}</b>{p.carpeta && p.carpeta !== abierta && <small><Icon name="folder" size={10} /> {p.carpeta}</small>}</div>
-                    <button className="btn btn-sec bib-prog" onClick={() => onProgramar(p)} title="Elegir día y pasarla al calendario"><Icon name="calendar" size={12} />Programar</button>
+                    <div className="fila-c-txt"><b>{p.titulo}</b>{deposito ? <small>{p.formato === 'Story' ? 'Story' : p.caption?.trim() ? p.caption.trim().slice(0, 60) : '⚠ Sin caption'}</small> : p.carpeta && p.carpeta !== abierta && <small><Icon name="folder" size={10} /> {p.carpeta}</small>}</div>
+                    <button className="btn btn-sec bib-prog" onClick={() => onProgramar(p)} title={deposito ? 'Elegir día y hora: sale del depósito y pasa al calendario' : 'Elegir día y pasarla al calendario'}><Icon name="calendar" size={12} />Programar</button>
                   </>
                 )}
               </div>
@@ -382,7 +392,7 @@ export function Biblioteca({ piezas, publicados = [], carpetas, onAbrir, onProgr
           );
         })}
       </div>
-      {!lista.length && <div className="vacio">{verPublicados ? 'Nada coincide con la búsqueda.' : piezas.length ? (carpeta && subcarpetas.length && !busca ? 'Esta carpeta solo tiene subcarpetas: ábrelas arriba.' : 'Nada coincide con la búsqueda o la carpeta.') : 'La biblioteca está vacía. Arrastra arriba tu contenido.'}</div>}
+      {!lista.length && <div className="vacio">{verPublicados ? 'Nada coincide con la búsqueda.' : piezas.length ? (carpeta && subcarpetas.length && !busca ? 'Esta carpeta solo tiene subcarpetas: ábrelas arriba.' : 'Nada coincide con la búsqueda o la carpeta.') : deposito ? 'El depósito está vacío. Sube arriba las publicaciones que quieras tener en reserva.' : 'La biblioteca está vacía. Arrastra arriba tu contenido.'}</div>}
 
       {cola.length > 0 && (
         <VentanaCarpeta
@@ -391,6 +401,8 @@ export function Biblioteca({ piezas, publicados = [], carpetas, onAbrir, onProgr
           quedan={cola.length - 1}
           carpetas={carpetas}
           dentro={carpeta}
+          extra={extra}
+          conCarpetas={!deposito}
           onCancelar={() => setCola([])}
           onSaltar={() => setCola((c) => c.slice(1))}
           onHecho={() => { setCola((c) => c.slice(1)); recargar(); }}

@@ -1414,6 +1414,7 @@ button.portada-muestra { padding: 0; border: 0; width: 100%; cursor: pointer; fo
 .campo-lm { margin-top: 10px; display: flex; flex-direction: column; gap: 6px; }
 .lm-check { display: inline-flex; align-items: center; gap: 7px; font-size: 12.5px; cursor: pointer; }
 .lm-check svg { color: var(--accent-2); }
+.deposito-check { margin: 4px 0 10px; }
 
 /* Caption con negrita de Instagram y emojis */
 .caption-c { position: relative; }
