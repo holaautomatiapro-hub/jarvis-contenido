@@ -509,6 +509,7 @@ export function createApp({ jarvis, archivos, miniaturas = null, estrategia = nu
       app.get('/api/automatizaciones/:id', h((req) => automatizaciones.detalle(req.params.id)));
       app.put('/api/automatizaciones/:id', h((req) => automatizaciones.editar(req.params.id, req.body || {}), true));
       app.post('/api/automatizaciones/:id/pausar', h((req) => automatizaciones.pausar(req.params.id, req.body || {}), true));
+      app.post('/api/automatizaciones/:id/duplicar', h((req) => automatizaciones.duplicar(req.params.id), true));
       app.delete('/api/automatizaciones/:id', h((req) => automatizaciones.borrar(req.params.id), true));
     }
     // Fotos con IA (Kie AI): las encarga generar_foto (MCP) y se guardan en la biblioteca

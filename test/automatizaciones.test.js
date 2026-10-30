@@ -1,17 +1,36 @@
 import { test, describe } from 'node:test';
 import assert from 'node:assert/strict';
 import { openDb } from '../server/db.js';
-import { createAutomatizaciones, normalizarConfig, cuerpoAutomatizacion, grafoFlujo, llevaFlujo, palabrasParaZernio } from '../server/automatizaciones.js';
+import { createAutomatizaciones, normalizarConfig, cuerpoAutomatizacion, grafoZernio, compilar, palabrasParaZernio, aFormatoNuevo } from '../server/automatizaciones.js';
+import { flujoInicial, salidasDe, validarFlujo } from '../web/src/lib/flujo.js';
 
 const CLAVE = 'zernio-clave-secreta-123456';
-const BASE = {
-  nombre: 'Guía', tipo: 'post', destino: 'publicacion', media_id: '1789', media_titulo: 'Mi reel',
-  palabras: 'GUÍA, guia', mensaje: '¡Hola {{first_name}}!', boton: 'Lo quiero',
-  recurso: { enlace: 'https://ejemplo.com/guia', titulo: 'Abrir guía' },
-};
+const DISP = { tipo: 'post', destino: 'publicacion', media_id: '1789', media_titulo: 'Mi reel', palabras: 'GUÍA, guia' };
+// Un flujo largo: mensaje con botón → recurso → pregunta con opciones → (Entrenador: etiqueta → esperar → ¿te sigue? → mensaje que vuelve atrás) / otra → fin
+function flujoLargo() {
+  return {
+    nodos: [
+      { id: 'inicio', tipo: 'inicio', x: 0, y: 0, datos: {} },
+      { id: 'm1', tipo: 'mensaje', datos: { texto: '¡Hola {{first_name}}!', botones: [{ titulo: 'Lo quiero', tipo: 'camino' }, { titulo: 'Ver web', tipo: 'enlace', url: 'https://ejemplo.com' }] } },
+      { id: 'm2', tipo: 'mensaje', datos: { texto: 'Aquí tienes', botones: [{ titulo: 'Abrir guía', tipo: 'enlace', url: 'https://ejemplo.com/guia' }] } },
+      { id: 'p1', tipo: 'pregunta', datos: { texto: '¿A qué te dedicas?', opciones: ['Entrenador', 'Otro'] } },
+      { id: 't1', tipo: 'etiqueta', datos: { accion: 'poner', etiqueta: 'entrenador' } },
+      { id: 'e1', tipo: 'esperar', datos: { cantidad: 2, unidad: 'horas' } },
+      { id: 'c1', tipo: 'condicion', datos: { tipo: 'sigue' } },
+      { id: 'm3', tipo: 'mensaje', datos: { texto: '¿Hablamos?', botones: [{ titulo: 'Sí', tipo: 'camino' }, { titulo: 'Ahora no', tipo: 'camino' }] } },
+      { id: 'fin', tipo: 'fin', datos: {} },
+    ],
+    conexiones: [
+      { de: 'inicio', salida: 'siguiente', a: 'm1' }, { de: 'm1', salida: 'b0', a: 'm2' }, { de: 'm2', salida: 'siguiente', a: 'p1' },
+      { de: 'p1', salida: 'o0', a: 't1' }, { de: 'p1', salida: 'otra', a: 'fin' }, { de: 't1', salida: 'siguiente', a: 'e1' },
+      { de: 'e1', salida: 'siguiente', a: 'c1' }, { de: 'c1', salida: 'si', a: 'm3' }, { de: 'c1', salida: 'no', a: 'fin' },
+      { de: 'm3', salida: 'b0', a: 'm2' }, // vuelve atrás: los bucles valen
+    ],
+  };
+}
 
 // Zernio e Instagram de mentira: apunta las llamadas y responde lo mínimo
-function falso({ media = [], stories = [], cuentas } = {}) {
+function falso({ media = [], stories = [] } = {}) {
   const llamadas = [];
   let n = 0;
   const fetchImpl = async (url, o = {}) => {
@@ -25,7 +44,7 @@ function falso({ media = [], stories = [], cuentas } = {}) {
     const ruta = u.replace('https://zernio.com/api/v1', '');
     llamadas.push([o.method || 'GET', ruta, body]);
     if (o.headers?.Authorization !== `Bearer ${CLAVE}`) return json({ error: 'Unauthorized' }, 401);
-    if (ruta === '/accounts') return json({ accounts: cuentas || [{ _id: 'acc1', platform: 'instagram', profileId: { _id: 'prof1' }, username: 'automatiapro', isActive: true }] });
+    if (ruta === '/accounts') return json({ accounts: [{ _id: 'acc1', platform: 'instagram', profileId: { _id: 'prof1' }, username: 'automatiapro', isActive: true }] });
     if (ruta === '/workflows' && o.method === 'POST') return json({ workflow: { id: `wf${++n}` } });
     if (ruta === '/comment-automations' && o.method === 'POST') return json({ automation: { id: `ca${++n}` } });
     if (ruta.startsWith('/comment-automations?')) return json({ automations: [{ id: 'ca2', isActive: true, stats: { triggered: 5, dmsSent: 4 } }] });
@@ -34,107 +53,153 @@ function falso({ media = [], stories = [], cuentas } = {}) {
   return { fetchImpl, llamadas };
 }
 const instagram = { conexion: () => ({ token: 't', igUserId: 'ig1' }) };
+const cuantas = (llamadas, m, ruta) => llamadas.filter((l) => l[0] === m && l[1] === ruta).length;
 
 describe('Automatizaciones (Zernio)', () => {
-  test('valida lo que hace falta y limpia el formulario', () => {
-    const c = normalizarConfig(BASE);
-    assert.deepEqual(c.palabras, ['guía'], 'GUÍA y guia son la misma palabra');
-    assert.equal(c.coincidencia, 'palabra');
-    assert.throws(() => normalizarConfig({ ...BASE, media_id: '' }), /Elige la publicación/);
-    assert.throws(() => normalizarConfig({ ...BASE, mensaje: '' }), /mensaje privado/);
-    assert.throws(() => normalizarConfig({ ...BASE, recurso: { enlace: 'http://x.com' } }), /https/);
-    assert.throws(() => normalizarConfig({ ...BASE, recurso: {} }), /enlace del recurso o una pregunta/);
-    assert.equal(normalizarConfig({ ...BASE, tipo: 'story', respuestas: ['hola'] }).respuestas.length, 0, 'una story no tiene respuesta pública');
-    // Da igual mayúsculas o tildes: se queda una (la de tilde) y en Zernio se dan de alta todas las formas
-    const p = normalizarConfig({ ...BASE, palabras: 'guia, guía, GUIA, GUÍA, Guía, info' }).palabras;
-    assert.deepEqual(p, ['guía', 'info']);
+  test('palabras: da igual mayúsculas y tildes; valida el disparador', () => {
+    const c = normalizarConfig({ disparador: { ...DISP, palabras: 'guia, guía, GUIA, GUÍA, Guía, info' }, flujo: flujoLargo() });
+    assert.deepEqual(c.disparador.palabras, ['guía', 'info']);
     assert.deepEqual(palabrasParaZernio(['guía']).sort(), ['GUIA', 'GUÍA', 'Guia', 'Guía', 'guia', 'guía'].sort());
+    assert.throws(() => normalizarConfig({ disparador: { ...DISP, media_id: '' }, flujo: flujoLargo() }), /Elige la publicación/);
+    assert.throws(() => normalizarConfig({ disparador: { tipo: 'mensaje' }, flujo: flujoLargo() }), /palabra que te tienen que escribir/);
+    assert.equal(normalizarConfig({ disparador: { ...DISP, tipo: 'story', respuestas: ['hola'] }, flujo: flujoLargo() }).disparador.respuestas.length, 0, 'una story no tiene respuesta pública');
   });
 
-  test('cuerpo para Zernio: botón al enlace, «sígueme primero», story y repetición', () => {
-    const sin = cuerpoAutomatizacion(normalizarConfig(BASE));
-    assert.deepEqual(sin.buttons, [{ type: 'url', title: 'Lo quiero', url: 'https://ejemplo.com/guia' }]);
-    assert.equal(sin.trigger, 'comment');
-    assert.ok(sin.keywords.includes('GUIA') && sin.keywords.includes('Guía') && sin.keywords.includes('guia'));
-    assert.equal(sin.platformPostId, '1789');
-    assert.deepEqual(sin.audience, { followerStatus: 'any' });
-    assert.deepEqual(sin.repeatPolicy, { mode: 'once' });
-    const con = cuerpoAutomatizacion(normalizarConfig({ ...BASE, sigueme: true, repetir: 'cada', respuestas: 'Enviado 📩\nMira tus mensajes', pregunta: { texto: '¿A qué te dedicas?' } }), { flujoId: 'wf9' });
-    assert.deepEqual(con.buttons, [{ type: 'postback', title: 'Lo quiero', payload: 'zernio:workflow:wf9' }]);
-    assert.deepEqual(con.audience, { followerStatus: 'follower', whenUnknown: 'verify' });
-    assert.equal(con.followGate.profileButtonLabel, 'Ver perfil');
-    assert.equal(con.commentReply, 'Enviado 📩');
-    assert.deepEqual(con.commentReplyVariations, ['Mira tus mensajes']);
-    assert.deepEqual(con.repeatPolicy, { mode: 'every_comment', cooldownHours: 24 });
-    const story = cuerpoAutomatizacion(normalizarConfig({ ...BASE, tipo: 'story', destino: 'cualquiera' }));
+  test('el tablero se valida: primer mensaje, botones, enlaces y esperas', () => {
+    const f = flujoInicial('post');
+    assert.match(validarFlujo(f, { tipo: 'post' }).errores.join(), /necesita un enlace/, 'la plantilla pide el enlace del recurso');
+    f.nodos.find((n) => n.id === 'n2').datos.botones[0].url = 'https://ejemplo.com/guia';
+    assert.deepEqual(validarFlujo(f, { tipo: 'post' }).errores, []);
+    const roto = { ...f, conexiones: f.conexiones.filter((c) => c.de !== 'n1') };
+    assert.match(validarFlujo(roto, { tipo: 'post' }).errores.join(), /no lleva a ningún bloque/);
+    const conPregunta = { nodos: [{ id: 'inicio', tipo: 'inicio', datos: {} }, { id: 'p', tipo: 'pregunta', datos: { texto: '¿?' } }], conexiones: [{ de: 'inicio', salida: 'siguiente', a: 'p' }] };
+    assert.match(validarFlujo(conPregunta, { tipo: 'post' }).errores.join(), /Tras el inicio va un Mensaje/);
+    assert.deepEqual(validarFlujo(conPregunta, { tipo: 'mensaje' }).errores, [], 'por privado sí puede empezar con una pregunta');
+    assert.deepEqual(validarFlujo(flujoLargo(), { tipo: 'post' }).errores, []);
+    const largo = flujoLargo();
+    largo.nodos.find((n) => n.id === 'e1').datos = { cantidad: 2, unidad: 'dias' };
+    assert.match(validarFlujo(largo, { tipo: 'post' }).avisos.join(), /24 h/);
+    // El primer mensaje no tiene «si no pulsa» (Meta no deja escribir más sin respuesta)
+    assert.deepEqual(salidasDe(largo.nodos[1], { primero: true }).map((s) => s.id), ['b0']);
+    assert.deepEqual(salidasDe(largo.nodos[7]).map((s) => s.id), ['b0', 'b1', 'sin_respuesta']);
+  });
+
+  test('un flujo largo se convierte en un workflow de Zernio por cada botón del primer mensaje', () => {
+    const cfg = normalizarConfig({ nombre: 'Guía', disparador: { ...DISP, sigueme: true, respuestas: 'Enviado 📩\nMira tus mensajes' }, flujo: flujoLargo() });
+    const { ramas, comentario } = compilar(cfg);
+    assert.ok(comentario);
+    assert.deepEqual(ramas.map((r) => r.rama), ['b0'], 'el botón de enlace no abre camino');
+    const g = ramas[0].grafo;
+    const ids = new Set(g.nodes.map((x) => x.id));
+    assert.ok(g.edges.every((e) => ids.has(e.source) && ids.has(e.target)), 'todas las flechas apuntan a nodos que existen');
+    assert.deepEqual(g.nodes[0].config, { triggerType: 'inbound_message', keywords: [ramas[0].clave], matchType: 'exact' });
+    const tipos = g.nodes.map((x) => x.type);
+    for (const t of ['send_message', 'wait_for_reply', 'set_field', 'condition', 'add_tag', 'delay', 'end']) assert.ok(tipos.includes(t), t);
+    assert.equal(g.nodes.filter((x) => x.id === 'm2').length, 1, 'm2 una sola vez aunque m3 vuelva a él');
+    assert.ok(g.edges.some((e) => e.source === 'm3_c' && e.target === 'm2' && e.sourceHandle === 'b0'));
+    assert.deepEqual(g.nodes.find((x) => x.id === 'p1_f').config, { field: 'respuesta_p1', value: '{{r_p1}}' });
+    assert.ok(g.edges.some((e) => e.source === 'p1_c' && e.target === 't1' && e.sourceHandle === 'q0'));
+    assert.ok(g.edges.some((e) => e.source === 'p1_c' && e.target === 't1' && e.sourceHandle === 't0'));
+    assert.deepEqual(g.nodes.find((x) => x.id === 'e1').config, { delayMinutes: 120 });
+    assert.deepEqual(g.nodes.find((x) => x.id === 'c1').config.rules[0], { id: 'si', variable: 'contact.isFollower', operator: 'is_true' });
+    const cuerpo = cuerpoAutomatizacion(cfg, { idsRamas: { b0: 'wf9' } });
+    assert.deepEqual(cuerpo.buttons, [{ type: 'postback', title: 'Lo quiero', payload: 'zernio:workflow:wf9' }, { type: 'url', title: 'Ver web', url: 'https://ejemplo.com' }]);
+    assert.equal(cuerpo.dmMessage, '¡Hola {{first_name}}!');
+    assert.deepEqual(cuerpo.audience, { followerStatus: 'follower', whenUnknown: 'verify' });
+    assert.equal(cuerpo.followGate.profileButtonLabel, 'Ver perfil');
+    assert.deepEqual([cuerpo.commentReply, cuerpo.commentReplyVariations], ['Enviado 📩', ['Mira tus mensajes']]);
+    assert.ok(cuerpo.keywords.includes('GUIA') && cuerpo.keywords.includes('Guía'));
+    const story = cuerpoAutomatizacion(normalizarConfig({ disparador: { ...DISP, tipo: 'story', destino: 'cualquiera' }, flujo: flujoLargo() }), { idsRamas: { b0: 'x' } });
     assert.equal(story.trigger, 'story_reply');
     assert.equal(story.platformPostId, undefined, 'cualquier story');
-    assert.equal(story.commentReply, undefined);
   });
 
-  test('el flujo de después del botón: recurso → pregunta → guarda la respuesta', () => {
-    const cfg = normalizarConfig({ ...BASE, pregunta: { texto: '¿A qué te dedicas?', opciones: 'Entrenador, Otro', gracias: '¡Gracias!' } });
-    assert.ok(llevaFlujo(cfg));
-    const g = grafoFlujo(cfg, { id: 7, clave: 'jarvis-7-abc' });
-    const tipos = g.nodes.map((x) => x.type);
-    assert.deepEqual(tipos, ['trigger', 'send_message', 'send_message', 'wait_for_reply', 'set_field', 'add_tag', 'send_message', 'end']);
-    assert.deepEqual(g.nodes[0].config, { triggerType: 'inbound_message', keywords: ['jarvis-7-abc'], matchType: 'exact' });
-    assert.deepEqual(g.nodes[1].config.buttons, [{ type: 'url', title: 'Abrir guía', url: 'https://ejemplo.com/guia' }]);
-    assert.deepEqual(g.nodes[2].config.quickReplies.map((q) => q.title), ['Entrenador', 'Otro']);
-    assert.ok(g.edges.some((e) => e.source === 'espera' && e.target === 'guardar' && e.sourceHandle === 'reply'));
-    assert.ok(g.edges.some((e) => e.source === 'espera' && e.target === 'fin' && e.sourceHandle === 'timeout'));
-    // Todas las aristas apuntan a nodos que existen
-    const ids = new Set(g.nodes.map((x) => x.id));
-    assert.ok(g.edges.every((e) => ids.has(e.source) && ids.has(e.target)));
+  test('palabra por privado: un solo workflow que empieza por el primer bloque', () => {
+    const cfg = normalizarConfig({ disparador: { tipo: 'mensaje', palabras: 'precio' }, flujo: flujoLargo() });
+    const { ramas, comentario } = compilar(cfg);
+    assert.equal(comentario, null);
+    assert.equal(ramas[0].rama, 'principal');
+    const g = ramas[0].grafo;
+    assert.equal(g.nodes[0].config.matchType, 'contains');
+    assert.ok(g.nodes[0].config.keywords.includes('PRECIO'));
+    assert.ok(g.edges.some((e) => e.source === 'inicio' && e.target === 'm1'));
   });
 
-  test('crear con pregunta: flujo activado y automatización con su botón; pausar, reanudar y borrar', async () => {
+  test('las del formulario de antes se pasan al tablero', () => {
+    const viejo = { nombre: 'Guía', tipo: 'post', destino: 'cualquiera', palabras: ['guía'], mensaje: 'Hola', boton: 'Lo quiero', recurso: { enlace: 'https://ej.com', titulo: 'Abrir' }, pregunta: { texto: '¿Qué tal?', opciones: [], gracias: 'Gracias' } };
+    const n = aFormatoNuevo(viejo);
+    assert.equal(n.disparador.tipo, 'post');
+    assert.deepEqual(n.flujo.nodos.map((x) => x.tipo), ['inicio', 'mensaje', 'mensaje', 'pregunta', 'mensaje']);
+    assert.deepEqual(validarFlujo(n.flujo, n.disparador).errores, []);
+  });
+
+  test('crear, listar, pausar, duplicar, editar y borrar', async () => {
     const { fetchImpl, llamadas } = falso();
     const a = createAutomatizaciones({ db: openDb(':memory:'), env: { ZERNIO_API_KEY: CLAVE }, fetchImpl, instagram });
-    const r = await a.crear({ ...BASE, pregunta: { texto: '¿A qué te dedicas?' } });
+    const r = await a.crear({ nombre: 'Guía', disparador: DISP, flujo: flujoLargo() });
     assert.equal(r.estado, 'activa');
-    assert.equal(r.conFlujo, true);
     const wf = llamadas.find((l) => l[0] === 'POST' && l[1] === '/workflows')[2];
-    assert.deepEqual([wf.profileId, wf.accountId, wf.platform], ['prof1', 'acc1', 'instagram']);
+    assert.deepEqual([wf.profileId, wf.accountId, wf.platform, wf.name], ['prof1', 'acc1', 'instagram', 'JARVIS · Guía · botón 1']);
     assert.ok(llamadas.some((l) => l[0] === 'POST' && l[1] === '/workflows/wf1/activate'));
     const ca = llamadas.find((l) => l[0] === 'POST' && l[1] === '/comment-automations')[2];
     assert.equal(ca.buttons[0].payload, 'zernio:workflow:wf1');
     assert.equal(ca.isActive, true);
-
-    const { lista } = await a.listar();
-    assert.equal(lista[0].zernio.stats.dmsSent, 4);
+    assert.equal((await a.listar()).lista[0].zernio.stats.dmsSent, 4);
 
     assert.equal((await a.pausar(r.id, { activa: false })).estado, 'pausada');
     assert.deepEqual(llamadas.at(-1), ['PATCH', '/comment-automations/ca2', { isActive: false }]);
     assert.equal((await a.pausar(r.id, { activa: true })).estado, 'activa');
 
+    const copia = await a.duplicar(r.id);
+    assert.equal(copia.nombre, 'Guía (copia)');
+    assert.equal(copia.estado, 'pausada');
+    assert.equal(llamadas.filter((l) => l[0] === 'POST' && l[1] === '/comment-automations').at(-1)[2].isActive, false);
+    assert.equal((await a.listar()).lista.length, 2);
+
+    // Quitar el camino del botón borra su workflow
+    const f = flujoLargo();
+    f.nodos[1].datos.botones = [{ titulo: 'Ver web', tipo: 'enlace', url: 'https://ejemplo.com' }];
+    await a.editar(r.id, { nombre: 'Guía', disparador: DISP, flujo: f });
+    assert.equal(cuantas(llamadas, 'DELETE', '/workflows/wf1'), 1);
+
     await a.borrar(r.id);
     assert.ok(llamadas.some((l) => l[0] === 'DELETE' && l[1] === '/comment-automations/ca2'));
-    assert.ok(llamadas.some((l) => l[0] === 'DELETE' && l[1] === '/workflows/wf1'));
-    assert.equal((await a.listar()).lista.length, 0);
+    assert.equal((await a.listar()).lista.length, 1);
+  });
+
+  test('editar el flujo actualiza el mismo workflow (no crea otro)', async () => {
+    const { fetchImpl, llamadas } = falso();
+    const a = createAutomatizaciones({ db: openDb(':memory:'), env: { ZERNIO_API_KEY: CLAVE }, fetchImpl, instagram });
+    const r = await a.crear({ disparador: DISP, flujo: flujoLargo() });
+    const f = flujoLargo();
+    f.nodos.find((n) => n.id === 'm2').datos.texto = 'Texto nuevo';
+    await a.editar(r.id, { disparador: DISP, flujo: f });
+    assert.equal(cuantas(llamadas, 'POST', '/workflows'), 1);
+    const parche = llamadas.find((l) => l[0] === 'PATCH' && l[1] === '/workflows/wf1')[2];
+    assert.equal(parche.nodes.find((x) => x.id === 'm2').config.text, 'Texto nuevo');
+    const creado = llamadas.find((l) => l[0] === 'POST' && l[1] === '/workflows')[2];
+    assert.deepEqual(parche.nodes[0].config, creado.nodes[0].config, 'conserva la palabra secreta');
   });
 
   test('«la siguiente publicación»: espera en pausa y se engancha sola al post que sale después', async () => {
     const media = [];
     const { fetchImpl, llamadas } = falso({ media });
     const a = createAutomatizaciones({ db: openDb(':memory:'), env: { ZERNIO_API_KEY: CLAVE }, fetchImpl, instagram });
-    const r = await a.crear({ ...BASE, destino: 'siguiente', media_id: '' });
+    const r = await a.crear({ disparador: { ...DISP, destino: 'siguiente', media_id: '' }, flujo: flujoLargo() });
     assert.equal(r.estado, 'esperando');
     const ca = llamadas.find((l) => l[1] === '/comment-automations')[2];
     assert.equal(ca.isActive, false);
     assert.equal(ca.platformPostId, undefined);
-    // Un post anterior no vale
     media.push({ id: 'viejo', caption: 'Antiguo', timestamp: '2020-01-01T10:00:00+0000' });
     assert.equal((await a.revisarSiguientes()).enganchadas, 0);
     media.unshift({ id: 'nuevo', caption: 'Mi reel nuevo', timestamp: new Date(Date.now() + 60000).toISOString() });
     assert.equal((await a.revisarSiguientes()).enganchadas, 1);
-    assert.deepEqual(llamadas.at(-1), ['PATCH', '/comment-automations/ca1', { platformPostId: 'nuevo', postTitle: 'Mi reel nuevo', isActive: true }]);
+    assert.deepEqual(llamadas.at(-1), ['PATCH', '/comment-automations/ca2', { platformPostId: 'nuevo', postTitle: 'Mi reel nuevo', isActive: true }]);
     const { lista } = await a.listar();
     assert.equal(lista[0].estado, 'activa');
     assert.equal(lista[0].media_id, 'nuevo');
-    // Sin la conexión de Meta no se puede saber cuándo sale
     const sinMeta = createAutomatizaciones({ db: openDb(':memory:'), env: { ZERNIO_API_KEY: CLAVE }, fetchImpl, instagram: null });
-    await assert.rejects(sinMeta.crear({ ...BASE, destino: 'siguiente' }), /conéctalo con Facebook/);
+    await assert.rejects(sinMeta.crear({ disparador: { ...DISP, destino: 'siguiente' }, flujo: flujoLargo() }), /conéctalo con Facebook/);
   });
 
   test('si Zernio falla al crear, no queda nada a medias', async () => {
@@ -142,8 +207,8 @@ describe('Automatizaciones (Zernio)', () => {
     const fetchImpl = async (url, o) => (String(url).endsWith('/comment-automations') && o?.method === 'POST' ? new Response(JSON.stringify({ error: { message: 'Post already has an active automation' } }), { status: 409 }) : base(url, o));
     const db = openDb(':memory:');
     const a = createAutomatizaciones({ db, env: { ZERNIO_API_KEY: CLAVE }, fetchImpl, instagram });
-    await assert.rejects(a.crear({ ...BASE, pregunta: { texto: '¿Qué tal?' } }), /Zernio: Post already has an active automation/);
-    assert.ok(llamadas.some((l) => l[0] === 'DELETE' && l[1].startsWith('/workflows/')), 'borra el flujo que llegó a crear');
+    await assert.rejects(a.crear({ disparador: DISP, flujo: flujoLargo() }), /Zernio: Post already has an active automation/);
+    assert.ok(llamadas.some((l) => l[0] === 'DELETE' && l[1].startsWith('/workflows/')), 'borra el workflow que llegó a crear');
     assert.equal(db.prepare('SELECT COUNT(*) AS n FROM automatizaciones').get().n, 0);
   });
 
@@ -160,5 +225,12 @@ describe('Automatizaciones (Zernio)', () => {
     const r = await a.conectar({ clave: CLAVE });
     assert.equal(r.cuenta, 'automatiapro');
     assert.deepEqual(guardadas, [{ ZERNIO_API_KEY: CLAVE }]);
+  });
+
+  test('grafoZernio: las salidas sin conectar terminan en un único fin', () => {
+    const f = { nodos: [{ id: 'inicio', tipo: 'inicio', datos: {} }, { id: 'p', tipo: 'pregunta', datos: { texto: '¿Qué?', opciones: [], esperaHoras: 24, campo: '' } }], conexiones: [] };
+    const g = grafoZernio(f, 'p', { triggerType: 'inbound_message' });
+    assert.equal(g.nodes.filter((x) => x.type === 'end').length, 1);
+    assert.ok(g.edges.some((e) => e.source === 'p_w' && e.target === 'fin_jarvis' && e.sourceHandle === 'timeout'));
   });
 });

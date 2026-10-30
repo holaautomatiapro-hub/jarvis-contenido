@@ -2090,3 +2090,42 @@ button.est-boton:hover { background: color-mix(in srgb, var(--cat) 30%, transpar
   .auto-tabla > div { grid-template-columns: 1fr; gap: 2px; }
 }
 .auto-variantes { margin: 6px 0 2px; }
+
+/* ---------- Tablero de automatizaciones (tipo ManyChat) ---------- */
+.fl-pantalla { position: fixed; inset: 0; z-index: 60; background: var(--bg, #050b1a); display: flex; flex-direction: column; }
+.fl-barra { display: flex; align-items: center; gap: 8px; padding: 10px 14px; border-bottom: 1px solid var(--border-soft); background: var(--panel); flex-wrap: wrap; }
+.fl-nombre { width: 240px; }
+.fl-anadir { display: flex; gap: 6px; flex-wrap: wrap; flex: 1; }
+.fl-anadir .btn { padding: 6px 10px; font-size: 12px; }
+.fl-punto-color { width: 8px; height: 8px; border-radius: 50%; background: var(--c); display: inline-block; }
+.fl-estado { font-size: 12px; color: var(--green); white-space: nowrap; }
+.fl-estado.mal { color: var(--orange); }
+.fl-error { margin: 8px 14px 0; }
+.fl-cuerpo { flex: 1; display: grid; grid-template-columns: 1fr 360px; min-height: 0; }
+.fl-lienzo { position: relative; min-height: 0; }
+.fl-lienzo .react-flow { --xy-background-color: transparent; --xy-edge-stroke: var(--accent-2, #7aa2ff); --xy-minimap-background-color: var(--panel); --xy-controls-button-background-color: var(--panel); --xy-controls-button-color: var(--text); --xy-controls-button-border-color: var(--border-soft); }
+.fl-ayuda { position: absolute; left: 12px; bottom: 10px; font-size: 11px; color: var(--muted); pointer-events: none; }
+.fl-panel { border-left: 1px solid var(--border-soft); background: var(--panel); padding: 14px; overflow-y: auto; display: flex; flex-direction: column; gap: 8px; }
+.fl-panel .campo-et { margin: 8px 0 2px; }
+.fl-panel .fila { display: flex; gap: 6px; align-items: center; }
+.fl-panel-cab { display: flex; justify-content: space-between; align-items: center; }
+.fl-boton-ed { display: flex; flex-direction: column; gap: 6px; }
+.fl-destinos { grid-template-columns: 1fr; }
+.fl-sigueme { margin-top: 8px; }
+.fl-problemas { margin-top: auto; border-top: 1px solid var(--border-soft); padding-top: 8px; font-size: 12px; color: var(--muted); display: flex; flex-direction: column; gap: 4px; }
+.fl-problemas .mal { color: var(--orange); }
+.fl-bloque { width: 250px; background: var(--panel); border: 1px solid var(--border); border-top: 3px solid var(--c); border-radius: 12px; padding: 10px 12px; font-size: 12px; color: var(--text); box-shadow: 0 6px 18px rgba(0,0,0,.25); }
+.fl-bloque.on { outline: 2px solid var(--c); }
+.fl-cab { font-weight: 700; font-size: 11px; text-transform: uppercase; letter-spacing: .06em; color: var(--c); margin-bottom: 6px; }
+.fl-cab small { text-transform: none; letter-spacing: 0; color: var(--muted); font-weight: 500; }
+.fl-txt { white-space: pre-wrap; line-height: 1.4; max-height: 90px; overflow: hidden; color: var(--text); }
+.fl-boton { margin-top: 6px; padding: 5px 8px; border-radius: 8px; background: color-mix(in srgb, var(--c) 10%, transparent); font-size: 11px; }
+.fl-salida { position: relative; margin-top: 6px; padding: 5px 18px 5px 8px; border-radius: 8px; background: color-mix(in srgb, var(--c) 14%, transparent); font-size: 11px; font-weight: 600; }
+.fl-salida.sola { background: none; padding: 0; height: 6px; }
+.fl-bloque .react-flow__handle { width: 11px; height: 11px; background: var(--c); border: 2px solid var(--panel); }
+.fl-salida .fl-punto { right: -18px; }
+.fl-bloque .fl-entrada { left: -7px; }
+@media (max-width: 900px) {
+  .fl-cuerpo { grid-template-columns: 1fr; grid-template-rows: 1fr 45%; }
+  .fl-panel { border-left: none; border-top: 1px solid var(--border-soft); }
+}
