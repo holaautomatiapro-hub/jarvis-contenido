@@ -7,6 +7,7 @@ import { api, normaliza, useRecurso } from '../lib/api.js';
 import { fechaCorta, hace, num, numLargo, segundos } from '../lib/formato.js';
 import Replicar, { FORMATO_DE_IG } from '../components/Replicar.jsx';
 import QueFunciona from './instagram/QueFunciona.jsx';
+import Automatizaciones from './instagram/Automatizaciones.jsx';
 
 // Colores de formato validados para el fondo oscuro (separación para daltonismo y contraste)
 const COLOR_FORMATO = { Reels: '#3987e5', Carruseles: '#d95926', 'Imágenes': '#199e70' };
@@ -261,6 +262,7 @@ export default function Instagram() {
           <button className={vista === 'cuenta' ? 'on' : ''} onClick={() => setVista('cuenta')}><Icon name="chart" />Rendimiento de la cuenta</button>
           <button className={vista === 'contenido' ? 'on' : ''} onClick={() => setVista('contenido')}><Icon name="layers" />Análisis de contenido</button>
           <button className={vista === 'funciona' ? 'on' : ''} onClick={() => setVista('funciona')}><Icon name="target" />Qué me funciona</button>
+          <button className={vista === 'auto' ? 'on' : ''} onClick={() => setVista('auto')}><Icon name="bolt" />Automatizaciones</button>
         </div>
         <div className="ig-controles">
           <div className="seg">
@@ -292,7 +294,7 @@ export default function Instagram() {
         </div>
       )}
 
-      {vista === 'cuenta' ? (
+      {vista === 'auto' ? <Automatizaciones /> : vista === 'cuenta' ? (
         <>
           <div className="ig-kpis">{data.kpis.map((k) => <Kpi key={k.id} k={k} />)}</div>
           <div className="ig-graficos">

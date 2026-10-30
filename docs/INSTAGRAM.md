@@ -115,3 +115,28 @@ Con Instagram conectado con Facebook (opción A o B, con el permiso `instagram_c
 | *Falta un permiso en la app de Meta* | Añade el permiso que indica a la configuración o al token y vuelve a conectar. |
 | *URL bloqueada* o *redirect_uri* al conectar | La URI del paso 2 no coincide exactamente. Revisa `http://localhost:3333/api/instagram/callback`. |
 | Faltan visualizaciones en algunas publicaciones | Meta no da todas las métricas para todos los tipos ni para publicaciones muy antiguas. JARVIS guarda las que hay. |
+
+## Automatizaciones (comentario → mensaje privado, como ManyChat)
+
+En **Instagram → Automatizaciones**. Las envía [Zernio](https://zernio.com), que tiene la app de Meta aprobada: tú no
+tienes que pasar la verificación de Meta.
+
+1. Crea tu cuenta en zernio.com y conecta allí tu Instagram (cuenta de empresa o creador, vinculada a una página de Facebook).
+2. Copia tu API key (zernio.com → API keys) y pégala en la pantalla de Automatizaciones, o ponla en el `.env` como
+   `ZERNIO_API_KEY` (`npm run claves`). Si tienes varias cuentas de Instagram en Zernio, `ZERNIO_ACCOUNT_ID` elige cuál.
+3. **Nueva automatización**:
+   - **Cuándo se activa**: comentan una publicación o responden a una story. Puede ser **una concreta**, **cualquiera**
+     o **la siguiente**: se queda esperando y se activa sola en cuanto sale tu próximo post o story (JARVIS lo mira cada
+     2 minutos y justo después de publicar desde JARVIS; necesita Instagram conectado con Facebook).
+   - **Palabras clave** (como palabra, con erratas, o exactas) y, si quieres, que también responda si te las escriben por privado.
+   - **Respuesta pública** al comentario (varias, se elige una al azar).
+   - **Mensaje privado** con un botón (`{{first_name}}` pone su nombre).
+   - **Sígueme primero**: solo se lo envía si te sigue (con botón para confirmarlo y otro para ver tu perfil).
+   - **El recurso**: el enlace. Sin pregunta, el botón del mensaje lo abre directamente.
+   - **Pregunta** (opcional): al pulsar el botón le llega el recurso y la pregunta; su respuesta se guarda y la ves en
+     **Resultados**, junto con quién la activó, los mensajes enviados y los clics.
+4. **Pausar / Reanudar**, **Editar** y **Eliminar** desde cada tarjeta.
+
+Límites de Meta: el mensaje privado sale una sola vez por comentario y como mucho 7 días después; tras el botón, solo
+se le puede seguir escribiendo en las 24 horas siguientes a su último mensaje. Si tienes ManyChat u otro bot en la misma
+cuenta con las mismas palabras, la persona recibiría dos mensajes.

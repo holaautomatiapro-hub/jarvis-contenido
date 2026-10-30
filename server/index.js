@@ -41,6 +41,7 @@ import { createEstrategia, DIAS, FILAS, OBJETIVOS_SEMANA, PRINCIPIOS, TACTICAS, 
 import { createLaboratorio, carpetaPorDefecto } from './laboratorio.js';
 import { createFotosIa } from './fotos-ia.js';
 import { createMediosUrl } from './medios-url.js';
+import { createAutomatizaciones } from './automatizaciones.js';
 import { promptCaption, limpiarCaption, createContextoCaption } from './caption.js';
 import { createRecortador } from './recortar.js';
 import { createAdjuntos, textoAdjuntos } from './adjuntos.js';
@@ -58,7 +59,7 @@ const DIST = path.join(ROOT, 'web', 'dist');
 // Replicar con diseño de carruseles o stories: lo hace Opus, como en Diseño
 const modeloReplicar = (formatos, disenar) => { try { return seDisena(normalizarFormatos(formatos), disenar) ? 'opus' : undefined; } catch { return undefined; } };
 
-export function createApp({ jarvis, archivos, miniaturas = null, estrategia = null, stories = null, acceso = null, publicadorIg, asistente, instagram, competencia, ads, publicar, hermes, jobs, kit, disenos, recordatorios, laboratorio, resultados, adjuntos, preferencias, actualizar, conversiones, confirmacionesIg = null, fotosIa = null, mediosUrl = null, port, onChange = () => {}, status, tts = sintetizar }) {
+export function createApp({ jarvis, archivos, miniaturas = null, estrategia = null, stories = null, acceso = null, publicadorIg, asistente, instagram, competencia, ads, publicar, hermes, jobs, kit, disenos, recordatorios, laboratorio, resultados, adjuntos, preferencias, actualizar, conversiones, confirmacionesIg = null, fotosIa = null, mediosUrl = null, automatizaciones = null, port, onChange = () => {}, status, tts = sintetizar }) {
   const estadoSistema = status || (() => systemStatus({ vaultPath: jarvis.vault.base, instagram: Boolean(instagram?.estado().conectado), ads: Boolean(ads?.estado().conectado && ads?.estado().cuenta), hermes: Boolean(hermes?.estado().gateway.online) }));
   const app = express();
 
@@ -495,6 +496,21 @@ export function createApp({ jarvis, archivos, miniaturas = null, estrategia = nu
     app.put('/api/disenos/:id/datos', h((req) => disenos.guardarDatos(req.params.id, req.body || {}), true));
     // Una imagen o un vídeo de internet (lo que genera Higgsfield) a la biblioteca: lo usa guardar_imagen_url (MCP)
     if (mediosUrl) app.post('/api/biblioteca/desde-url', h((req) => mediosUrl.guardar(req.body || {}), true));
+    // Automatizaciones de Instagram (comentario → mensaje privado), con Zernio
+    if (automatizaciones) {
+      app.get('/api/automatizaciones', h(async () => {
+        const e = await automatizaciones.estado();
+        const l = await automatizaciones.listar();
+        return { ...e, ...l, error: e.error || l.error || null };
+      }));
+      app.put('/api/automatizaciones/clave', h((req) => automatizaciones.conectar(req.body || {}), true));
+      app.get('/api/automatizaciones/medios', h((req) => automatizaciones.medios(req.query.tipo === 'story' ? 'story' : 'post')));
+      app.post('/api/automatizaciones', h((req) => automatizaciones.crear(req.body || {}), true));
+      app.get('/api/automatizaciones/:id', h((req) => automatizaciones.detalle(req.params.id)));
+      app.put('/api/automatizaciones/:id', h((req) => automatizaciones.editar(req.params.id, req.body || {}), true));
+      app.post('/api/automatizaciones/:id/pausar', h((req) => automatizaciones.pausar(req.params.id, req.body || {}), true));
+      app.delete('/api/automatizaciones/:id', h((req) => automatizaciones.borrar(req.params.id), true));
+    }
     // Fotos con IA (Kie AI): las encarga generar_foto (MCP) y se guardan en la biblioteca
     if (fotosIa) {
       app.get('/api/fotos-ia', h(() => fotosIa.estado()));
@@ -934,6 +950,9 @@ function main() {
     guiones: conPreferencias(['escritura']),
   }, emitir: (e) => { emitir(e); if (e.tipo === 'fin') onChange(); disenos?.alEventoClaude(e); stories?.alEventoClaude(e); } });
   const instagram = createInstagram({ db, vault: jarvis.vault, alCambiar: onChange });
+  // Automatizaciones (Zernio): las de «la siguiente publicación» se enganchan solas al post que salga
+  const automatizaciones = createAutomatizaciones({ db, instagram, alCambiar: onChange, log: (m) => console.log(`  [Automatizaciones] ${m}`) });
+  automatizaciones.iniciar();
   const competencia = createCompetencia({ db, instagram, vault: jarvis.vault, alCambiar: onChange });
   // La vista previa de los anuncios de la competencia se abre con el navegador de Diseño (motor, más abajo)
   const ads = createAds({ db, instagram, alCambiar: onChange, mediosDir: path.join(cfg.vaultPath, '.jarvis', 'anuncios'), renderizar: (url) => motor.mediosDePagina(url), fotograma: fotogramaDeVideo });
@@ -945,9 +964,13 @@ function main() {
   // Telegram: el mismo bot de Hermes, solo para mandarte el código de confirmación y avisarte cuando algo sale
   const telegram = createTelegram({});
   const publicadorIg = createPublicadorIg({ db, jarvis, instagram, almacen: createAlmacen({}), archivos, alCambiar: onChange,
-    alPublicar: ({ pieza, ok, permalink, error }) => telegram.configurado() && telegram.enviar(ok
+    alPublicar: ({ pieza, ok, permalink, error }) => {
+      // Lo que esperaba «la siguiente publicación» se engancha ya (Instagram tarda unos segundos en listarla)
+      if (ok) setTimeout(() => automatizaciones.revisarSiguientes(), 20000).unref?.();
+      return telegram.configurado() && telegram.enviar(ok
       ? `✅ Publicado en Instagram: «${pieza.titulo}»${permalink ? `\n${permalink}` : ''}`
-      : `⚠️ No se ha podido publicar «${pieza.titulo}» en Instagram: ${error}\nÁbrela en JARVIS (Contenido) para reintentarlo.`) });
+      : `⚠️ No se ha podido publicar «${pieza.titulo}» en Instagram: ${error}\nÁbrela en JARVIS (Contenido) para reintentarlo.`);
+    } });
   const confirmacionesIg = createConfirmacionesIg({ db, jarvis, publicadorIg, telegram, archivos });
   publicadorIg.iniciar();
   const kit = createKit({ vaultPath: cfg.vaultPath, copiasDir: path.join(path.dirname(cfg.dbPath), 'kits-anteriores') });
@@ -972,7 +995,7 @@ function main() {
   }
   const estrategia = createEstrategia({ db, jarvis });
   stories = createStories({ db, jarvis, asistente, alCambiar: onChange });
-  const server = createServer(createApp({ jarvis, archivos, miniaturas, estrategia, stories, acceso, publicadorIg, asistente, instagram, competencia, ads, publicar, hermes, jobs, kit, disenos, recordatorios, laboratorio, resultados, adjuntos, preferencias, actualizar, conversiones, confirmacionesIg, fotosIa, mediosUrl, port: cfg.port, onChange }));
+  const server = createServer(createApp({ jarvis, archivos, miniaturas, estrategia, stories, acceso, publicadorIg, asistente, instagram, competencia, ads, publicar, hermes, jobs, kit, disenos, recordatorios, laboratorio, resultados, adjuntos, preferencias, actualizar, conversiones, confirmacionesIg, fotosIa, mediosUrl, automatizaciones, port: cfg.port, onChange }));
   // Solo el propio dashboard puede escuchar los eventos (otra web abierta en el navegador, no)
   const local = hostsPermitidos(cfg.port);
   wss = new WebSocketServer({ server, path: '/ws', verifyClient: ({ origin, req }) => local.has(req.headers.host) && (!origin || local.has(origin.replace(/^https?:\/\//, ''))) && acceso.autorizado(req) });
