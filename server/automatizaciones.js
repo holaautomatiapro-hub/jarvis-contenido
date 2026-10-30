@@ -157,7 +157,7 @@ export function grafoZernio(flujo, desde, disparo) {
         } });
         if (!caminos.length) { unir(id, destino(id, 'siguiente')); break; }
         // Espera a que pulse y sigue por el camino de ese botón
-        nodos.push({ id: `${id}_w`, type: 'wait_for_reply', config: { timeoutMinutes: d.esperaHoras * 60, saveAs: `r_${id}` } });
+        nodos.push({ id: `${id}_w`, type: 'wait_for_reply', config: { timeoutMinutes: Math.round(d.esperaHoras * 60), saveAs: `r_${id}` } });
         nodos.push({ id: `${id}_c`, type: 'condition', config: { rules: caminos.map(({ b, i }) => ({ id: `b${i}`, variable: 'postback.title', operator: 'equals', value: b.titulo })) } });
         unir(id, `${id}_w`);
         unir(`${id}_w`, `${id}_c`, 'reply');
@@ -170,7 +170,7 @@ export function grafoZernio(flujo, desde, disparo) {
       case 'pregunta': {
         const ops = d.opciones;
         nodos.push({ id, type: 'send_message', label: 'Pregunta', config: { messageType: 'text', text: d.texto, ...(ops.length ? { quickReplies: ops.map((o) => ({ title: o, payload: o })) } : {}) } });
-        nodos.push({ id: `${id}_w`, type: 'wait_for_reply', config: { timeoutMinutes: d.esperaHoras * 60, saveAs: `r_${id}` } });
+        nodos.push({ id: `${id}_w`, type: 'wait_for_reply', config: { timeoutMinutes: Math.round(d.esperaHoras * 60), saveAs: `r_${id}` } });
         nodos.push({ id: `${id}_f`, type: 'set_field', config: { field: d.campo || `respuesta_${id}`, value: `{{r_${id}}}` } });
         unir(id, `${id}_w`);
         unir(`${id}_w`, `${id}_f`, 'reply');
@@ -193,8 +193,8 @@ export function grafoZernio(flujo, desde, disparo) {
         if (segundosDeEspera(d) > 0) unir(id, hora); else hecho.set(id, hora);
         const variable = `h_${id}.body.hour`;
         nodos.push({ id: hora, type: 'webhook', label: 'Mira la hora', config: { url: `https://timeapi.io/api/time/current/zone?timeZone=${encodeURIComponent(ZONA_HORARIA)}`, method: 'GET', saveAs: `h_${id}` } });
-        nodos.push({ id: `${id}_a`, type: 'condition', config: { rules: [{ id: 'si', variable, operator: 'greater_or_equal', value: h.desde }] } });
-        nodos.push({ id: `${id}_b`, type: 'condition', config: { rules: [{ id: 'si', variable, operator: 'less_than', value: h.hasta }] } });
+        nodos.push({ id: `${id}_a`, type: 'condition', config: { rules: [{ id: 'si', variable, operator: 'greater_or_equal', value: String(h.desde) }] } });
+        nodos.push({ id: `${id}_b`, type: 'condition', config: { rules: [{ id: 'si', variable, operator: 'less_than', value: String(h.hasta) }] } });
         nodos.push({ id: `${id}_r`, type: 'delay', label: 'Fuera de horario', config: { delayMinutes: 15 } });
         unir(hora, `${id}_a`, 'success');
         unir(hora, siguiente, 'error'); // si no se puede saber la hora, se envía igual
