@@ -5,7 +5,7 @@ import { alternarNegrita } from '../lib/negrita.js';
 // otra vez B la quita; Ctrl+B también), 😀 abre los emojis, que se insertan donde está el cursor, y «Crear con IA»
 // (si se pasa onIA) pide a JARVIS un caption con tu voz; si ya había texto, lo usa de base y se puede deshacer.
 
-const EMOJIS = [
+export const EMOJIS = [
   { id: 'frecuentes', icono: '⭐', nombre: 'Para captions', l: ['👇', '👉', '✅', '❌', '🔥', '💪', '🚀', '💡', '📌', '⚠️', '🎯', '📈', '💬', '📩', '🔗', '🎁', '⏰', '🙌', '👀', '✨', '💥', '⬇️', '➡️', '1️⃣', '2️⃣', '3️⃣', '4️⃣', '5️⃣'] },
   { id: 'caras', icono: '😀', nombre: 'Caras', l: ['😀', '😁', '😂', '🤣', '😅', '😊', '😍', '🥰', '😎', '🤩', '🤔', '🤯', '😱', '😬', '🙃', '😉', '😏', '😴', '🥵', '🥶', '😤', '😭', '🤗', '🤫', '🫠', '🙄', '😇', '🤓'] },
   { id: 'manos', icono: '👍', nombre: 'Manos y gente', l: ['👍', '👎', '👏', '🙏', '🤝', '✌️', '🤞', '👊', '✊', '🫶', '❤️‍🔥', '💯', '🧠', '🫵', '☝️', '👋', '🤙', '💁', '🙋', '🏃', '🏋️', '🧘', '🚴', '🤸'] },

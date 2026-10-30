@@ -12,7 +12,7 @@ import { randomBytes } from 'node:crypto';
 import { row, rows } from './db.js';
 import { createGraph } from './integrations/meta.js';
 import { guardarEnv as guardarEnvArchivo } from './env-archivo.js';
-import { destinoDe, empiezaConComentario, flujoDesdeFormulario, flujoInicial, minutosDeEspera, salidasDe, validarFlujo } from '../web/src/lib/flujo.js';
+import { ZONA_HORARIA, destinoDe, empiezaConComentario, esperaInicial, flujoDesdeFormulario, flujoInicial, minutosDeEspera, primerMensajeId, salidasDe, segundosDeEspera, validarFlujo } from '../web/src/lib/flujo.js';
 
 export class AutomatizacionError extends Error {
   constructor(m) { super(m); this.publico = true; }
@@ -66,6 +66,8 @@ function limpiarDisparador(d = {}) {
       mensaje: corto(d.seguir?.mensaje, 640) || '¡Hola! Para enviártelo, primero sígueme y luego pulsa el botón 👇',
       boton: corto(d.seguir?.boton, 20) || 'Ya te sigo',
       noSigue: corto(d.seguir?.noSigue, 640) || 'Todavía no me sigues 😅 Sígueme y vuelve a pulsar el botón.',
+      // Dónde está su cuadro en el tablero
+      x: Math.round(Number(d.seguir?.x) || 0), y: Math.round(Number(d.seguir?.y) || 0),
     },
     repetir: d.repetir === 'cada' ? 'cada' : 'una',
     tambienDm: tipo === 'post' && Boolean(d.tambienDm),
@@ -84,7 +86,10 @@ function limpiarFlujo(f = {}) {
       case 'inicio': return { ...base, id: 'inicio', datos: {} };
       case 'mensaje': return { ...base, datos: { texto: corto(d.texto, 1000), esperaHoras: Math.min(720, Math.max(1, Number(d.esperaHoras) || 24)), botones: (d.botones || []).slice(0, 3).map((b) => ({ titulo: corto(b.titulo, 20), tipo: b.tipo === 'enlace' ? 'enlace' : 'camino', ...(b.tipo === 'enlace' ? { url: corto(b.url, 1000) } : {}) })) } };
       case 'pregunta': return { ...base, datos: { texto: corto(d.texto, 640), opciones: lista(d.opciones, 13, 20), campo: corto(d.campo, 40).replace(/[^A-Za-z0-9_]/g, '_'), esperaHoras: Math.min(720, Math.max(1, Number(d.esperaHoras) || 24)) } };
-      case 'esperar': return { ...base, datos: { cantidad: Math.max(0, Number(d.cantidad) || 0), unidad: ['minutos', 'horas', 'dias'].includes(d.unidad) ? d.unidad : 'horas' } };
+      case 'esperar': {
+        const hora = (v, def) => (Number.isInteger(Number(v)) && Number(v) >= 0 && Number(v) <= 23 ? Number(v) : def);
+        return { ...base, datos: { cantidad: Math.max(0, Number(d.cantidad) || 0), unidad: ['segundos', 'minutos', 'horas', 'dias'].includes(d.unidad) ? d.unidad : 'horas', horario: { activo: Boolean(d.horario?.activo), desde: hora(d.horario?.desde, 9), hasta: hora(d.horario?.hasta, 21) } } };
+      }
       case 'condicion': return { ...base, datos: { tipo: ['etiqueta', 'sigue', 'contiene'].includes(d.tipo) ? d.tipo : 'etiqueta', valor: corto(d.valor, 100) } };
       case 'etiqueta': return { ...base, datos: { accion: d.accion === 'quitar' ? 'quitar' : 'poner', etiqueta: corto(d.etiqueta, 60) } };
       case 'fin': return { ...base, datos: {} };
@@ -178,10 +183,35 @@ export function grafoZernio(flujo, desde, disparo) {
         unir(`${id}_c`, destino(id, 'otra'), 'default');
         break;
       }
-      case 'esperar':
-        nodos.push({ id, type: 'delay', label: 'Esperar', config: { delayMinutes: Math.min(43200, Math.max(1, minutosDeEspera(d))) } });
-        unir(id, destino(id, 'siguiente'));
-        break;
+      case 'esperar': {
+        const siguiente = destino(id, 'siguiente');
+        const h = d.horario || {};
+        if (segundosDeEspera(d) > 0 || !h.activo) nodos.push({ id, type: 'delay', label: 'Esperar', config: { delayMinutes: Math.min(43200, Math.max(1, Math.ceil(minutosDeEspera(d)))) } });
+        if (!h.activo) { unir(id, siguiente); break; }
+        // Solo dentro del tramo horario: mira la hora (en España) y, si no toca, vuelve a mirar cada 15 minutos
+        const hora = `${id}_h`;
+        if (segundosDeEspera(d) > 0) unir(id, hora); else hecho.set(id, hora);
+        const variable = `h_${id}.body.hour`;
+        nodos.push({ id: hora, type: 'webhook', label: 'Mira la hora', config: { url: `https://timeapi.io/api/time/current/zone?timeZone=${encodeURIComponent(ZONA_HORARIA)}`, method: 'GET', saveAs: `h_${id}` } });
+        nodos.push({ id: `${id}_a`, type: 'condition', config: { rules: [{ id: 'si', variable, operator: 'greater_or_equal', value: h.desde }] } });
+        nodos.push({ id: `${id}_b`, type: 'condition', config: { rules: [{ id: 'si', variable, operator: 'less_than', value: h.hasta }] } });
+        nodos.push({ id: `${id}_r`, type: 'delay', label: 'Fuera de horario', config: { delayMinutes: 15 } });
+        unir(hora, `${id}_a`, 'success');
+        unir(hora, siguiente, 'error'); // si no se puede saber la hora, se envía igual
+        unir(`${id}_r`, hora);
+        if (h.desde < h.hasta) {
+          // De 9 a 21: hora ≥ 9 y hora < 21
+          unir(`${id}_a`, `${id}_b`, 'si');
+          unir(`${id}_a`, `${id}_r`, 'default');
+        } else {
+          // De 22 a 8 (cruza la medianoche): hora ≥ 22 o hora < 8
+          unir(`${id}_a`, siguiente, 'si');
+          unir(`${id}_a`, `${id}_b`, 'default');
+        }
+        unir(`${id}_b`, siguiente, 'si');
+        unir(`${id}_b`, `${id}_r`, 'default');
+        return hecho.get(id);
+      }
       case 'condicion': {
         const regla = d.tipo === 'sigue' ? { variable: 'contact.isFollower', operator: 'is_true' }
           : d.tipo === 'contiene' ? { variable: 'lastMessage', operator: 'contains', value: d.valor }
@@ -214,12 +244,13 @@ export function compilar(cfg, { claves = {} } = {}) {
     return { ramas: [{ rama: 'principal', clave: null, grafo: grafoZernio(flujo, primero, disparo) }], comentario: null };
   }
   // El primer mensaje lo manda la comment automation; cada botón con camino arranca su workflow
-  const m = flujo.nodos.find((n) => n.id === primero);
+  const primerMensaje = primerMensajeId(flujo, d);
+  const m = flujo.nodos.find((n) => n.id === primerMensaje);
   const ramas = [];
   m.datos.botones.forEach((b, i) => {
     if (b.tipo !== 'camino') return;
     const k = clave(`b${i}`);
-    ramas.push({ rama: `b${i}`, clave: k, grafo: grafoZernio(flujo, destinoDe(flujo, primero, `b${i}`), { triggerType: 'inbound_message', keywords: [k], matchType: 'exact' }) });
+    ramas.push({ rama: `b${i}`, clave: k, grafo: grafoZernio(flujo, destinoDe(flujo, primerMensaje, `b${i}`), { triggerType: 'inbound_message', keywords: [k], matchType: 'exact' }) });
   });
   return { ramas, comentario: { primero: m } };
 }
@@ -228,7 +259,8 @@ export function compilar(cfg, { claves = {} } = {}) {
 export function cuerpoAutomatizacion(cfg, { idsRamas = {}, activa = true, mediaId = null } = {}) {
   const { disparador: d, flujo } = cfg;
   const post = d.tipo === 'post';
-  const m = flujo.nodos.find((n) => n.id === destinoDe(flujo, 'inicio', 'siguiente'));
+  const m = flujo.nodos.find((n) => n.id === primerMensajeId(flujo, d));
+  const espera = esperaInicial(flujo, d);
   const id = mediaId || d.media_id || null;
   return {
     name: cfg.nombre,
@@ -238,6 +270,7 @@ export function cuerpoAutomatizacion(cfg, { idsRamas = {}, activa = true, mediaI
     matchMode: COINCIDENCIA[d.coincidencia],
     ...(d.coincidencia === 'palabra' ? { typoTolerance: d.erratas } : {}),
     dmMessage: m.datos.texto,
+    ...(espera ? { dmDelaySeconds: Math.min(86400, segundosDeEspera(espera.datos)) } : {}),
     buttons: m.datos.botones.map((b, i) => (b.tipo === 'enlace' ? { type: 'url', title: b.titulo, url: b.url } : { type: 'postback', title: b.titulo, payload: `zernio:workflow:${idsRamas[`b${i}`]}` })),
     ...(post && d.respuestas.length ? { commentReply: d.respuestas[0], commentReplyVariations: d.respuestas.slice(1) } : {}),
     // «Sígueme primero»: Instagram solo dice si te sigue a quien ya te ha escrito; al resto se le manda el botón para

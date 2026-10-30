@@ -21,11 +21,24 @@ export const DISPARADORES = {
 export const empiezaConComentario = (tipo) => tipo === 'post' || tipo === 'story';
 export const MAX_BOTONES = 3;
 export const MAX_OPCIONES = 13;
-const UNIDADES = { minutos: 1, horas: 60, dias: 1440 };
-export const minutosDeEspera = (d) => Math.round((Number(d?.cantidad) || 0) * (UNIDADES[d?.unidad] || 60));
+const SEGUNDOS = { segundos: 1, minutos: 60, horas: 3600, dias: 86400 };
+export const segundosDeEspera = (d) => Math.round((Number(d?.cantidad) || 0) * (SEGUNDOS[d?.unidad] || 3600));
+export const minutosDeEspera = (d) => segundosDeEspera(d) / 60;
+export const ZONA_HORARIA = 'Europe/Madrid';
 
+// Tras un comentario puede ir primero un «Esperar» (segundos antes de la respuesta privada) y luego el primer mensaje
+export function esperaInicial(flujo, disparador) {
+  if (!empiezaConComentario(disparador?.tipo)) return null;
+  const n = flujo.nodos.find((x) => x.id === destinoDe(flujo, 'inicio', 'siguiente'));
+  return n?.tipo === 'esperar' ? n : null;
+}
+export function primerMensajeId(flujo, disparador) {
+  if (!empiezaConComentario(disparador?.tipo)) return null;
+  const espera = esperaInicial(flujo, disparador);
+  return espera ? destinoDe(flujo, espera.id, 'siguiente') : destinoDe(flujo, 'inicio', 'siguiente');
+}
 // ¿Es el primer mensaje (el que sale como respuesta privada al comentario)?
-export const esPrimero = (flujo, disparador, id) => empiezaConComentario(disparador?.tipo) && flujo.conexiones.some((c) => c.de === 'inicio' && c.a === id);
+export const esPrimero = (flujo, disparador, id) => Boolean(id) && primerMensajeId(flujo, disparador) === id;
 
 // Las salidas de cada bloque (cada una, una flecha) con su etiqueta
 export function salidasDe(nodo, { primero = false } = {}) {
@@ -58,7 +71,7 @@ export function bloqueNuevo(tipo, x = 0, y = 0) {
   const datos = {
     mensaje: { texto: '', botones: [], esperaHoras: 24 },
     pregunta: { texto: '', opciones: [], campo: '', esperaHoras: 24 },
-    esperar: { cantidad: 1, unidad: 'horas' },
+    esperar: { cantidad: 1, unidad: 'horas', horario: { activo: false, desde: 9, hasta: 21 } },
     condicion: { tipo: 'etiqueta', valor: '' },
     etiqueta: { accion: 'poner', etiqueta: '' },
     fin: {},
@@ -66,27 +79,9 @@ export function bloqueNuevo(tipo, x = 0, y = 0) {
   return { id: nuevoId(), tipo, x, y, datos };
 }
 
-// La plantilla al crear una: un mensaje con botón y el recurso
-export function flujoInicial(tipo = 'post') {
-  if (!empiezaConComentario(tipo)) {
-    return {
-      nodos: [
-        { id: 'inicio', tipo: 'inicio', x: 0, y: 0, datos: {} },
-        { id: 'n1', tipo: 'mensaje', x: 340, y: 0, datos: { texto: '¡Hola {{first_name}}! 👋 Aquí tienes lo que me pediste 👇', botones: [{ titulo: 'Ver la guía', tipo: 'enlace', url: '' }], esperaHoras: 24 } },
-        { id: 'fin', tipo: 'fin', x: 680, y: 0, datos: {} },
-      ],
-      conexiones: [{ de: 'inicio', salida: 'siguiente', a: 'n1' }, { de: 'n1', salida: 'siguiente', a: 'fin' }],
-    };
-  }
-  return {
-    nodos: [
-      { id: 'inicio', tipo: 'inicio', x: 0, y: 0, datos: {} },
-      { id: 'n1', tipo: 'mensaje', x: 340, y: 0, datos: { texto: '¡Hola {{first_name}}! 👋 Aquí tienes lo que me pediste. Pulsa el botón 👇', botones: [{ titulo: '¡Lo quiero!', tipo: 'camino' }], esperaHoras: 24 } },
-      { id: 'n2', tipo: 'mensaje', x: 680, y: 0, datos: { texto: '¡Aquí lo tienes! 👇', botones: [{ titulo: 'Ver la guía', tipo: 'enlace', url: '' }], esperaHoras: 24 } },
-      { id: 'fin', tipo: 'fin', x: 1020, y: 0, datos: {} },
-    ],
-    conexiones: [{ de: 'inicio', salida: 'siguiente', a: 'n1' }, { de: 'n1', salida: 'b0', a: 'n2' }, { de: 'n2', salida: 'siguiente', a: 'fin' }],
-  };
+// Al crear una, solo el disparador: los bloques los va añadiendo la persona
+export function flujoInicial() {
+  return { nodos: [{ id: 'inicio', tipo: 'inicio', x: 0, y: 0, datos: {} }], conexiones: [] };
 }
 
 // Las automatizaciones hechas con el formulario de antes, como flujo
@@ -121,9 +116,15 @@ export function validarFlujo(flujo, disparador = {}) {
   const avisos = [];
   const nodo = (id) => flujo.nodos.find((n) => n.id === id);
   const primeroId = destinoDe(flujo, 'inicio', 'siguiente');
-  if (!primeroId) errores.push('Conecta el inicio con el primer bloque');
+  if (!primeroId) errores.push('Añade el primer bloque (arriba) y únelo al disparador');
   const comentario = empiezaConComentario(disparador.tipo);
-  if (comentario && primeroId && nodo(primeroId)?.tipo !== 'mensaje') errores.push('Tras el inicio va un Mensaje: es la respuesta privada al comentario');
+  const espera = esperaInicial(flujo, disparador);
+  const mensajeId = primerMensajeId(flujo, disparador);
+  if (comentario && primeroId && nodo(mensajeId)?.tipo !== 'mensaje') errores.push(espera ? 'Tras la espera inicial va un Mensaje: es la respuesta privada al comentario' : 'Tras el disparador va un Mensaje (o un Esperar y luego el Mensaje): es la respuesta privada al comentario');
+  if (espera) {
+    if (espera.datos?.horario?.activo) errores.push('La espera antes de la respuesta privada no puede llevar horario (pon el horario en una espera más adelante)');
+    if (segundosDeEspera(espera.datos) > 86400) errores.push('Antes de la respuesta privada se puede esperar como mucho 24 horas');
+  }
   const nombre = (n, i) => `${TIPOS_BLOQUE[n.tipo]?.nombre || n.tipo}${n.datos?.texto ? ` «${String(n.datos.texto).slice(0, 25)}…»` : ` ${i}`}`;
   // Solo cuenta lo que se alcanza desde el inicio
   const vistos = new Set();
@@ -141,7 +142,7 @@ export function validarFlujo(flujo, disparador = {}) {
     i++;
     const d = n.datos || {};
     const quien = nombre(n, i);
-    const primero = comentario && n.id === primeroId;
+    const primero = comentario && n.id === mensajeId;
     if (n.tipo === 'mensaje') {
       const botones = d.botones || [];
       if (!String(d.texto || '').trim()) errores.push(`${quien}: falta el texto`);
@@ -161,10 +162,13 @@ export function validarFlujo(flujo, disparador = {}) {
       if (ops.some((o) => o.length > 20)) errores.push(`${quien}: las respuestas rápidas van hasta 20 caracteres`);
     }
     if (n.tipo === 'esperar') {
-      const m = minutosDeEspera(d);
-      if (m < 1) errores.push(`${quien}: pon cuánto esperar`);
-      else if (m > 43200) errores.push(`${quien}: como mucho 30 días`);
-      else if (m >= 1440) avisos.push('Una espera de 24 h o más: Meta solo deja escribir en las 24 h siguientes al último mensaje de la persona, así que lo que venga después puede no llegar');
+      const seg = segundosDeEspera(d);
+      const h = d.horario || {};
+      if (seg < 1 && !h.activo) errores.push(`${quien}: pon cuánto esperar`);
+      else if (seg > 30 * 86400) errores.push(`${quien}: como mucho 30 días`);
+      else if (seg >= 86400) avisos.push('Una espera de 24 h o más: Meta solo deja escribir en las 24 h siguientes al último mensaje de la persona, así que lo que venga después puede no llegar');
+      if (n !== espera && seg > 0 && seg < 60) avisos.push('Entre mensajes Zernio espera como mínimo 1 minuto: los segundos solo valen justo después del disparador (antes de la respuesta privada); aquí se redondea a 1 minuto');
+      if (h.activo && (!(Number(h.desde) >= 0 && Number(h.desde) <= 23) || !(Number(h.hasta) >= 0 && Number(h.hasta) <= 23) || Number(h.desde) === Number(h.hasta))) errores.push(`${quien}: el horario necesita una hora de inicio y otra de fin distintas`);
     }
     if (n.tipo === 'etiqueta' && !String(d.etiqueta || '').trim()) errores.push(`${quien}: falta la etiqueta`);
     if (n.tipo === 'condicion' && d.tipo !== 'sigue' && !String(d.valor || '').trim()) errores.push(`${quien}: falta con qué comparar`);
