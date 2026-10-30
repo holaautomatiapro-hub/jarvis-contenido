@@ -2089,3 +2089,4 @@ button.est-boton:hover { background: color-mix(in srgb, var(--cat) 30%, transpar
   .auto-stats { grid-template-columns: repeat(2, 1fr); }
   .auto-tabla > div { grid-template-columns: 1fr; gap: 2px; }
 }
+.auto-variantes { margin: 6px 0 2px; }

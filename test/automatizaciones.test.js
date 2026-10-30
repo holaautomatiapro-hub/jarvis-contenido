@@ -1,7 +1,7 @@
 import { test, describe } from 'node:test';
 import assert from 'node:assert/strict';
 import { openDb } from '../server/db.js';
-import { createAutomatizaciones, normalizarConfig, cuerpoAutomatizacion, grafoFlujo, llevaFlujo } from '../server/automatizaciones.js';
+import { createAutomatizaciones, normalizarConfig, cuerpoAutomatizacion, grafoFlujo, llevaFlujo, palabrasParaZernio } from '../server/automatizaciones.js';
 
 const CLAVE = 'zernio-clave-secreta-123456';
 const BASE = {
@@ -38,19 +38,24 @@ const instagram = { conexion: () => ({ token: 't', igUserId: 'ig1' }) };
 describe('Automatizaciones (Zernio)', () => {
   test('valida lo que hace falta y limpia el formulario', () => {
     const c = normalizarConfig(BASE);
-    assert.deepEqual(c.palabras, ['GUÍA', 'guia']);
+    assert.deepEqual(c.palabras, ['guía'], 'GUÍA y guia son la misma palabra');
     assert.equal(c.coincidencia, 'palabra');
     assert.throws(() => normalizarConfig({ ...BASE, media_id: '' }), /Elige la publicación/);
     assert.throws(() => normalizarConfig({ ...BASE, mensaje: '' }), /mensaje privado/);
     assert.throws(() => normalizarConfig({ ...BASE, recurso: { enlace: 'http://x.com' } }), /https/);
     assert.throws(() => normalizarConfig({ ...BASE, recurso: {} }), /enlace del recurso o una pregunta/);
     assert.equal(normalizarConfig({ ...BASE, tipo: 'story', respuestas: ['hola'] }).respuestas.length, 0, 'una story no tiene respuesta pública');
+    // Da igual mayúsculas o tildes: se queda una (la de tilde) y en Zernio se dan de alta todas las formas
+    const p = normalizarConfig({ ...BASE, palabras: 'guia, guía, GUIA, GUÍA, Guía, info' }).palabras;
+    assert.deepEqual(p, ['guía', 'info']);
+    assert.deepEqual(palabrasParaZernio(['guía']).sort(), ['GUIA', 'GUÍA', 'Guia', 'Guía', 'guia', 'guía'].sort());
   });
 
   test('cuerpo para Zernio: botón al enlace, «sígueme primero», story y repetición', () => {
     const sin = cuerpoAutomatizacion(normalizarConfig(BASE));
     assert.deepEqual(sin.buttons, [{ type: 'url', title: 'Lo quiero', url: 'https://ejemplo.com/guia' }]);
     assert.equal(sin.trigger, 'comment');
+    assert.ok(sin.keywords.includes('GUIA') && sin.keywords.includes('Guía') && sin.keywords.includes('guia'));
     assert.equal(sin.platformPostId, '1789');
     assert.deepEqual(sin.audience, { followerStatus: 'any' });
     assert.deepEqual(sin.repeatPolicy, { mode: 'once' });
