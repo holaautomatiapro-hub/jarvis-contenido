@@ -2,11 +2,16 @@ import { useCallback, useMemo, useState } from 'react';
 import { Background, Controls, Handle, Position, ReactFlow, ReactFlowProvider, useReactFlow } from '@xyflow/react';
 import '@xyflow/react/dist/style.css';
 import Icon from '../../components/Icon.jsx';
+import CampoEmoji from '../../components/CampoEmoji.jsx';
 import { api, useRecurso } from '../../lib/api.js';
-import { DISPARADORES, MAX_BOTONES, TIPOS_BLOQUE, bloqueNuevo, empiezaConComentario, esPrimero, flujoInicial, salidasDe, validarFlujo } from '../../lib/flujo.js';
+import { DISPARADORES, MAX_BOTONES, TIPOS_BLOQUE, ZONA_HORARIA, bloqueNuevo, empiezaConComentario, esPrimero, esperaInicial, flujoInicial, salidasDe, validarFlujo } from '../../lib/flujo.js';
 
 // El tablero de una automatización (tipo ManyChat): bloques que se conectan con flechas. A la derecha se edita el
-// bloque elegido; el «inicio» es el disparador (publicación, palabras, respuesta pública, «sígueme primero»).
+// bloque elegido; el «inicio» es el disparador (publicación, palabras, respuesta pública). «Sígueme primero» es un cuadro
+// fijo justo después del disparador (no es un bloque del flujo: lo hace la comment automation de Zernio).
+const SIGUEME = '__sigueme';
+const DEFECTO_SEGUIR = { mensaje: '¡Hola! Para enviártelo, primero sígueme y luego pulsa el botón 👇', boton: 'Ya te sigo', noSigue: 'Todavía no me sigues 😅 Sígueme y vuelve a pulsar el botón.' };
+const UNIDAD = { segundos: ['segundo', 'segundos'], minutos: ['minuto', 'minutos'], horas: ['hora', 'horas'], dias: ['día', 'días'] };
 
 const DISPARADOR_VACIO = {
   tipo: 'post', destino: 'siguiente', media_id: '', media_titulo: '', media_miniatura: '',
@@ -67,11 +72,16 @@ function resumen(n, disparador) {
   switch (n.tipo) {
     case 'inicio': {
       const p = disparador.palabras || [];
-      return `${DISPARADORES[disparador.tipo]}${empiezaConComentario(disparador.tipo) ? ` · ${(DESTINOS[disparador.tipo].find(([id]) => id === disparador.destino) || [])[1] || ''}` : ''}${p.length ? ` · «${p.join('», «')}»` : ' · cualquier palabra'}${disparador.sigueme ? ' · sígueme primero' : ''}`;
+      return `${DISPARADORES[disparador.tipo]}${empiezaConComentario(disparador.tipo) ? ` · ${(DESTINOS[disparador.tipo].find(([id]) => id === disparador.destino) || [])[1] || ''}` : ''}${p.length ? ` · «${p.join('», «')}»` : ' · cualquier palabra'}`;
     }
+    case 'sigueme': return disparador.seguir?.mensaje || DEFECTO_SEGUIR.mensaje;
     case 'mensaje': return d.texto || 'Escribe el mensaje…';
     case 'pregunta': return d.texto || 'Escribe la pregunta…';
-    case 'esperar': return `Espera ${d.cantidad || 0} ${d.unidad || 'horas'}`;
+    case 'esperar': {
+      const [uno, varios] = UNIDAD[d.unidad] || UNIDAD.horas;
+      const espera = Number(d.cantidad) > 0 ? `Espera ${d.cantidad} ${Number(d.cantidad) === 1 ? uno : varios}` : 'Sin espera';
+      return d.horario?.activo ? `${espera} · solo de ${d.horario.desde}:00 a ${d.horario.hasta}:00` : espera;
+    }
     case 'condicion': return d.tipo === 'sigue' ? '¿Te sigue?' : d.tipo === 'contiene' ? `¿Su mensaje contiene «${d.valor || '…'}»?` : `¿Tiene la etiqueta «${d.valor || '…'}»?`;
     case 'etiqueta': return `${d.accion === 'quitar' ? 'Quita' : 'Pone'} la etiqueta «${d.etiqueta || '…'}»`;
     default: return 'Termina aquí';
@@ -80,14 +90,15 @@ function resumen(n, disparador) {
 
 function Bloque({ data, selected }) {
   const { nodo, salidas, disparador, primero } = data;
-  const tipo = nodo.tipo === 'inicio' ? { nombre: 'Cuando…', color: 'var(--accent)' } : TIPOS_BLOQUE[nodo.tipo];
-  const enlaces = nodo.tipo === 'mensaje' ? (nodo.datos.botones || []).filter((b) => b.tipo === 'enlace') : [];
+  const tipo = nodo.tipo === 'inicio' ? { nombre: 'Cuando…', color: 'var(--accent)' } : nodo.tipo === 'sigueme' ? { nombre: 'Sígueme primero', color: 'var(--pink)' } : TIPOS_BLOQUE[nodo.tipo];
+  const enlaces = nodo.tipo === 'mensaje' ? (nodo.datos.botones || []).filter((b) => b.tipo === 'enlace')
+    : nodo.tipo === 'sigueme' ? [{ titulo: disparador.seguir?.boton || DEFECTO_SEGUIR.boton }, { titulo: 'Ver perfil' }] : [];
   return (
     <div className={`fl-bloque${selected ? ' on' : ''}`} style={{ '--c': tipo.color }}>
       {nodo.tipo !== 'inicio' && <Handle type="target" position={Position.Left} id="in" className="fl-entrada" />}
       <div className="fl-cab">{tipo.nombre}{primero && <small> · respuesta privada</small>}</div>
       <div className="fl-txt">{resumen(nodo, disparador)}</div>
-      {enlaces.map((b, i) => <div key={i} className="fl-boton enlace">🔗 {b.titulo || 'Enlace'}</div>)}
+      {enlaces.map((b, i) => <div key={i} className="fl-boton enlace">{nodo.tipo === 'sigueme' ? '' : '🔗 '}{b.titulo || 'Enlace'}</div>)}
       {salidas.map((s) => (
         <div key={s.id} className={`fl-salida${s.etiqueta ? '' : ' sola'}`}>
           {s.etiqueta && <span>{s.etiqueta}</span>}
@@ -100,9 +111,8 @@ function Bloque({ data, selected }) {
 const TIPOS_NODO = { bloque: Bloque };
 
 // ---------- Paneles de edición ----------
-function PanelDisparador({ d, setD, meta }) {
+function PanelDisparador({ d, setD, meta, onSigueme }) {
   const cambia = (k) => (e) => setD({ ...d, [k]: e.target.type === 'checkbox' ? e.target.checked : e.target.value });
-  const seguir = (k) => (e) => setD({ ...d, seguir: { ...d.seguir, [k]: e.target.value } });
   const comentario = empiezaConComentario(d.tipo);
   const [palabras, setPalabras] = useState(textoPalabras(d.palabras));
   const unicas = [...new Map(listaPalabras(palabras).map((p) => [sinTildes(p).toLowerCase(), p.toLowerCase()])).values()];
@@ -135,20 +145,13 @@ function PanelDisparador({ d, setD, meta }) {
       {d.tipo === 'post' && (
         <>
           <label className="campo-et">Respuesta pública al comentario</label>
-          <textarea className="campo" rows={3} value={(d.respuestas || []).join('\n')} onChange={(e) => setD({ ...d, respuestas: e.target.value.split('\n') })} placeholder="Una por línea: se elige una al azar. Vacío = no responde en público." />
+          <CampoEmoji rows={4} value={(d.respuestas || []).join('\n')} onChange={(v) => setD({ ...d, respuestas: v.split('\n') })} placeholder="Una por línea: se elige una al azar. Vacío = no responde en público." />
         </>
       )}
       {comentario && (
         <>
-          <label className="lm-check fl-sigueme"><input type="checkbox" checked={d.sigueme} onChange={cambia('sigueme')} /><Icon name="users" size={13} /><b>Sígueme primero</b></label>
-          {d.sigueme && (
-            <div className="auto-caja">
-              <p className="ayuda">A quien no sabemos si te sigue le llega este mensaje con un botón para confirmarlo y otro para ver tu perfil. Al pulsar se comprueba de verdad.</p>
-              <textarea className="campo" rows={2} value={d.seguir?.mensaje || ''} onChange={seguir('mensaje')} placeholder="¡Hola! Para enviártelo, primero sígueme y luego pulsa el botón 👇" />
-              <input className="campo" maxLength={20} value={d.seguir?.boton || ''} onChange={seguir('boton')} placeholder="Botón: Ya te sigo" />
-              <input className="campo" value={d.seguir?.noSigue || ''} onChange={seguir('noSigue')} placeholder="Si aún no te sigue: Todavía no me sigues 😅…" />
-            </div>
-          )}
+          <label className="lm-check fl-sigueme"><input type="checkbox" checked={d.sigueme} onChange={(e) => onSigueme(e.target.checked)} /><Icon name="users" size={13} /><b>Sígueme primero</b>: solo se lo envía si te sigue</label>
+          {d.sigueme && <p className="ayuda">Sale como un cuadro justo después del disparador: pulsa en él para cambiar sus textos.</p>}
         </>
       )}
       <label className="campo-et">Repetición</label>
@@ -157,7 +160,22 @@ function PanelDisparador({ d, setD, meta }) {
   );
 }
 
-function PanelBloque({ n, primero, cambiar, quitarSalida }) {
+function PanelSigueme({ d, setD }) {
+  const seguir = (k) => (v) => setD({ ...d, seguir: { ...d.seguir, [k]: v } });
+  return (
+    <>
+      <p className="ayuda">A quien no sabemos si te sigue le llega este mensaje con un botón para confirmarlo y otro para ver tu perfil. Al pulsar se comprueba de verdad: si te sigue, recibe el mensaje; si no, el aviso. A quien ya sabemos que te sigue le llega el mensaje directamente.</p>
+      <label className="campo-et">Mensaje para que te siga</label>
+      <CampoEmoji rows={3} value={d.seguir?.mensaje || ''} onChange={seguir('mensaje')} placeholder={DEFECTO_SEGUIR.mensaje} />
+      <label className="campo-et">Botón para confirmar</label>
+      <CampoEmoji linea maxLength={20} value={d.seguir?.boton || ''} onChange={seguir('boton')} placeholder={DEFECTO_SEGUIR.boton} />
+      <label className="campo-et">Si aún no te sigue</label>
+      <CampoEmoji rows={2} value={d.seguir?.noSigue || ''} onChange={seguir('noSigue')} placeholder={DEFECTO_SEGUIR.noSigue} />
+    </>
+  );
+}
+
+function PanelBloque({ n, primero, inicial, cambiar, quitarSalida }) {
   const d = n.datos;
   const pon = (k, v) => cambiar({ ...d, [k]: v });
   if (n.tipo === 'mensaje') {
@@ -166,13 +184,13 @@ function PanelBloque({ n, primero, cambiar, quitarSalida }) {
     return (
       <>
         <label className="campo-et">Mensaje <span className="contador">{(d.texto || '').length} / {botones.length ? 640 : 1000}</span></label>
-        <textarea className="campo" rows={5} value={d.texto} onChange={(e) => pon('texto', e.target.value)} placeholder="¡Hola {{first_name}}! …" />
+        <CampoEmoji rows={5} value={d.texto} onChange={(v) => pon('texto', v)} placeholder="¡Hola {{first_name}}! …" />
         <p className="ayuda">{'{{first_name}}'} pone su nombre. {primero ? 'Es la respuesta privada al comentario: para seguir, la persona tiene que pulsar un botón.' : ''}</p>
         <label className="campo-et">Botones ({botones.length}/{MAX_BOTONES})</label>
         {botones.map((b, i) => (
           <div key={i} className="auto-caja fl-boton-ed">
             <div className="fila">
-              <input className="campo" maxLength={20} value={b.titulo} onChange={(e) => boton(i, { titulo: e.target.value })} placeholder="Texto del botón" />
+              <CampoEmoji linea maxLength={20} value={b.titulo} onChange={(v) => boton(i, { titulo: v })} placeholder="Texto del botón" />
               <button type="button" className="icon-btn" onClick={() => quitarSalida('botones', i)} aria-label="Quitar botón">✕</button>
             </div>
             <Pildoras opciones={[['camino', 'Sigue un camino'], ['enlace', 'Abre un enlace']]} valor={b.tipo} onCambio={(v) => boton(i, { tipo: v, ...(v === 'enlace' ? { url: b.url || '' } : {}) })} />
@@ -199,11 +217,11 @@ function PanelBloque({ n, primero, cambiar, quitarSalida }) {
     return (
       <>
         <label className="campo-et">Pregunta</label>
-        <textarea className="campo" rows={3} value={d.texto} onChange={(e) => pon('texto', e.target.value)} placeholder="¿A qué te dedicas?" />
+        <CampoEmoji rows={3} value={d.texto} onChange={(v) => pon('texto', v)} placeholder="¿A qué te dedicas?" />
         <label className="campo-et">Respuestas rápidas (opcional)</label>
         {ops.map((o, i) => (
           <div key={i} className="fila">
-            <input className="campo" maxLength={20} value={o} onChange={(e) => pon('opciones', ops.map((x, j) => (j === i ? e.target.value : x)))} />
+            <CampoEmoji linea maxLength={20} value={o} onChange={(v) => pon('opciones', ops.map((x, j) => (j === i ? v : x)))} />
             <button type="button" className="icon-btn" onClick={() => quitarSalida('opciones', i)} aria-label="Quitar">✕</button>
           </div>
         ))}
@@ -215,14 +233,32 @@ function PanelBloque({ n, primero, cambiar, quitarSalida }) {
     );
   }
   if (n.tipo === 'esperar') {
+    const h = d.horario || { activo: false, desde: 9, hasta: 21 };
+    const horas = Array.from({ length: 24 }, (_, i) => i);
     return (
       <>
         <label className="campo-et">Esperar</label>
         <div className="fila">
-          <input className="campo" type="number" min={1} value={d.cantidad} onChange={(e) => pon('cantidad', Number(e.target.value))} style={{ width: 90 }} />
-          <select className="campo" value={d.unidad} onChange={(e) => pon('unidad', e.target.value)}><option value="minutos">minutos</option><option value="horas">horas</option><option value="dias">días</option></select>
+          <input className="campo" type="number" min={0} value={d.cantidad} onChange={(e) => pon('cantidad', Number(e.target.value))} style={{ width: 90 }} />
+          <select className="campo" value={d.unidad} onChange={(e) => pon('unidad', e.target.value)}><option value="segundos">segundos</option><option value="minutos">minutos</option><option value="horas">horas</option><option value="dias">días</option></select>
         </div>
-        <p className="ayuda">Meta solo deja escribirle en las 24 h siguientes a su último mensaje.</p>
+        <p className="ayuda">{inicial ? 'Justo después del disparador: es lo que tarda en llegar la respuesta privada (los segundos valen aquí).' : 'Entre mensajes, Zernio espera como mínimo 1 minuto (los segundos se redondean). Meta solo deja escribirle en las 24 h siguientes a su último mensaje.'}</p>
+        {!inicial && (
+          <>
+            <label className="lm-check"><input type="checkbox" checked={Boolean(h.activo)} onChange={(e) => pon('horario', { ...h, activo: e.target.checked })} />Enviar solo dentro de un horario</label>
+            {h.activo && (
+              <>
+                <div className="fila">
+                  <span className="ayuda">De</span>
+                  <select className="campo" value={h.desde} onChange={(e) => pon('horario', { ...h, desde: Number(e.target.value) })}>{horas.map((x) => <option key={x} value={x}>{String(x).padStart(2, '0')}:00</option>)}</select>
+                  <span className="ayuda">a</span>
+                  <select className="campo" value={h.hasta} onChange={(e) => pon('horario', { ...h, hasta: Number(e.target.value) })}>{horas.map((x) => <option key={x} value={x}>{String(x).padStart(2, '0')}:00</option>)}</select>
+                </div>
+                <p className="ayuda">Hora de España ({ZONA_HORARIA}). Tras la espera, si está fuera de ese horario, vuelve a mirar cada 15 minutos hasta que toque. Si el horario cruza la medianoche (p. ej. de 22:00 a 08:00), también vale.</p>
+              </>
+            )}
+          </>
+        )}
       </>
     );
   }
@@ -256,7 +292,7 @@ function PanelBloque({ n, primero, cambiar, quitarSalida }) {
 function Lienzo({ inicial, meta, onClose, onGuardado }) {
   const [nombre, setNombre] = useState(inicial?.nombre || '');
   const [disparador, setDisparador] = useState(() => ({ ...DISPARADOR_VACIO, destino: meta ? 'siguiente' : 'publicacion', ...(inicial?.disparador || {}), seguir: { ...DISPARADOR_VACIO.seguir, ...(inicial?.disparador?.seguir || {}) } }));
-  const [flujo, setFlujo] = useState(() => inicial?.flujo || flujoInicial('post'));
+  const [flujo, setFlujo] = useState(() => inicial?.flujo || flujoInicial());
   const [sel, setSel] = useState('inicio');
   const [error, setError] = useState('');
   const [guardando, setGuardando] = useState(false);
@@ -269,13 +305,33 @@ function Lienzo({ inicial, meta, onClose, onGuardado }) {
   }, [flujo, disparador]);
   const { errores, avisos } = useMemo(() => validarFlujo(valido, disparador), [valido, disparador]);
 
-  const nodes = useMemo(() => valido.nodos.map((n) => {
-    const primero = esPrimero(valido, disparador, n.id);
-    return { id: n.id, type: 'bloque', position: { x: n.x || 0, y: n.y || 0 }, selected: sel === n.id, deletable: n.tipo !== 'inicio', data: { nodo: n, salidas: salidasDe(n, { primero }), disparador, primero } };
-  }), [valido, disparador, sel]);
-  const edges = useMemo(() => valido.conexiones.map((c) => ({ id: `${c.de}:${c.salida}`, source: c.de, sourceHandle: c.salida, target: c.a, targetHandle: 'in', type: 'smoothstep', animated: true })), [valido]);
+  // «Sígueme primero»: un cuadro entre el disparador y lo que va detrás (la flecha del inicio sale de él)
+  const conSigueme = disparador.sigueme && empiezaConComentario(disparador.tipo);
+  const inicio = valido.nodos.find((n) => n.id === 'inicio');
+  const posSigueme = { x: disparador.seguir?.x || (inicio?.x || 0) + 340, y: disparador.seguir?.y || inicio?.y || 0 };
+  const nodes = useMemo(() => {
+    const l = valido.nodos.map((n) => {
+      const primero = esPrimero(valido, disparador, n.id);
+      return { id: n.id, type: 'bloque', position: { x: n.x || 0, y: n.y || 0 }, selected: sel === n.id, deletable: n.tipo !== 'inicio', data: { nodo: n, salidas: salidasDe(n, { primero }), disparador, primero } };
+    });
+    if (conSigueme) l.push({ id: SIGUEME, type: 'bloque', position: posSigueme, selected: sel === SIGUEME, deletable: false, data: { nodo: { id: SIGUEME, tipo: 'sigueme', datos: {} }, salidas: [{ id: 'siguiente', etiqueta: 'Si te sigue' }], disparador, primero: false } });
+    return l;
+  }, [valido, disparador, sel, conSigueme, posSigueme.x, posSigueme.y]); // eslint-disable-line react-hooks/exhaustive-deps
+  const edges = useMemo(() => {
+    const l = valido.conexiones.map((c) => ({ id: `${c.de}:${c.salida}`, source: conSigueme && c.de === 'inicio' ? SIGUEME : c.de, sourceHandle: c.salida, target: c.a, targetHandle: 'in', type: 'smoothstep', animated: true }));
+    if (conSigueme) l.push({ id: 'inicio>sigueme', source: 'inicio', sourceHandle: 'siguiente', target: SIGUEME, targetHandle: 'in', type: 'smoothstep', deletable: false });
+    return l;
+  }, [valido, conSigueme]);
+  // Activar «Sígueme primero» hace sitio a su cuadro: lo que está a la derecha del disparador se corre
+  const alternarSigueme = (v) => {
+    setDisparador((d) => ({ ...d, sigueme: v, seguir: { ...d.seguir, x: 0, y: 0 } }));
+    if (v) setFlujo((f) => ({ ...f, nodos: f.nodos.map((n) => (n.id !== 'inicio' && (n.x || 0) > (inicio?.x || 0) ? { ...n, x: (n.x || 0) + 340 } : n)) }));
+    setSel(v ? SIGUEME : 'inicio');
+  };
 
   const onNodesChange = useCallback((cambios) => {
+    const delSigueme = cambios.find((c) => c.id === SIGUEME && c.type === 'position' && c.position);
+    if (delSigueme) setDisparador((d) => ({ ...d, seguir: { ...d.seguir, x: Math.round(delSigueme.position.x), y: Math.round(delSigueme.position.y) } }));
     setFlujo((f) => {
       let nodos = f.nodos;
       let conexiones = f.conexiones;
@@ -288,19 +344,22 @@ function Lienzo({ inicial, meta, onClose, onGuardado }) {
     for (const c of cambios) if (c.type === 'select' && c.selected) setSel(c.id);
   }, []);
   const onEdgesChange = useCallback((cambios) => {
-    const fuera = new Set(cambios.filter((c) => c.type === 'remove').map((c) => c.id));
+    const fuera = new Set(cambios.filter((c) => c.type === 'remove').map((c) => c.id).filter((id) => id !== 'inicio>sigueme'));
     if (fuera.size) setFlujo((f) => ({ ...f, conexiones: f.conexiones.filter((c) => !fuera.has(`${c.de}:${c.salida}`)) }));
   }, []);
-  const onConnect = useCallback(({ source, sourceHandle, target }) => {
-    if (!source || !target || source === target || target === 'inicio') return;
+  const onConnect = useCallback(({ source: origen, sourceHandle, target }) => {
+    // Lo que sale del cuadro de «Sígueme primero» es la flecha del disparador
+    const source = origen === SIGUEME ? 'inicio' : origen;
+    if (!source || !target || source === target || target === 'inicio' || target === SIGUEME) return;
     setFlujo((f) => ({ ...f, conexiones: [...f.conexiones.filter((c) => !(c.de === source && c.salida === sourceHandle)), { de: source, salida: sourceHandle, a: target }] }));
   }, []);
 
   // Un bloque nuevo, a la derecha del elegido y conectado a su primera salida libre
   const anadir = (tipo) => {
-    const desde = valido.nodos.find((n) => n.id === sel) || valido.nodos[0];
+    const desde = valido.nodos.find((n) => n.id === (sel === SIGUEME ? 'inicio' : sel)) || valido.nodos[0];
+    const base = sel === SIGUEME ? posSigueme : desde;
     const libre = salidasDe(desde, { primero: esPrimero(valido, disparador, desde.id) }).find((s) => !valido.conexiones.some((c) => c.de === desde.id && c.salida === s.id));
-    const b = bloqueNuevo(tipo, (desde.x || 0) + 340, (desde.y || 0) + (libre ? 0 : 200));
+    const b = bloqueNuevo(tipo, (base.x || 0) + 340, (base.y || 0) + (libre ? 0 : 200));
     setFlujo((f) => ({ nodos: [...f.nodos, b], conexiones: libre ? [...f.conexiones, { de: desde.id, salida: libre.id, a: b.id }] : f.conexiones }));
     setSel(b.id);
     setTimeout(() => rf.fitView({ padding: 0.2, duration: 300 }), 50);
@@ -331,7 +390,7 @@ function Lienzo({ inicial, meta, onClose, onGuardado }) {
     } catch (e) { setError(e.message); setGuardando(false); }
   };
 
-  const elegido = valido.nodos.find((n) => n.id === sel);
+  const elegido = sel === SIGUEME && conSigueme ? { id: SIGUEME, tipo: 'sigueme' } : valido.nodos.find((n) => n.id === sel);
   return (
     <div className="fl-pantalla" role="dialog" aria-modal="true" aria-label="Tablero de la automatización">
       <div className="fl-barra">
@@ -361,12 +420,13 @@ function Lienzo({ inicial, meta, onClose, onGuardado }) {
           {elegido && (
             <>
               <div className="fl-panel-cab">
-                <b>{elegido.tipo === 'inicio' ? 'Disparador' : TIPOS_BLOQUE[elegido.tipo]?.nombre}</b>
-                {elegido.tipo !== 'inicio' && <button type="button" className="link-btn peligro" onClick={() => borrarBloque(elegido.id)}>Borrar bloque</button>}
+                <b>{elegido.tipo === 'inicio' ? 'Disparador' : elegido.tipo === 'sigueme' ? 'Sígueme primero' : TIPOS_BLOQUE[elegido.tipo]?.nombre}</b>
+                {elegido.tipo === 'sigueme' ? <button type="button" className="link-btn peligro" onClick={() => alternarSigueme(false)}>Quitar</button>
+                  : elegido.tipo !== 'inicio' && <button type="button" className="link-btn peligro" onClick={() => borrarBloque(elegido.id)}>Borrar bloque</button>}
               </div>
-              {elegido.tipo === 'inicio'
-                ? <PanelDisparador d={disparador} setD={setDisparador} meta={meta} />
-                : <PanelBloque key={elegido.id} n={elegido} primero={esPrimero(valido, disparador, elegido.id)} cambiar={(datos) => cambiarDatos(elegido.id, datos)} quitarSalida={(campo, i) => quitarSalida(elegido.id, campo, i)} />}
+              {elegido.tipo === 'inicio' ? <PanelDisparador d={disparador} setD={setDisparador} meta={meta} onSigueme={alternarSigueme} />
+                : elegido.tipo === 'sigueme' ? <PanelSigueme d={disparador} setD={setDisparador} />
+                  : <PanelBloque key={elegido.id} n={elegido} primero={esPrimero(valido, disparador, elegido.id)} inicial={esperaInicial(valido, disparador)?.id === elegido.id} cambiar={(datos) => cambiarDatos(elegido.id, datos)} quitarSalida={(campo, i) => quitarSalida(elegido.id, campo, i)} />}
             </>
           )}
           {(errores.length > 0 || avisos.length > 0) && (

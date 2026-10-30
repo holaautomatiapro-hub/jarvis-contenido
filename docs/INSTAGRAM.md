@@ -124,17 +124,23 @@ tienes que pasar la verificación de Meta.
 1. Crea tu cuenta en zernio.com y conecta allí tu Instagram (cuenta de empresa o creador, vinculada a una página de Facebook).
 2. Copia tu API key (zernio.com → API keys) y pégala en la pantalla de Automatizaciones, o ponla en el `.env` como
    `ZERNIO_API_KEY` (`npm run claves`). Si tienes varias cuentas de Instagram en Zernio, `ZERNIO_ACCOUNT_ID` elige cuál.
-3. **Nueva automatización** abre el **tablero**: bloques unidos con flechas, tan largo como quieras.
+3. **Nueva automatización** abre el **tablero** solo con el disparador: los bloques los vas añadiendo tú (arriba),
+   unidos con flechas, tan largo como quieras. En todos los textos tienes el botón 😀 para poner emojis.
    - **Cuando…** (el disparador): comentan una publicación, responden a una story o te escriben una palabra por
      privado. Para publicaciones y stories: **una concreta**, **cualquiera** o **la siguiente** (se queda esperando y se
      activa sola en cuanto sale tu próximo post o story; necesita Instagram conectado con Facebook). Palabras clave
      (da igual mayúsculas, minúsculas y tildes), respuesta pública al comentario (varias, al azar), **sígueme primero**
-     y si se repite.
+     y si se repite. Si marcas **Sígueme primero**, sale como un cuadro justo después del disparador (pulsa en él
+     para cambiar sus textos).
    - **Mensaje**: texto (`{{first_name}}` pone su nombre) y hasta 3 botones: de **enlace** (puedes elegir uno de tus
      lead magnets) o que **siguen un camino**. El primero tras un comentario es la respuesta privada: para seguir, la
      persona tiene que pulsar un botón (Meta no deja escribirle más hasta que responda).
    - **Pregunta**: guarda la respuesta (la ves en **Resultados**); con respuestas rápidas, un camino por opción.
-   - **Esperar**, **Condición** (tiene una etiqueta, te sigue, su mensaje contiene…), **Etiqueta** y **Fin**.
+   - **Esperar**: segundos, minutos, horas o días. Justo después del disparador es lo que tarda la respuesta privada
+     (aquí valen los segundos); más adelante Zernio espera como mínimo 1 minuto. Puede enviar **solo dentro de un
+     horario** (p. ej. de 9:00 a 21:00, hora de España): si toca fuera, vuelve a mirar cada 15 minutos (consulta la hora
+     en timeapi.io; si no responde, envía igual).
+   - **Condición** (tiene una etiqueta, te sigue, su mensaje contiene…), **Etiqueta** y **Fin**.
    Arrastra desde un punto ● hasta otro bloque para unirlos; selecciona una flecha y pulsa Supr para quitarla.
 4. En cada tarjeta: **Abrir tablero**, **Pausar / Reanudar**, **Resultados**, **Duplicar** (la copia queda en pausa) y **Eliminar**.
 

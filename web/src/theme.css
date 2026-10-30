@@ -2129,3 +2129,15 @@ button.est-boton:hover { background: color-mix(in srgb, var(--cat) 30%, transpar
   .fl-cuerpo { grid-template-columns: 1fr; grid-template-rows: 1fr 45%; }
   .fl-panel { border-left: none; border-top: 1px solid var(--border-soft); }
 }
+/* El panel del tablero no encoge sus campos (la respuesta pública salía aplastada) */
+.fl-panel > * { flex-shrink: 0; }
+.fl-panel textarea.campo { min-height: 64px; resize: vertical; }
+/* Campo de texto con botón de emojis */
+.campo-emoji { position: relative; }
+.campo-emoji .campo { width: 100%; padding-right: 38px; }
+.campo-emoji-btn { position: absolute; top: 6px; right: 6px; width: 28px; height: 28px; border-radius: 7px; border: none; background: transparent; cursor: pointer; font-size: 15px; line-height: 1; opacity: .75; }
+.campo-emoji-btn:hover, .campo-emoji-btn.on { opacity: 1; background: color-mix(in srgb, var(--accent) 14%, transparent); }
+.campo-emoji.linea .campo-emoji-btn { top: 50%; transform: translateY(-50%); }
+.campo-emoji .campo-emoji-caja { top: calc(100% + 4px); left: auto; right: 0; }
+.fl-panel .fila .campo-emoji { flex: 1; }
+.campo-emoji .campo-emoji-caja { background: var(--panel-2); backdrop-filter: none; }

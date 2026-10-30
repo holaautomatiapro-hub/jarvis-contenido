@@ -66,14 +66,20 @@ describe('Automatizaciones (Zernio)', () => {
   });
 
   test('el tablero se valida: primer mensaje, botones, enlaces y esperas', () => {
-    const f = flujoInicial('post');
-    assert.match(validarFlujo(f, { tipo: 'post' }).errores.join(), /necesita un enlace/, 'la plantilla pide el enlace del recurso');
-    f.nodos.find((n) => n.id === 'n2').datos.botones[0].url = 'https://ejemplo.com/guia';
+    // Al empezar solo está el disparador
+    assert.deepEqual(flujoInicial().nodos.map((n) => n.tipo), ['inicio']);
+    assert.match(validarFlujo(flujoInicial(), { tipo: 'post' }).errores.join(), /Añade el primer bloque/);
+    const f = {
+      nodos: [{ id: 'inicio', tipo: 'inicio', datos: {} }, { id: 'n1', tipo: 'mensaje', datos: { texto: 'Hola', botones: [{ titulo: 'Lo quiero', tipo: 'camino' }] } }, { id: 'n2', tipo: 'mensaje', datos: { texto: 'Aquí', botones: [{ titulo: 'Ver', tipo: 'enlace', url: '' }] } }],
+      conexiones: [{ de: 'inicio', salida: 'siguiente', a: 'n1' }, { de: 'n1', salida: 'b0', a: 'n2' }],
+    };
+    assert.match(validarFlujo(f, { tipo: 'post' }).errores.join(), /necesita un enlace/);
+    f.nodos[2].datos.botones[0].url = 'https://ejemplo.com/guia';
     assert.deepEqual(validarFlujo(f, { tipo: 'post' }).errores, []);
     const roto = { ...f, conexiones: f.conexiones.filter((c) => c.de !== 'n1') };
     assert.match(validarFlujo(roto, { tipo: 'post' }).errores.join(), /no lleva a ningún bloque/);
     const conPregunta = { nodos: [{ id: 'inicio', tipo: 'inicio', datos: {} }, { id: 'p', tipo: 'pregunta', datos: { texto: '¿?' } }], conexiones: [{ de: 'inicio', salida: 'siguiente', a: 'p' }] };
-    assert.match(validarFlujo(conPregunta, { tipo: 'post' }).errores.join(), /Tras el inicio va un Mensaje/);
+    assert.match(validarFlujo(conPregunta, { tipo: 'post' }).errores.join(), /Tras el disparador va un Mensaje/);
     assert.deepEqual(validarFlujo(conPregunta, { tipo: 'mensaje' }).errores, [], 'por privado sí puede empezar con una pregunta');
     assert.deepEqual(validarFlujo(flujoLargo(), { tipo: 'post' }).errores, []);
     const largo = flujoLargo();
@@ -112,6 +118,47 @@ describe('Automatizaciones (Zernio)', () => {
     const story = cuerpoAutomatizacion(normalizarConfig({ disparador: { ...DISP, tipo: 'story', destino: 'cualquiera' }, flujo: flujoLargo() }), { idsRamas: { b0: 'x' } });
     assert.equal(story.trigger, 'story_reply');
     assert.equal(story.platformPostId, undefined, 'cualquier story');
+  });
+
+  test('Esperar: segundos antes de la respuesta privada y tramo horario', () => {
+    // Esperar 30 s justo después del disparador → la respuesta privada sale 30 s después
+    const f = flujoLargo();
+    f.nodos.push({ id: 'e0', tipo: 'esperar', datos: { cantidad: 30, unidad: 'segundos' } });
+    f.conexiones = f.conexiones.filter((c) => c.de !== 'inicio');
+    f.conexiones.push({ de: 'inicio', salida: 'siguiente', a: 'e0' }, { de: 'e0', salida: 'siguiente', a: 'm1' });
+    assert.deepEqual(validarFlujo(f, { tipo: 'post' }).errores, []);
+    const cfg = normalizarConfig({ disparador: DISP, flujo: f });
+    const cuerpo = cuerpoAutomatizacion(cfg, { idsRamas: { b0: 'wf1' } });
+    assert.equal(cuerpo.dmDelaySeconds, 30);
+    assert.equal(cuerpo.dmMessage, '¡Hola {{first_name}}!');
+    assert.deepEqual(compilar(cfg).ramas.map((r) => r.rama), ['b0']);
+    // Con horario antes de la respuesta privada, no
+    f.nodos.at(-1).datos.horario = { activo: true, desde: 9, hasta: 21 };
+    assert.match(validarFlujo(f, { tipo: 'post' }).errores.join(), /no puede llevar horario/);
+    // Más adelante, con horario de 9 a 21: mira la hora y, si no toca, espera 15 min y vuelve a mirar
+    const g = flujoLargo();
+    g.nodos.find((n) => n.id === 'e1').datos = { cantidad: 10, unidad: 'segundos', horario: { activo: true, desde: 9, hasta: 21 } };
+    assert.match(validarFlujo(g, { tipo: 'post' }).avisos.join(), /como mínimo 1 minuto/);
+    const z = compilar(normalizarConfig({ disparador: DISP, flujo: g })).ramas[0].grafo;
+    assert.deepEqual(z.nodes.find((x) => x.id === 'e1').config, { delayMinutes: 1 }, 'los segundos se redondean a 1 minuto');
+    assert.equal(z.nodes.find((x) => x.id === 'e1_h').type, 'webhook');
+    assert.match(z.nodes.find((x) => x.id === 'e1_h').config.url, /Europe%2FMadrid/);
+    assert.deepEqual(z.nodes.find((x) => x.id === 'e1_a').config.rules[0], { id: 'si', variable: 'h_e1.body.hour', operator: 'greater_or_equal', value: 9 });
+    assert.ok(z.edges.some((e) => e.source === 'e1_a' && e.target === 'e1_b' && e.sourceHandle === 'si'));
+    assert.ok(z.edges.some((e) => e.source === 'e1_b' && e.target === 'c1' && e.sourceHandle === 'si'));
+    assert.ok(z.edges.some((e) => e.source === 'e1_r' && e.target === 'e1_h'), 'fuera de horario vuelve a mirar');
+    assert.ok(z.edges.some((e) => e.source === 'e1_h' && e.target === 'c1' && e.sourceHandle === 'error'), 'si no sabe la hora, envía igual');
+    // De 22 a 8 (cruza la medianoche): vale si es ≥ 22 o < 8
+    g.nodes = undefined;
+    const noche = flujoLargo();
+    noche.nodos.find((n) => n.id === 'e1').datos = { cantidad: 0, unidad: 'minutos', horario: { activo: true, desde: 22, hasta: 8 } };
+    const zn = compilar(normalizarConfig({ disparador: DISP, flujo: noche })).ramas[0].grafo;
+    assert.ok(!zn.nodes.some((x) => x.id === 'e1'), 'sin espera, directo a mirar la hora');
+    assert.ok(zn.edges.some((e) => e.source === 't1' && e.target === 'e1_h'));
+    assert.ok(zn.edges.some((e) => e.source === 'e1_a' && e.target === 'c1' && e.sourceHandle === 'si'));
+    assert.ok(zn.edges.some((e) => e.source === 'e1_a' && e.target === 'e1_b' && e.sourceHandle === 'default'));
+    const ids = new Set(zn.nodes.map((x) => x.id));
+    assert.ok(zn.edges.every((e) => ids.has(e.source) && ids.has(e.target)));
   });
 
   test('palabra por privado: un solo workflow que empieza por el primer bloque', () => {
