@@ -164,11 +164,11 @@ function PanelSigueme({ d, setD }) {
   const seguir = (k) => (v) => setD({ ...d, seguir: { ...d.seguir, [k]: v } });
   return (
     <>
-      <p className="ayuda">Zernio decide qué mandar según lo que Instagram le deja saber de esa persona:</p>
+      <p className="ayuda">A <b>todos</b> los que comentan les llega primero este mensaje, con los botones «{d.seguir?.boton || DEFECTO_SEGUIR.boton}» y «Ver perfil». Al pulsar el botón se comprueba si te sigue:</p>
       <ul className="ayuda fl-casos">
-        <li><b>Ya te sigue</b> (y te ha escrito alguna vez, así que Instagram lo sabe): le llega el mensaje directamente.</li>
-        <li><b>No te sigue</b> (y te ha escrito alguna vez): le llega «Si aún no te sigue», con el botón para confirmar.</li>
-        <li><b>No se sabe</b> (nunca te ha escrito): le llega «Mensaje para que te siga» con el botón; al pulsarlo se comprueba de verdad.</li>
+        <li><b>Te sigue</b>: le llega el mensaje siguiente y todo el flujo.</li>
+        <li><b>No te sigue</b>: le llega «Si aún no te sigue» con el botón para volver a comprobarlo cuando te siga.</li>
+        <li>Si Instagram no deja saberlo, se envía igual (para no dejar a nadie sin su recurso).</li>
       </ul>
       <label className="campo-et">Mensaje para que te siga</label>
       <CampoEmoji rows={3} value={d.seguir?.mensaje || ''} onChange={seguir('mensaje')} placeholder={DEFECTO_SEGUIR.mensaje} />
