@@ -143,7 +143,7 @@ describe('Automatizaciones (Zernio)', () => {
     assert.deepEqual(z.nodes.find((x) => x.id === 'e1').config, { delayMinutes: 1 }, 'los segundos se redondean a 1 minuto');
     assert.equal(z.nodes.find((x) => x.id === 'e1_h').type, 'webhook');
     assert.match(z.nodes.find((x) => x.id === 'e1_h').config.url, /Europe%2FMadrid/);
-    assert.deepEqual(z.nodes.find((x) => x.id === 'e1_a').config.rules[0], { id: 'si', variable: 'h_e1.body.hour', operator: 'greater_or_equal', value: 9 });
+    assert.deepEqual(z.nodes.find((x) => x.id === 'e1_a').config.rules[0], { id: 'si', variable: 'h_e1.body.hour', operator: 'greater_or_equal', value: '9' });
     assert.ok(z.edges.some((e) => e.source === 'e1_a' && e.target === 'e1_b' && e.sourceHandle === 'si'));
     assert.ok(z.edges.some((e) => e.source === 'e1_b' && e.target === 'c1' && e.sourceHandle === 'si'));
     assert.ok(z.edges.some((e) => e.source === 'e1_r' && e.target === 'e1_h'), 'fuera de horario vuelve a mirar');
@@ -159,6 +159,17 @@ describe('Automatizaciones (Zernio)', () => {
     assert.ok(zn.edges.some((e) => e.source === 'e1_a' && e.target === 'e1_b' && e.sourceHandle === 'default'));
     const ids = new Set(zn.nodes.map((x) => x.id));
     assert.ok(zn.edges.every((e) => ids.has(e.source) && ids.has(e.target)));
+  });
+
+  test('lo que se manda a Zernio tiene los tipos que exige (valores de reglas en texto, minutos enteros)', () => {
+    const g = flujoLargo();
+    g.nodos.find((n) => n.id === 'e1').datos = { cantidad: 90, unidad: 'segundos', horario: { activo: true, desde: 8, hasta: 23 } };
+    g.nodos.find((n) => n.id === 'p1').datos.esperaHoras = 1.5;
+    const z = compilar(normalizarConfig({ disparador: DISP, flujo: g })).ramas[0].grafo;
+    for (const n of z.nodes) {
+      for (const r of n.config?.rules || []) if ('value' in r) assert.equal(typeof r.value, 'string', `${n.id}: ${JSON.stringify(r)}`);
+      for (const k of ['delayMinutes', 'timeoutMinutes']) if (k in (n.config || {})) assert.ok(Number.isInteger(n.config[k]), `${n.id}.${k} = ${n.config[k]}`);
+    }
   });
 
   test('palabra por privado: un solo workflow que empieza por el primer bloque', () => {
