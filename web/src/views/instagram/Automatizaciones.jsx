@@ -20,6 +20,17 @@ const DESTINOS = {
   story: [['siguiente', 'La siguiente story', 'Se activa sola en cuanto subas tu próxima story'], ['publicacion', 'Una story activa', 'Elige una de las que tienes ahora'], ['cualquiera', 'Cualquier story', 'Respuestas a todas tus stories']],
 };
 const ESTADO = { activa: ['Activa', 'on'], pausada: ['Pausada', 'warn'], esperando: ['Esperando la siguiente', 'warn'] };
+// Da igual mayúsculas, minúsculas y tildes (el servidor da de alta todas las formas en Zernio)
+const sinTildes = (t) => t.normalize('NFD').replace(/[\u0300-\u036f]/g, '').normalize('NFC');
+const variantes = (p) => [...new Set([p, sinTildes(p)].flatMap((b) => [b.toLowerCase(), b.toUpperCase(), b.charAt(0).toUpperCase() + b.slice(1).toLowerCase()]))];
+const palabrasDe = (t) => {
+  const m = new Map();
+  for (const p of String(t || '').split(',').map((x) => x.trim()).filter(Boolean)) {
+    const k = sinTildes(p).toLowerCase();
+    if (!m.has(k) || (m.get(k) === sinTildes(m.get(k)) && p !== sinTildes(p))) m.set(k, p.toLowerCase());
+  }
+  return [...m.values()];
+};
 const lineas = (t) => String(t || '').split('\n').map((x) => x.trim()).filter(Boolean);
 const aFormulario = (a) => ({
   ...VACIA, ...a,
@@ -55,6 +66,20 @@ function ElegirMedio({ tipo, valor, onElegir }) {
         </button>
       ))}
     </div>
+  );
+}
+
+// Tus lead magnets publicados (Laboratorio → Lead magnets): se elige uno y se pone su enlace
+function ElegirLeadMagnet({ enlace, onElegir }) {
+  const [lms] = useRecurso('/api/laboratorio/leadmagnets', null);
+  const todos = (lms?.leadmagnets || []).slice().sort((x, y) => String(y.mod || y.creado || '').localeCompare(String(x.mod || x.creado || '')));
+  if (!todos.length) return null;
+  const elegido = todos.find((x) => x.url && x.url === enlace);
+  return (
+    <select className="campo" value={elegido?.slug || ''} onChange={(e) => { const x = todos.find((y) => y.slug === e.target.value); if (x?.url) onElegir(x); }} aria-label="Elegir uno de tus lead magnets">
+      <option value="">{enlace && !elegido ? 'Otro enlace (escrito a mano)' : 'Elige uno de tus lead magnets…'}</option>
+      {todos.map((x) => <option key={x.slug} value={x.slug} disabled={!x.url}>{x.titulo}{x.url ? '' : ' (sin publicar: publícalo en Laboratorio → Lead magnets)'}</option>)}
+    </select>
   );
 }
 
@@ -98,6 +123,9 @@ function Editor({ inicial, meta, onClose, onGuardado }) {
           <option value="exacta">Solo si el comentario es exactamente eso</option>
         </select>
       </div>
+      {palabrasDe(f.palabras).length > 0 && (
+        <p className="ayuda auto-variantes">Da igual mayúsculas, minúsculas o tildes (escríbela con su tilde si la lleva). Responde a: {palabrasDe(f.palabras).flatMap(variantes).slice(0, 18).join(', ')}{palabrasDe(f.palabras).flatMap(variantes).length > 18 ? '…' : ''}</p>
+      )}
       {f.coincidencia === 'palabra' && <label className="lm-check"><input type="checkbox" checked={f.erratas} onChange={cambia('erratas')} />Aceptar pequeñas erratas («gúia», «guai»)</label>}
       {post && <label className="lm-check"><input type="checkbox" checked={f.tambienDm} onChange={cambia('tambienDm')} />Responder también si te escriben la palabra por mensaje directo</label>}
 
@@ -129,8 +157,10 @@ function Editor({ inicial, meta, onClose, onGuardado }) {
       )}
 
       <div className="auto-paso"><b>{post ? 4 : 3}</b> El recurso</div>
+      {/* Al elegir un lead magnet se pone su enlace y, si aún no hay palabras, su palabra clave */}
+      <ElegirLeadMagnet enlace={f.recurso.enlace} onElegir={(x) => setF((v) => ({ ...v, palabras: v.palabras.trim() || x.palabra || '', nombre: v.nombre || x.titulo, recurso: { ...v.recurso, enlace: x.url, titulo: v.recurso.titulo && v.recurso.titulo !== 'Ver recurso' ? v.recurso.titulo : 'Ver la guía' } }))} />
       <div className="dos-col">
-        <div><label className="campo-et">Enlace</label><input className="campo" value={f.recurso.enlace} onChange={sub('recurso', 'enlace')} placeholder="https://… (tu guía, lead magnet, web…)" /></div>
+        <div><label className="campo-et">Enlace</label><input className="campo" value={f.recurso.enlace} onChange={sub('recurso', 'enlace')} placeholder="https://… (o elige arriba uno de tus lead magnets)" /></div>
         <div><label className="campo-et">Texto del botón del enlace</label><input className="campo" maxLength={20} value={f.recurso.titulo} onChange={sub('recurso', 'titulo')} /></div>
       </div>
 

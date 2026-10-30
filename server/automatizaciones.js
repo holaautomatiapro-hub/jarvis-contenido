@@ -21,6 +21,27 @@ const corto = (s, n) => String(s || '').trim().slice(0, n);
 const lista = (v, n, largo) => (Array.isArray(v) ? v : String(v || '').split(/[,\n]/)).map((x) => corto(x, largo)).filter(Boolean).slice(0, n);
 const esUrl = (u) => /^https:\/\/\S+$/i.test(String(u || '').trim());
 
+// Da igual mayúsculas, minúsculas y tildes: «guía» también es GUÍA, Guía, guia, GUIA y Guia
+const sinTildes = (t) => t.normalize('NFD').replace(/[\u0300-\u036f]/g, '').normalize('NFC');
+const clavePalabra = (t) => sinTildes(t).toLowerCase();
+const capital = (t) => t.charAt(0).toUpperCase() + t.slice(1).toLowerCase();
+export function variantesPalabra(p) {
+  const v = new Set();
+  for (const base of [p, sinTildes(p)]) for (const f of [base, base.toLowerCase(), base.toUpperCase(), capital(base)]) v.add(f);
+  return [...v];
+}
+// Las palabras que escribe la persona, sin repetir (GUIA y guía son la misma; se queda la que lleva tilde, en minúsculas)
+function unicas(palabras) {
+  const m = new Map();
+  for (const p of palabras) {
+    const k = clavePalabra(p);
+    const ya = m.get(k);
+    if (!ya || (ya === sinTildes(ya) && p !== sinTildes(p))) m.set(k, p.toLowerCase());
+  }
+  return [...m.values()];
+}
+export const palabrasParaZernio = (palabras) => [...new Set(palabras.flatMap(variantesPalabra))].slice(0, 120);
+
 // Lo que escribe la persona en el formulario → configuración limpia (lo que se guarda en JARVIS)
 export function normalizarConfig(c = {}) {
   const tipo = c.tipo === 'story' ? 'story' : 'post';
@@ -32,7 +53,7 @@ export function normalizarConfig(c = {}) {
     media_id: destino === 'publicacion' ? corto(c.media_id, 64) : '',
     media_titulo: destino === 'publicacion' ? corto(c.media_titulo, 120) : '',
     media_miniatura: destino === 'publicacion' && esUrl(c.media_miniatura) ? String(c.media_miniatura).slice(0, 1000) : '',
-    palabras: lista(c.palabras, 20, 40),
+    palabras: unicas(lista(c.palabras, 40, 40)).slice(0, 20),
     coincidencia: COINCIDENCIA[c.coincidencia] ? c.coincidencia : 'palabra',
     erratas: c.erratas !== false,
     respuestas: tipo === 'post' ? lista(c.respuestas, 6, 300) : [],
@@ -103,7 +124,7 @@ export function cuerpoAutomatizacion(cfg, { flujoId = null, activa = true, media
     name: cfg.nombre,
     trigger: post ? 'comment' : 'story_reply',
     ...(id ? { platformPostId: id, postTitle: cfg.media_titulo || cfg.nombre } : {}),
-    keywords: cfg.palabras,
+    keywords: palabrasParaZernio(cfg.palabras),
     matchMode: COINCIDENCIA[cfg.coincidencia],
     ...(cfg.coincidencia === 'palabra' ? { typoTolerance: cfg.erratas } : {}),
     dmMessage: cfg.mensaje,
