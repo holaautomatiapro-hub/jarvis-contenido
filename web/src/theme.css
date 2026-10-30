@@ -2118,7 +2118,7 @@ button.est-boton:hover { background: color-mix(in srgb, var(--cat) 30%, transpar
 .fl-bloque.on { outline: 2px solid var(--c); }
 .fl-cab { font-weight: 700; font-size: 11px; text-transform: uppercase; letter-spacing: .06em; color: var(--c); margin-bottom: 6px; }
 .fl-cab small { text-transform: none; letter-spacing: 0; color: var(--muted); font-weight: 500; }
-.fl-txt { white-space: pre-wrap; line-height: 1.4; max-height: 90px; overflow: hidden; color: var(--text); }
+.fl-txt { white-space: pre-wrap; line-height: 1.4; color: var(--text); overflow-wrap: anywhere; }
 .fl-boton { margin-top: 6px; padding: 5px 8px; border-radius: 8px; background: color-mix(in srgb, var(--c) 10%, transparent); font-size: 11px; }
 .fl-salida { position: relative; margin-top: 6px; padding: 5px 18px 5px 8px; border-radius: 8px; background: color-mix(in srgb, var(--c) 14%, transparent); font-size: 11px; font-weight: 600; }
 .fl-salida.sola { background: none; padding: 0; height: 6px; }
@@ -2141,3 +2141,5 @@ button.est-boton:hover { background: color-mix(in srgb, var(--cat) 30%, transpar
 .campo-emoji .campo-emoji-caja { top: calc(100% + 4px); left: auto; right: 0; }
 .fl-panel .fila .campo-emoji { flex: 1; }
 .campo-emoji .campo-emoji-caja { background: var(--panel-2); backdrop-filter: none; }
+.fl-casos { margin: 0 0 4px; padding-left: 18px; display: flex; flex-direction: column; gap: 4px; }
+.campo-emoji textarea.campo { overflow-y: auto; }

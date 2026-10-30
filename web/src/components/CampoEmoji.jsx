@@ -1,7 +1,8 @@
-import { useEffect, useRef, useState } from 'react';
+import { useEffect, useLayoutEffect, useRef, useState } from 'react';
 import { EMOJIS } from './CampoCaption.jsx';
 
-// Un campo de texto (o de una línea, con «linea») con botón 😀: los emojis se insertan donde está el cursor
+// Un campo de texto (o de una línea, con «linea») con botón 😀: los emojis se insertan donde está el cursor.
+// El de varias líneas crece solo hasta enseñar todo el texto.
 const LS = 'jarvis-emojis-recientes';
 const leerRecientes = () => { try { return JSON.parse(localStorage.getItem(LS) || '[]').slice(0, 16); } catch { return []; } };
 
@@ -14,6 +15,12 @@ export default function CampoEmoji({ value, onChange, linea = false, rows = 3, .
   const [recientes, setRecientes] = useState(leerRecientes);
   const texto = value || '';
 
+  useLayoutEffect(() => {
+    const t = ref.current;
+    if (linea || !t) return;
+    t.style.height = 'auto';
+    t.style.height = `${Math.min(t.scrollHeight + 2, 520)}px`;
+  }, [texto, linea]);
   useEffect(() => {
     const c = cursor.current;
     if (c == null || !ref.current) return;
