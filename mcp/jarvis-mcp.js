@@ -602,6 +602,62 @@ export function buildServer(jarvis, { origen = 'claude', avisar = () => {}, inst
 
   // Laboratorio: testimonios, reels, clips, imágenes y lead magnets. Lo hace el Laboratorio del dashboard (Claude con el
   // plugin, Python y ffmpeg, en su propio carril); estas herramientas le pasan el trabajo para llevarlo todo desde un chat.
+  // Automatizaciones de Instagram (Zernio): JARVIS diseña el flujo y lo deja EN PAUSA; la persona lo revisa y lo activa
+  if (laboratorio?.servidor) {
+    const srv = laboratorio.servidor;
+    const va = z.string().optional().describe('id del bloque al que lleva (vacío = termina)');
+    tool('automatizaciones_instagram', 'Las automatizaciones de Instagram (tipo ManyChat, con Zernio): nombre, cuándo se activan, palabras, estado (activa, pausada, esperando la siguiente publicación) y cifras.', {},
+      async () => {
+        const r = await srv('GET', '/api/automatizaciones');
+        if (!r.configurado) return { aviso: 'Zernio no está conectado: la persona tiene que poner su API key en Instagram → Automatizaciones.' };
+        return { cuenta: r.cuenta, lista: (r.lista || []).map((a) => ({ id: a.id, nombre: a.nombre, disparador: a.disparador.tipo, donde: a.disparador.destino, publicacion: a.media_titulo, palabras: a.disparador.palabras, sigueme: a.disparador.sigueme, estado: a.estado, bloques: a.bloques, cifras: a.zernio?.stats || null })), error: r.error || null };
+      });
+    tool('publicaciones_para_automatizar', 'Las últimas publicaciones (o stories activas) de Instagram con su id, para elegir en crear_automatizacion con destino «publicacion».',
+      { tipo: z.enum(['post', 'story']).optional() },
+      ({ tipo = 'post' }) => srv('GET', `/api/automatizaciones/medios?tipo=${tipo}`));
+    tool('crear_automatizacion', `Diseña una automatización de Instagram tipo ManyChat y la deja creada EN PAUSA para que la persona la revise en Instagram → Automatizaciones (Abrir tablero) y la active con «Reanudar». Nunca digas que ya está activa.
+Cómo funciona: alguien comenta una palabra en una publicación (tipo post), responde a una story (story) o te escribe una palabra por privado (mensaje). Tras un comentario, el PRIMER bloque tiene que ser un mensaje (es la respuesta privada; opcionalmente antes un esperar de segundos): para seguir, la persona tiene que pulsar un botón con camino, así que ese primer mensaje necesita al menos un botón (de camino para seguir el flujo, o de enlace si solo manda el recurso).
+Bloques (cada uno con un id tuyo; los «va_a» / «siguiente» apuntan a otro id; vacío = termina):
+- mensaje: texto (máx. 640 con botones; {{first_name}} pone su nombre; usa emojis con gusto) y hasta 3 botones {titulo (≤20), url (botón de enlace) o va_a (botón que sigue un camino)}; con botones de camino, sin_respuesta_va_a; sin ellos, siguiente.
+- pregunta: texto, opciones [{texto ≤20, va_a}] (respuestas rápidas, opcional), otra_va_a, sin_respuesta_va_a; sin opciones, siguiente. La respuesta se guarda.
+- esperar: cantidad, unidad (segundos|minutos|horas|dias), horario opcional {desde, hasta} (horas 0-23, hora de España). Entre mensajes el mínimo es 1 minuto; Meta solo deja escribir 24 h después del último mensaje de la persona.
+- condicion: condicion (etiqueta|sigue|contiene), valor, si_va_a, no_va_a.
+- etiqueta: accion (poner|quitar), etiqueta, siguiente.
+- fin.
+Para el recurso usa el enlace de un lead magnet publicado (laboratorio_estado) o el que te dé la persona. Para una publicación concreta usa publicaciones_para_automatizar. Si falta información clave (qué publicación, qué palabra, qué recurso), pregúntala antes.`,
+      {
+        nombre: z.string(),
+        disparador: z.object({
+          tipo: z.enum(['post', 'story', 'mensaje']),
+          destino: z.enum(['siguiente', 'publicacion', 'cualquiera']).optional().describe('post/story: la siguiente que se suba, una concreta (media_id) o cualquiera'),
+          media_id: z.string().optional(),
+          media_titulo: z.string().optional(),
+          palabras: z.array(z.string()).optional().describe('Da igual mayúsculas y tildes'),
+          respuestas: z.array(z.string()).optional().describe('Respuestas públicas al comentario (se elige una al azar)'),
+          sigueme: z.boolean().optional().describe('Solo se lo envía si te sigue'),
+          seguir: z.object({ mensaje: z.string().optional(), boton: z.string().optional(), noSigue: z.string().optional() }).optional(),
+          repetir: z.enum(['una', 'cada']).optional(),
+        }),
+        primero: z.string().describe('id del primer bloque'),
+        bloques: z.array(z.object({
+          id: z.string(),
+          tipo: z.enum(['mensaje', 'pregunta', 'esperar', 'condicion', 'etiqueta', 'fin']),
+          texto: z.string().optional(),
+          botones: z.array(z.object({ titulo: z.string(), url: z.string().optional(), va_a: va })).optional(),
+          opciones: z.array(z.object({ texto: z.string(), va_a: va })).optional(),
+          otra_va_a: va, sin_respuesta_va_a: va, siguiente: va, si_va_a: va, no_va_a: va,
+          cantidad: z.number().optional(), unidad: z.enum(['segundos', 'minutos', 'horas', 'dias']).optional(),
+          horario: z.object({ desde: z.number().int().min(0).max(23), hasta: z.number().int().min(0).max(23) }).optional(),
+          condicion: z.enum(['etiqueta', 'sigue', 'contiene']).optional(), valor: z.string().optional(),
+          accion: z.enum(['poner', 'quitar']).optional(), etiqueta: z.string().optional(),
+        })).min(1),
+      },
+      async (a) => {
+        const r = await srv('POST', '/api/automatizaciones', { ...a, borrador: true });
+        return { id: r.id, nombre: r.nombre, estado: r.estado, bloques: r.bloques, aviso: 'Creada EN PAUSA. Dile que la revise en Instagram → Automatizaciones (Abrir tablero) y pulse «Reanudar» para activarla.' };
+      }, true);
+  }
+
   if (laboratorio) {
     const { servidor, subir } = laboratorio;
     const corto = (t, n) => (t && t.length > n ? `${t.slice(0, n)}…` : t);

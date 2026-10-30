@@ -505,7 +505,8 @@ export function createApp({ jarvis, archivos, miniaturas = null, estrategia = nu
       }));
       app.put('/api/automatizaciones/clave', h((req) => automatizaciones.conectar(req.body || {}), true));
       app.get('/api/automatizaciones/medios', h((req) => automatizaciones.medios(req.query.tipo === 'story' ? 'story' : 'post')));
-      app.post('/api/automatizaciones', h((req) => automatizaciones.crear(req.body || {}), true));
+      // borrador: la crea en pausa (lo que diseña JARVIS desde el chat o Telegram; la persona la revisa y la activa)
+      app.post('/api/automatizaciones', h((req) => automatizaciones.crear(req.body || {}, { pausada: Boolean(req.body?.borrador) }), true));
       app.get('/api/automatizaciones/:id', h((req) => automatizaciones.detalle(req.params.id)));
       app.put('/api/automatizaciones/:id', h((req) => automatizaciones.editar(req.params.id, req.body || {}), true));
       app.post('/api/automatizaciones/:id/pausar', h((req) => automatizaciones.pausar(req.params.id, req.body || {}), true));
