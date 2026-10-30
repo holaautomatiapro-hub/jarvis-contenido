@@ -12,7 +12,7 @@ import { randomBytes } from 'node:crypto';
 import { row, rows } from './db.js';
 import { createGraph } from './integrations/meta.js';
 import { guardarEnv as guardarEnvArchivo } from './env-archivo.js';
-import { ZONA_HORARIA, destinoDe, empiezaConComentario, esperaInicial, flujoDesdeFormulario, flujoInicial, minutosDeEspera, primerMensajeId, salidasDe, segundosDeEspera, validarFlujo } from '../web/src/lib/flujo.js';
+import { ZONA_HORARIA, destinoDe, empiezaConComentario, esperaInicial, flujoDesdeBloques, flujoDesdeFormulario, flujoInicial, minutosDeEspera, primerMensajeId, salidasDe, segundosDeEspera, validarFlujo } from '../web/src/lib/flujo.js';
 
 export class AutomatizacionError extends Error {
   constructor(m) { super(m); this.publico = true; }
@@ -113,7 +113,8 @@ function limpiarFlujo(f = {}) {
 // Lo que llega del tablero → configuración limpia (lo que se guarda en JARVIS)
 export function normalizarConfig(c = {}) {
   const disparador = limpiarDisparador(c.disparador || {});
-  const flujo = limpiarFlujo(c.flujo || flujoInicial(disparador.tipo));
+  // Desde el chat o Telegram llega como lista de bloques que se apuntan entre sí
+  const flujo = limpiarFlujo(c.flujo || (Array.isArray(c.bloques) ? flujoDesdeBloques(c) : flujoInicial()));
   const { errores } = validarFlujo(flujo, disparador);
   if (errores.length) throw new AutomatizacionError(errores.slice(0, 3).join(' · '));
   const nombre = corto(c.nombre, 80) || (disparador.palabras[0] ? `Palabra ${disparador.palabras[0].toUpperCase()}` : disparador.tipo === 'story' ? 'Respuestas a stories' : 'Comentarios');

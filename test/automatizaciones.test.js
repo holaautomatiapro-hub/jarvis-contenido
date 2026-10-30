@@ -2,7 +2,15 @@ import { test, describe } from 'node:test';
 import assert from 'node:assert/strict';
 import { openDb } from '../server/db.js';
 import { createAutomatizaciones, normalizarConfig, cuerpoAutomatizacion, grafoZernio, compilar, palabrasParaZernio, aFormatoNuevo } from '../server/automatizaciones.js';
-import { flujoInicial, salidasDe, validarFlujo } from '../web/src/lib/flujo.js';
+import { flujoDesdeBloques, flujoInicial, salidasDe, validarFlujo } from '../web/src/lib/flujo.js';
+import { createJarvis } from '../server/jarvis.js';
+import { createVault } from '../server/vault.js';
+import { buildServer } from '../mcp/jarvis-mcp.js';
+import { Client } from '@modelcontextprotocol/sdk/client/index.js';
+import { InMemoryTransport } from '@modelcontextprotocol/sdk/inMemory.js';
+import os from 'node:os';
+import path from 'node:path';
+import { mkdtempSync } from 'node:fs';
 
 const CLAVE = 'zernio-clave-secreta-123456';
 const DISP = { tipo: 'post', destino: 'publicacion', media_id: '1789', media_titulo: 'Mi reel', palabras: 'GUÍA, guia' };
@@ -283,6 +291,57 @@ describe('Automatizaciones (Zernio)', () => {
     const r = await a.conectar({ clave: CLAVE });
     assert.equal(r.cuenta, 'automatiapro');
     assert.deepEqual(guardadas, [{ ZERNIO_API_KEY: CLAVE }]);
+  });
+
+  test('desde el chat o Telegram: una lista de bloques que se apuntan entre sí se convierte en el tablero', () => {
+    const bloques = {
+      primero: 'hola',
+      bloques: [
+        { id: 'hola', tipo: 'mensaje', texto: '¡Hola {{first_name}}! 👋', botones: [{ titulo: 'Lo quiero', va_a: 'guia' }, { titulo: 'Web', url: 'https://ej.com' }] },
+        { id: 'guia', tipo: 'mensaje', texto: 'Aquí la tienes', botones: [{ titulo: 'Abrir guía', url: 'https://ej.com/guia' }], siguiente: 'espera' },
+        { id: 'espera', tipo: 'esperar', cantidad: 2, unidad: 'minutos', siguiente: 'p' },
+        { id: 'p', tipo: 'pregunta', texto: '¿A qué te dedicas?', opciones: [{ texto: 'Entrenador', va_a: 'tag' }, { texto: 'Otro' }], otra_va_a: 'fin' },
+        { id: 'tag', tipo: 'etiqueta', etiqueta: 'entrenador', siguiente: 'fin' },
+        { id: 'fin', tipo: 'fin' },
+      ],
+    };
+    const f = flujoDesdeBloques(bloques);
+    assert.deepEqual(validarFlujo(f, { tipo: 'post' }).errores, []);
+    assert.deepEqual(f.nodos.find((n) => n.id === 'n1').datos.botones.map((b) => b.tipo), ['camino', 'enlace']);
+    assert.ok(f.conexiones.some((c) => c.de === 'inicio' && c.a === 'n1'));
+    assert.ok(f.conexiones.some((c) => c.de === 'n4' && c.salida === 'o0' && c.a === 'n5'));
+    // Colocados en columnas, sin pisarse
+    const pos = new Set(f.nodos.map((n) => `${n.x},${n.y}`));
+    assert.equal(pos.size, f.nodos.length);
+    assert.ok(f.nodos.find((n) => n.id === 'n2').x > f.nodos.find((n) => n.id === 'n1').x);
+    // El servidor lo acepta tal cual
+    const cfg = normalizarConfig({ nombre: 'Guía', disparador: DISP, ...bloques });
+    assert.equal(cfg.flujo.nodos.length, 7);
+  });
+
+  test('MCP crear_automatizacion: la deja creada en pausa (borrador) para que la persona la revise', async () => {
+    const llamadas = [];
+    const servidor = async (m, ruta, body) => { llamadas.push([m, ruta, body]); return { id: 7, nombre: body?.nombre, estado: 'pausada', bloques: 2 }; };
+    const s = buildServer(createJarvis({ db: openDb(':memory:'), vault: createVault(mkdtempSync(path.join(os.tmpdir(), 'jarvis-auto-'))) }), { laboratorio: { servidor } });
+    const [a, b] = InMemoryTransport.createLinkedPair();
+    await s.connect(a);
+    const c = new Client({ name: 't', version: '1' });
+    await c.connect(b);
+    const nombres = (await c.listTools()).tools.map((t) => t.name);
+    for (const n of ['crear_automatizacion', 'automatizaciones_instagram', 'publicaciones_para_automatizar']) assert.ok(nombres.includes(n), n);
+    const r = JSON.parse((await c.callTool({ name: 'crear_automatizacion', arguments: { nombre: 'Guía', disparador: { tipo: 'post', destino: 'siguiente', palabras: ['guía'] }, primero: 'm', bloques: [{ id: 'm', tipo: 'mensaje', texto: 'Hola', botones: [{ titulo: 'Ver', url: 'https://ej.com' }] }] } })).content[0].text);
+    assert.equal(llamadas[0][1], '/api/automatizaciones');
+    assert.equal(llamadas[0][2].borrador, true);
+    assert.equal(r.estado, 'pausada');
+    assert.match(r.aviso, /EN PAUSA/);
+  });
+
+  test('crear con borrador queda en pausa en Zernio', async () => {
+    const { fetchImpl, llamadas } = falso();
+    const a = createAutomatizaciones({ db: openDb(':memory:'), env: { ZERNIO_API_KEY: CLAVE }, fetchImpl, instagram });
+    const r = await a.crear({ disparador: DISP, flujo: flujoLargo() }, { pausada: true });
+    assert.equal(r.estado, 'pausada');
+    assert.equal(llamadas.find((l) => l[0] === 'POST' && l[1] === '/comment-automations')[2].isActive, false);
   });
 
   test('grafoZernio: las salidas sin conectar terminan en un único fin', () => {

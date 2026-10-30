@@ -142,6 +142,9 @@ tienes que pasar la verificación de Meta.
      en timeapi.io; si no responde, envía igual).
    - **Condición** (tiene una etiqueta, te sigue, su mensaje contiene…), **Etiqueta** y **Fin**.
    Arrastra desde un punto ● hasta otro bloque para unirlos; selecciona una flecha y pulsa Supr para quitarla.
+   **Desde el chat de JARVIS o por Telegram** también vale: «hazme una automatización para la siguiente publicación con
+   la palabra GUÍA que mande mi lead magnet de prompts y pregunte a qué se dedica». JARVIS diseña el flujo
+   (`crear_automatizacion`) y lo deja **en pausa**: revísalo en el tablero y pulsa **Reanudar** para activarlo.
 4. En cada tarjeta: **Abrir tablero**, **Pausar / Reanudar**, **Resultados**, **Duplicar** (la copia queda en pausa) y **Eliminar**.
 
 Límites de Meta: el mensaje privado sale una sola vez por comentario y como mucho 7 días después; después, solo se le

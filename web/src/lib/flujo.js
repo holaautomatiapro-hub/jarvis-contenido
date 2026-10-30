@@ -175,3 +175,61 @@ export function validarFlujo(flujo, disparador = {}) {
   }
   return { errores, avisos };
 }
+
+// Un flujo descrito como lista de bloques que se apuntan entre sí (lo que escribe JARVIS desde el chat o Telegram):
+//   { primero: 'b1', bloques: [{ id, tipo, texto, botones: [{ titulo, tipo: 'enlace'|'camino', url, va_a }],
+//     opciones: [{ texto, va_a }], otra_va_a, sin_respuesta_va_a, siguiente, si_va_a, no_va_a, … }] }
+// → { nodos, conexiones } colocados en columnas de izquierda a derecha.
+export function flujoDesdeBloques({ primero, bloques = [] } = {}) {
+  const ids = new Map(bloques.map((b, i) => [String(b.id || `b${i + 1}`), `n${i + 1}`]));
+  const id = (x) => (x == null || x === '' ? null : ids.get(String(x)) || null);
+  const nodos = [{ id: 'inicio', tipo: 'inicio', x: 0, y: 0, datos: {} }];
+  const conexiones = [];
+  const unir = (de, salida, a) => { const destino = id(a); if (destino) conexiones.push({ de, salida, a: destino }); };
+  bloques.forEach((b, i) => {
+    const n = `n${i + 1}`;
+    const tipo = TIPOS_BLOQUE[b.tipo] ? b.tipo : 'mensaje';
+    let datos;
+    if (tipo === 'mensaje') {
+      const botones = (b.botones || []).slice(0, MAX_BOTONES).map((x) => ({ titulo: String(x.titulo || '').slice(0, 20), tipo: x.tipo === 'enlace' || (x.url && !x.va_a) ? 'enlace' : 'camino', ...(x.url ? { url: x.url } : {}) }));
+      datos = { texto: b.texto || '', botones, esperaHoras: Number(b.espera_horas) || 24 };
+      (b.botones || []).slice(0, MAX_BOTONES).forEach((x, j) => { if (botones[j].tipo === 'camino') unir(n, `b${j}`, x.va_a); });
+      if (botones.some((x) => x.tipo === 'camino')) unir(n, 'sin_respuesta', b.sin_respuesta_va_a);
+      else unir(n, 'siguiente', b.siguiente);
+    } else if (tipo === 'pregunta') {
+      const ops = (b.opciones || []).slice(0, MAX_OPCIONES).map((o) => (typeof o === 'string' ? { texto: o } : o));
+      datos = { texto: b.texto || '', opciones: ops.map((o) => String(o.texto || '').slice(0, 20)), campo: b.campo || '', esperaHoras: Number(b.espera_horas) || 24 };
+      if (ops.length) { ops.forEach((o, j) => unir(n, `o${j}`, o.va_a)); unir(n, 'otra', b.otra_va_a); } else unir(n, 'respuesta', b.siguiente);
+      unir(n, 'sin_respuesta', b.sin_respuesta_va_a);
+    } else if (tipo === 'esperar') {
+      datos = { cantidad: Number(b.cantidad) || 0, unidad: b.unidad || 'minutos', horario: { activo: Boolean(b.horario), desde: Number(b.horario?.desde ?? 9), hasta: Number(b.horario?.hasta ?? 21) } };
+      unir(n, 'siguiente', b.siguiente);
+    } else if (tipo === 'condicion') {
+      datos = { tipo: ['etiqueta', 'sigue', 'contiene'].includes(b.condicion) ? b.condicion : 'etiqueta', valor: b.valor || '' };
+      unir(n, 'si', b.si_va_a);
+      unir(n, 'no', b.no_va_a);
+    } else if (tipo === 'etiqueta') {
+      datos = { accion: b.accion === 'quitar' ? 'quitar' : 'poner', etiqueta: b.etiqueta || '' };
+      unir(n, 'siguiente', b.siguiente);
+    } else datos = {};
+    nodos.push({ id: n, tipo, x: 0, y: 0, datos });
+  });
+  const inicio = id(primero) || (bloques.length ? 'n1' : null);
+  if (inicio) conexiones.push({ de: 'inicio', salida: 'siguiente', a: inicio });
+  // Columnas por distancia al inicio; dentro de cada columna, uno debajo de otro
+  const nivel = new Map([['inicio', 0]]);
+  const cola = ['inicio'];
+  while (cola.length) {
+    const x = cola.shift();
+    for (const c of conexiones) if (c.de === x && !nivel.has(c.a)) { nivel.set(c.a, nivel.get(x) + 1); cola.push(c.a); }
+  }
+  const ultimo = Math.max(0, ...nivel.values());
+  const filas = {};
+  for (const n of nodos) {
+    const col = nivel.has(n.id) ? nivel.get(n.id) : ultimo + 1;
+    const fila = (filas[col] = (filas[col] || 0) + 1) - 1;
+    n.x = col * 340;
+    n.y = fila * 240;
+  }
+  return { nodos, conexiones };
+}
