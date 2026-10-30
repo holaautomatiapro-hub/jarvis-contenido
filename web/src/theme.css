@@ -2049,3 +2049,43 @@ button.est-boton:hover { background: color-mix(in srgb, var(--cat) 30%, transpar
 .creativo-material { display: flex; flex-wrap: wrap; gap: 8px; align-items: center; }
 .creativo-material .chip { display: inline-flex; align-items: center; gap: 6px; }
 @media (max-width: 640px) { .creativo-fila { grid-template-columns: 1fr; } }
+
+/* ---------- Instagram · Automatizaciones (Zernio) ---------- */
+.auto-vista { display: flex; flex-direction: column; gap: 12px; }
+.auto-cab { display: flex; align-items: center; justify-content: space-between; gap: 12px; flex-wrap: wrap; }
+.auto-cab .ayuda { max-width: 640px; margin: 4px 0 0; }
+.auto-lista { display: grid; grid-template-columns: repeat(auto-fill, minmax(320px, 1fr)); gap: 12px; }
+.auto-card { padding: 14px; display: flex; flex-direction: column; gap: 10px; }
+.auto-card-cab { display: flex; align-items: center; gap: 10px; }
+.auto-card-cab img, .auto-card-cab .auto-medio-sin { width: 42px; height: 52px; border-radius: 8px; object-fit: cover; flex: none; }
+.auto-card-cab .fila-c-txt { flex: 1; min-width: 0; }
+.auto-medio-sin { display: grid; place-items: center; background: var(--panel-2, rgba(255,255,255,.04)); color: var(--muted); }
+.auto-palabras { display: flex; flex-wrap: wrap; gap: 6px; }
+.auto-palabras .chip { font-size: 11px; }
+.auto-mini-stats { display: flex; gap: 14px; font-size: 12px; color: var(--muted); }
+.auto-mini-stats b { color: var(--text); margin-right: 3px; }
+.auto-acciones { display: flex; gap: 6px; flex-wrap: wrap; align-items: center; }
+.auto-acciones .link-btn { margin-left: auto; }
+.auto-paso { display: flex; align-items: center; gap: 8px; margin: 18px 0 8px; font-weight: 600; font-size: 13px; }
+.auto-paso b { display: grid; place-items: center; width: 22px; height: 22px; border-radius: 50%; background: var(--accent); color: #fff; font-size: 11px; }
+.auto-destinos { margin-top: 8px; }
+.auto-medios { display: grid; grid-template-columns: repeat(auto-fill, minmax(84px, 1fr)); gap: 8px; margin-top: 10px; max-height: 260px; overflow-y: auto; }
+.auto-medio { display: flex; flex-direction: column; gap: 4px; padding: 4px; border-radius: 10px; border: 2px solid transparent; background: none; cursor: pointer; color: var(--muted); }
+.auto-medio img, .auto-medio .auto-medio-sin { width: 100%; aspect-ratio: 4 / 5; object-fit: cover; border-radius: 7px; }
+.auto-medio small { font-size: 10px; text-align: center; }
+.auto-medio.on { border-color: var(--accent); }
+.auto-sigueme { margin-top: 12px; }
+.auto-caja { border: 1px solid var(--border-soft); border-radius: 10px; padding: 10px 12px; margin-top: 8px; }
+.auto-caja .ayuda { margin-top: 0; }
+.auto-stats { display: grid; grid-template-columns: repeat(3, 1fr); gap: 8px; }
+.auto-stats div { border: 1px solid var(--border-soft); border-radius: 10px; padding: 10px; display: flex; flex-direction: column; }
+.auto-stats b { font-size: 20px; }
+.auto-stats small { color: var(--muted); font-size: 11px; }
+.auto-tabla { display: flex; flex-direction: column; max-height: 300px; overflow-y: auto; }
+.auto-tabla > div { display: grid; grid-template-columns: 130px 1fr auto; gap: 10px; padding: 7px 0; border-bottom: 1px solid var(--border-soft); font-size: 12px; align-items: baseline; }
+.auto-tabla small { color: var(--muted); }
+.auto-tabla small.peligro { color: var(--red); }
+@media (max-width: 640px) {
+  .auto-stats { grid-template-columns: repeat(2, 1fr); }
+  .auto-tabla > div { grid-template-columns: 1fr; gap: 2px; }
+}
