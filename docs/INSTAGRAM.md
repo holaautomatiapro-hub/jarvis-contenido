@@ -131,7 +131,8 @@ tienes que pasar la verificación de Meta.
      activa sola en cuanto sale tu próximo post o story; necesita Instagram conectado con Facebook). Palabras clave
      (da igual mayúsculas, minúsculas y tildes), respuesta pública al comentario (varias, al azar), **sígueme primero**
      y si se repite. Si marcas **Sígueme primero**, sale como un cuadro justo después del disparador (pulsa en él
-     para cambiar sus textos).
+     para cambiar sus textos): a todos les llega primero ese mensaje con «Ya te sigo» y «Ver perfil»; al pulsar se
+     comprueba si te sigue y, si sí, sigue el flujo; si no, le llega «Si aún no te sigue» para volver a intentarlo.
    - **Mensaje**: texto (`{{first_name}}` pone su nombre) y hasta 3 botones: de **enlace** (puedes elegir uno de tus
      lead magnets) o que **siguen un camino**. El primero tras un comentario es la respuesta privada: para seguir, la
      persona tiene que pulsar un botón (Meta no deja escribirle más hasta que responda).

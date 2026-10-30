@@ -133,7 +133,9 @@ export function aFormatoNuevo(cfg = {}) {
 
 // ---------- Del tablero a Zernio ----------
 // Un workflow de Zernio con lo que cuelga de un bloque. «disparo» es la config del nodo trigger.
-export function grafoZernio(flujo, desde, disparo) {
+// Con «sigueme» ({ noSigue, boton, perfil }), antes del bloque «desde» se comprueba si te sigue: si sí (o Instagram no
+// lo dice), sigue; si no, «Si aún no te sigue» con el botón para volver a comprobarlo
+export function grafoZernio(flujo, desde, disparo, { sigueme = null } = {}) {
   const nodos = [{ id: 'inicio', type: 'trigger', config: disparo }];
   const aristas = [];
   const hecho = new Map(); // bloque de JARVIS → nodo de entrada en Zernio
@@ -231,12 +233,26 @@ export function grafoZernio(flujo, desde, disparo) {
     }
     return id;
   }
-  unir('inicio', entrada(desde));
+  if (!sigueme) {
+    unir('inicio', entrada(desde));
+    return { nodes: nodos, edges: aristas, entryNodeId: 'inicio' };
+  }
+  nodos.push({ id: 'sg_c', type: 'condition', label: '¿Te sigue?', config: { rules: [{ id: 'si', variable: 'contact.isFollower', operator: 'is_true' }, { id: 'no', variable: 'contact.isFollower', operator: 'is_false' }] } });
+  nodos.push({ id: 'sg_no', type: 'send_message', label: 'Aún no te sigue', config: { messageType: 'text', text: sigueme.noSigue, buttons: [{ type: 'postback', title: sigueme.boton }, ...(sigueme.perfil ? [{ type: 'url', title: 'Ver perfil', url: sigueme.perfil }] : [])] } });
+  nodos.push({ id: 'sg_w', type: 'wait_for_reply', config: { timeoutMinutes: 1440, saveAs: 'r_sigueme' } });
+  unir('inicio', 'sg_c');
+  const despues = entrada(desde);
+  unir('sg_c', despues, 'si');
+  unir('sg_c', despues, 'default'); // si Instagram no dice si te sigue, se envía igual
+  unir('sg_c', 'sg_no', 'no');
+  unir('sg_no', 'sg_w');
+  unir('sg_w', 'sg_c', 'reply');
+  unir('sg_w', fin(), 'timeout');
   return { nodes: nodos, edges: aristas, entryNodeId: 'inicio' };
 }
 
 // Qué hay que dar de alta en Zernio: los workflows («ramas») y, si empieza por un comentario, la comment automation
-export function compilar(cfg, { claves = {} } = {}) {
+export function compilar(cfg, { claves = {}, perfil = null } = {}) {
   const { disparador: d, flujo } = cfg;
   const primero = destinoDe(flujo, 'inicio', 'siguiente');
   const clave = (rama) => claves[rama] || `jarvis-${rama}-${randomBytes(6).toString('hex')}`;
@@ -247,6 +263,12 @@ export function compilar(cfg, { claves = {} } = {}) {
   // El primer mensaje lo manda la comment automation; cada botón con camino arranca su workflow
   const primerMensaje = primerMensajeId(flujo, d);
   const m = flujo.nodos.find((n) => n.id === primerMensaje);
+  // «Sígueme primero»: a TODOS les llega primero el mensaje para que te sigan; al pulsar «Ya te sigo» arranca un
+  // workflow que lo comprueba y, si te sigue, manda el primer mensaje y todo lo demás
+  if (d.sigueme) {
+    const k = clave('sigueme');
+    return { ramas: [{ rama: 'sigueme', clave: k, grafo: grafoZernio(flujo, primerMensaje, { triggerType: 'inbound_message', keywords: [k], matchType: 'exact' }, { sigueme: { noSigue: d.seguir.noSigue, boton: d.seguir.boton, perfil } }) }], comentario: { primero: m } };
+  }
   const ramas = [];
   m.datos.botones.forEach((b, i) => {
     if (b.tipo !== 'camino') return;
@@ -257,7 +279,7 @@ export function compilar(cfg, { claves = {} } = {}) {
 }
 
 // La comment automation de Zernio. idsRamas: { b0: workflowId, … }
-export function cuerpoAutomatizacion(cfg, { idsRamas = {}, activa = true, mediaId = null } = {}) {
+export function cuerpoAutomatizacion(cfg, { idsRamas = {}, activa = true, mediaId = null, perfil = null } = {}) {
   const { disparador: d, flujo } = cfg;
   const post = d.tipo === 'post';
   const m = flujo.nodos.find((n) => n.id === primerMensajeId(flujo, d));
@@ -270,14 +292,14 @@ export function cuerpoAutomatizacion(cfg, { idsRamas = {}, activa = true, mediaI
     keywords: palabrasParaZernio(d.palabras),
     matchMode: COINCIDENCIA[d.coincidencia],
     ...(d.coincidencia === 'palabra' ? { typoTolerance: d.erratas } : {}),
-    dmMessage: m.datos.texto,
+    // Con «Sígueme primero» la respuesta privada es su mensaje (a todos), con «Ya te sigo» y «Ver perfil»
+    dmMessage: d.sigueme ? d.seguir.mensaje : m.datos.texto,
     ...(espera ? { dmDelaySeconds: Math.min(86400, segundosDeEspera(espera.datos)) } : {}),
-    buttons: m.datos.botones.map((b, i) => (b.tipo === 'enlace' ? { type: 'url', title: b.titulo, url: b.url } : { type: 'postback', title: b.titulo, payload: `zernio:workflow:${idsRamas[`b${i}`]}` })),
+    buttons: d.sigueme
+      ? [{ type: 'postback', title: d.seguir.boton, payload: `zernio:workflow:${idsRamas.sigueme}` }, ...(perfil ? [{ type: 'url', title: 'Ver perfil', url: perfil }] : [])]
+      : m.datos.botones.map((b, i) => (b.tipo === 'enlace' ? { type: 'url', title: b.titulo, url: b.url } : { type: 'postback', title: b.titulo, payload: `zernio:workflow:${idsRamas[`b${i}`]}` })),
     ...(post && d.respuestas.length ? { commentReply: d.respuestas[0], commentReplyVariations: d.respuestas.slice(1) } : {}),
-    // «Sígueme primero»: Instagram solo dice si te sigue a quien ya te ha escrito; al resto se le manda el botón para
-    // confirmarlo y, al pulsarlo, se comprueba de verdad
-    audience: d.sigueme ? { followerStatus: 'follower', whenUnknown: 'verify' } : { followerStatus: 'any' },
-    ...(d.sigueme ? { followGate: { message: d.seguir.mensaje, buttonLabel: d.seguir.boton, profileButtonLabel: 'Ver perfil', notFollowingMessage: d.seguir.noSigue } } : {}),
+    audience: { followerStatus: 'any' },
     repeatPolicy: d.repetir === 'cada' ? { mode: 'every_comment', cooldownHours: 24 } : { mode: 'once' },
     ...(post ? { alsoMatchInDms: d.tambienDm } : {}),
     isActive: activa,
@@ -387,12 +409,13 @@ export function createAutomatizaciones({ db, env = process.env, fetchImpl = fetc
   }
 
   // ---------- Altas, cambios y bajas ----------
-  const nombreFlujo = (cfg, rama) => `JARVIS · ${cfg.nombre}${rama === 'principal' ? '' : ` · botón ${Number(rama.slice(1)) + 1}`}`;
+  const nombreFlujo = (cfg, rama) => `JARVIS · ${cfg.nombre}${rama === 'principal' ? '' : rama === 'sigueme' ? ' · sígueme primero' : ` · botón ${Number(rama.slice(1)) + 1}`}`;
+  const perfilDe = (c) => (c?.username ? `https://www.instagram.com/${c.username}/` : null);
   // Crea o actualiza los workflows de las ramas; borra los que sobran. Devuelve [{ rama, id, clave }]
   async function sincronizarRamas(cfg, previas, { activar }) {
     const c = await cuenta();
     const claves = Object.fromEntries(previas.filter((p) => p.clave).map((p) => [p.rama, p.clave]));
-    const { ramas, comentario } = compilar(cfg, { claves });
+    const { ramas, comentario } = compilar(cfg, { claves, perfil: perfilDe(c) });
     const hechas = [];
     try {
       for (const r of ramas) {
@@ -435,7 +458,7 @@ export function createAutomatizaciones({ db, env = process.env, fetchImpl = fetc
       let zernioId = null;
       if (s.comentario) {
         const idsRamas = Object.fromEntries(s.ramas.map((x) => [x.rama, x.id]));
-        const { automation } = await zernio('POST', '/comment-automations', { profileId: s.cuenta.profileId, accountId: s.cuenta.accountId, ...cuerpoAutomatizacion(cfg, { idsRamas, activa: estado === 'activa' }) });
+        const { automation } = await zernio('POST', '/comment-automations', { profileId: s.cuenta.profileId, accountId: s.cuenta.accountId, ...cuerpoAutomatizacion(cfg, { idsRamas, activa: estado === 'activa', perfil: perfilDe(s.cuenta) }) });
         if (!automation?.id) throw new AutomatizacionError('Zernio no ha devuelto la automatización');
         zernioId = automation.id;
       }
@@ -462,7 +485,7 @@ export function createAutomatizaciones({ db, env = process.env, fetchImpl = fetc
     const s = await sincronizarRamas(cfg, a.ramas, { activar: estado === 'activa' });
     let zernioId = a.zernio_id;
     if (comentario) {
-      const cuerpo = cuerpoAutomatizacion(cfg, { idsRamas: Object.fromEntries(s.ramas.map((x) => [x.rama, x.id])), activa: estado === 'activa', mediaId });
+      const cuerpo = cuerpoAutomatizacion(cfg, { idsRamas: Object.fromEntries(s.ramas.map((x) => [x.rama, x.id])), activa: estado === 'activa', mediaId, perfil: perfilDe(s.cuenta) });
       if (zernioId) {
         // Sin post: que Zernio la deje para cualquier publicación (sin enganchar) hasta que salga la siguiente
         if (!cuerpo.platformPostId) Object.assign(cuerpo, { platformPostId: null, postId: null, postTitle: null });

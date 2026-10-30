@@ -99,7 +99,7 @@ describe('Automatizaciones (Zernio)', () => {
   });
 
   test('un flujo largo se convierte en un workflow de Zernio por cada botón del primer mensaje', () => {
-    const cfg = normalizarConfig({ nombre: 'Guía', disparador: { ...DISP, sigueme: true, respuestas: 'Enviado 📩\nMira tus mensajes' }, flujo: flujoLargo() });
+    const cfg = normalizarConfig({ nombre: 'Guía', disparador: { ...DISP, respuestas: 'Enviado 📩\nMira tus mensajes' }, flujo: flujoLargo() });
     const { ramas, comentario } = compilar(cfg);
     assert.ok(comentario);
     assert.deepEqual(ramas.map((r) => r.rama), ['b0'], 'el botón de enlace no abre camino');
@@ -119,8 +119,8 @@ describe('Automatizaciones (Zernio)', () => {
     const cuerpo = cuerpoAutomatizacion(cfg, { idsRamas: { b0: 'wf9' } });
     assert.deepEqual(cuerpo.buttons, [{ type: 'postback', title: 'Lo quiero', payload: 'zernio:workflow:wf9' }, { type: 'url', title: 'Ver web', url: 'https://ejemplo.com' }]);
     assert.equal(cuerpo.dmMessage, '¡Hola {{first_name}}!');
-    assert.deepEqual(cuerpo.audience, { followerStatus: 'follower', whenUnknown: 'verify' });
-    assert.equal(cuerpo.followGate.profileButtonLabel, 'Ver perfil');
+    assert.deepEqual(cuerpo.audience, { followerStatus: 'any' });
+    assert.equal(cuerpo.followGate, undefined);
     assert.deepEqual([cuerpo.commentReply, cuerpo.commentReplyVariations], ['Enviado 📩', ['Mira tus mensajes']]);
     assert.ok(cuerpo.keywords.includes('GUIA') && cuerpo.keywords.includes('Guía'));
     const story = cuerpoAutomatizacion(normalizarConfig({ disparador: { ...DISP, tipo: 'story', destino: 'cualquiera' }, flujo: flujoLargo() }), { idsRamas: { b0: 'x' } });
@@ -178,6 +178,30 @@ describe('Automatizaciones (Zernio)', () => {
       for (const r of n.config?.rules || []) if ('value' in r) assert.equal(typeof r.value, 'string', `${n.id}: ${JSON.stringify(r)}`);
       for (const k of ['delayMinutes', 'timeoutMinutes']) if (k in (n.config || {})) assert.ok(Number.isInteger(n.config[k]), `${n.id}.${k} = ${n.config[k]}`);
     }
+  });
+
+  test('«Sígueme primero»: a todos les llega primero su mensaje; al pulsar se comprueba y sigue el flujo', () => {
+    const cfg = normalizarConfig({ nombre: 'Guía', disparador: { ...DISP, sigueme: true, seguir: { mensaje: '¡Hola! Este recurso es solo para mis seguidores 👇', boton: 'Ya te sigo', noSigue: 'Todavía no me sigues' } }, flujo: flujoLargo() });
+    const perfil = 'https://www.instagram.com/automatiapro/';
+    const { ramas } = compilar(cfg, { perfil });
+    assert.deepEqual(ramas.map((r) => r.rama), ['sigueme'], 'un solo workflow con todo');
+    const cuerpo = cuerpoAutomatizacion(cfg, { idsRamas: { sigueme: 'wf5' }, perfil });
+    assert.equal(cuerpo.dmMessage, '¡Hola! Este recurso es solo para mis seguidores 👇', 'la respuesta privada es el mensaje de sígueme, para todos');
+    assert.deepEqual(cuerpo.buttons, [{ type: 'postback', title: 'Ya te sigo', payload: 'zernio:workflow:wf5' }, { type: 'url', title: 'Ver perfil', url: perfil }]);
+    assert.deepEqual(cuerpo.audience, { followerStatus: 'any' }, 'sin la comprobación de Zernio (que se salta el mensaje a quien ya sabe que te sigue)');
+    assert.equal(cuerpo.followGate, undefined);
+    const g = ramas[0].grafo;
+    const ids = new Set(g.nodes.map((x) => x.id));
+    assert.ok(g.edges.every((e) => ids.has(e.source) && ids.has(e.target)));
+    assert.ok(g.edges.some((e) => e.source === 'inicio' && e.target === 'sg_c'));
+    assert.ok(g.edges.some((e) => e.source === 'sg_c' && e.target === 'm1' && e.sourceHandle === 'si'), 'si te sigue, el primer mensaje');
+    assert.ok(g.edges.some((e) => e.source === 'sg_c' && e.target === 'm1' && e.sourceHandle === 'default'), 'si no se sabe, también');
+    assert.ok(g.edges.some((e) => e.source === 'sg_c' && e.target === 'sg_no' && e.sourceHandle === 'no'));
+    assert.ok(g.edges.some((e) => e.source === 'sg_w' && e.target === 'sg_c' && e.sourceHandle === 'reply'), 'al volver a pulsar, vuelve a comprobar');
+    assert.equal(g.nodes.find((x) => x.id === 'sg_no').config.text, 'Todavía no me sigues');
+    // El primer mensaje va dentro del workflow con sus botones y caminos
+    assert.ok(g.nodes.some((x) => x.id === 'm1_c'));
+    assert.ok(g.edges.some((e) => e.source === 'm1_c' && e.target === 'm2' && e.sourceHandle === 'b0'));
   });
 
   test('palabra por privado: un solo workflow que empieza por el primer bloque', () => {
