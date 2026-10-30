@@ -1,15 +1,18 @@
-// Automatizaciones de Instagram al estilo ManyChat, con Zernio (zernio.com): alguien comenta una palabra en una
-// publicación (o responde a una story) y le llega un mensaje privado con un botón; al pulsarlo, el recurso y una
-// pregunta cuya respuesta se guarda. Zernio tiene la app de Meta aprobada y hace los envíos; JARVIS guarda la
-// configuración, la da de alta en Zernio y, para «la siguiente publicación», la engancha sola al post que salga.
+// Automatizaciones de Instagram al estilo ManyChat, con Zernio (zernio.com). Se diseñan en un tablero de bloques
+// (web/src/lib/flujo.js) y JARVIS las da de alta en Zernio, que tiene la app de Meta aprobada y hace los envíos.
 //
-// Por cada automatización de JARVIS hay en Zernio:
-//   - una «comment automation» (palabras, respuesta pública, mensaje privado, «sígueme primero», pausa…)
-//   - y, si lleva pregunta, un «workflow» que arranca al pulsar el botón: recurso → pregunta → guardar la respuesta.
+// Disparadores:
+//   - post / story: alguien comenta una palabra en una publicación (o responde a una story). Zernio le manda la
+//     respuesta privada (el primer mensaje del tablero) con una «comment automation», que también hace la respuesta
+//     pública y el «sígueme primero». Meta no deja enviar nada más hasta que la persona responda, así que cada botón
+//     de ese primer mensaje arranca su propio «workflow» con lo que hay detrás.
+//   - mensaje (te escriben una palabra por privado): un solo workflow.
+// Para «la siguiente publicación», JARVIS la deja en pausa y la engancha sola al post o story que sale después.
 import { randomBytes } from 'node:crypto';
 import { row, rows } from './db.js';
 import { createGraph } from './integrations/meta.js';
 import { guardarEnv as guardarEnvArchivo } from './env-archivo.js';
+import { destinoDe, empiezaConComentario, flujoDesdeFormulario, flujoInicial, minutosDeEspera, salidasDe, validarFlujo } from '../web/src/lib/flujo.js';
 
 export class AutomatizacionError extends Error {
   constructor(m) { super(m); this.publico = true; }
@@ -20,9 +23,10 @@ const COINCIDENCIA = { palabra: 'word', contiene: 'contains', exacta: 'exact' };
 const corto = (s, n) => String(s || '').trim().slice(0, n);
 const lista = (v, n, largo) => (Array.isArray(v) ? v : String(v || '').split(/[,\n]/)).map((x) => corto(x, largo)).filter(Boolean).slice(0, n);
 const esUrl = (u) => /^https:\/\/\S+$/i.test(String(u || '').trim());
+const MAX_BLOQUES = 200;
 
 // Da igual mayúsculas, minúsculas y tildes: «guía» también es GUÍA, Guía, guia, GUIA y Guia
-const sinTildes = (t) => t.normalize('NFD').replace(/[\u0300-\u036f]/g, '').normalize('NFC');
+const sinTildes = (t) => t.normalize('NFD').replace(/[̀-ͯ]/g, '').normalize('NFC');
 const clavePalabra = (t) => sinTildes(t).toLowerCase();
 const capital = (t) => t.charAt(0).toUpperCase() + t.slice(1).toLowerCase();
 export function variantesPalabra(p) {
@@ -42,101 +46,206 @@ function unicas(palabras) {
 }
 export const palabrasParaZernio = (palabras) => [...new Set(palabras.flatMap(variantesPalabra))].slice(0, 120);
 
-// Lo que escribe la persona en el formulario → configuración limpia (lo que se guarda en JARVIS)
-export function normalizarConfig(c = {}) {
-  const tipo = c.tipo === 'story' ? 'story' : 'post';
-  const destino = ['publicacion', 'siguiente', 'cualquiera'].includes(c.destino) ? c.destino : 'publicacion';
-  const cfg = {
-    nombre: corto(c.nombre, 80),
+// ---------- Configuración: disparador + flujo ----------
+function limpiarDisparador(d = {}) {
+  const tipo = ['post', 'story', 'mensaje'].includes(d.tipo) ? d.tipo : 'post';
+  const comentario = empiezaConComentario(tipo);
+  const destino = comentario && ['publicacion', 'siguiente', 'cualquiera'].includes(d.destino) ? d.destino : comentario ? 'publicacion' : 'cualquiera';
+  const r = {
     tipo,
     destino,
-    media_id: destino === 'publicacion' ? corto(c.media_id, 64) : '',
-    media_titulo: destino === 'publicacion' ? corto(c.media_titulo, 120) : '',
-    media_miniatura: destino === 'publicacion' && esUrl(c.media_miniatura) ? String(c.media_miniatura).slice(0, 1000) : '',
-    palabras: unicas(lista(c.palabras, 40, 40)).slice(0, 20),
-    coincidencia: COINCIDENCIA[c.coincidencia] ? c.coincidencia : 'palabra',
-    erratas: c.erratas !== false,
-    respuestas: tipo === 'post' ? lista(c.respuestas, 6, 300) : [],
-    mensaje: corto(c.mensaje, 640),
-    variaciones: lista(c.variaciones, 5, 640),
-    boton: corto(c.boton, 20) || 'Lo quiero',
-    recurso: { texto: corto(c.recurso?.texto, 640), enlace: corto(c.recurso?.enlace, 1000), titulo: corto(c.recurso?.titulo, 20) || 'Ver recurso' },
-    pregunta: { texto: corto(c.pregunta?.texto, 640), opciones: lista(c.pregunta?.opciones, 10, 20), gracias: corto(c.pregunta?.gracias, 640) },
-    sigueme: Boolean(c.sigueme),
+    media_id: destino === 'publicacion' ? corto(d.media_id, 64) : '',
+    media_titulo: destino === 'publicacion' ? corto(d.media_titulo, 120) : '',
+    media_miniatura: destino === 'publicacion' && esUrl(d.media_miniatura) ? String(d.media_miniatura).slice(0, 1000) : '',
+    palabras: unicas(lista(d.palabras, 40, 40)).slice(0, 20),
+    coincidencia: COINCIDENCIA[d.coincidencia] ? d.coincidencia : 'palabra',
+    erratas: d.erratas !== false,
+    respuestas: tipo === 'post' ? lista(d.respuestas, 6, 300) : [],
+    sigueme: comentario && Boolean(d.sigueme),
     seguir: {
-      mensaje: corto(c.seguir?.mensaje, 640) || '¡Hola! Para enviártelo, primero sígueme y luego pulsa el botón 👇',
-      boton: corto(c.seguir?.boton, 20) || 'Ya te sigo',
-      noSigue: corto(c.seguir?.noSigue, 640) || 'Todavía no me sigues 😅 Sígueme y vuelve a pulsar el botón.',
+      mensaje: corto(d.seguir?.mensaje, 640) || '¡Hola! Para enviártelo, primero sígueme y luego pulsa el botón 👇',
+      boton: corto(d.seguir?.boton, 20) || 'Ya te sigo',
+      noSigue: corto(d.seguir?.noSigue, 640) || 'Todavía no me sigues 😅 Sígueme y vuelve a pulsar el botón.',
     },
-    repetir: c.repetir === 'cada' ? 'cada' : 'una',
-    tambienDm: tipo === 'post' && Boolean(c.tambienDm),
+    repetir: d.repetir === 'cada' ? 'cada' : 'una',
+    tambienDm: tipo === 'post' && Boolean(d.tambienDm),
   };
-  if (!cfg.nombre) cfg.nombre = cfg.palabras[0] ? `Palabra ${cfg.palabras[0].toUpperCase()}` : tipo === 'story' ? 'Respuestas a stories' : 'Comentarios';
-  if (destino === 'publicacion' && !cfg.media_id) throw new AutomatizacionError(tipo === 'story' ? 'Elige la story' : 'Elige la publicación');
-  if (!cfg.mensaje) throw new AutomatizacionError('Escribe el mensaje privado que se envía');
-  if (cfg.recurso.enlace && !esUrl(cfg.recurso.enlace)) throw new AutomatizacionError('El enlace del recurso debe empezar por https://');
-  if (!cfg.recurso.enlace && !cfg.pregunta.texto && !cfg.recurso.texto) throw new AutomatizacionError('Pon el enlace del recurso o una pregunta (si no, el botón no lleva a nada)');
-  if (cfg.tambienDm && !cfg.palabras.length) throw new AutomatizacionError('Para que también responda a mensajes directos pon al menos una palabra');
-  return cfg;
+  if (destino === 'publicacion' && !r.media_id) throw new AutomatizacionError(tipo === 'story' ? 'Elige la story' : 'Elige la publicación');
+  if (tipo === 'mensaje' && !r.palabras.length) throw new AutomatizacionError('Pon la palabra que te tienen que escribir por privado');
+  if (r.tambienDm && !r.palabras.length) throw new AutomatizacionError('Para que también responda a mensajes directos pon al menos una palabra');
+  return r;
 }
 
-// ¿Hace falta el flujo de después del botón? Solo si hay pregunta (sin pregunta, el botón abre el recurso)
-export const llevaFlujo = (cfg) => Boolean(cfg.pregunta.texto);
-const campoDe = (id) => `respuesta_jarvis_${id}`;
+function limpiarFlujo(f = {}) {
+  const nodos = (Array.isArray(f.nodos) ? f.nodos : []).slice(0, MAX_BLOQUES).map((n) => {
+    const d = n.datos || {};
+    const base = { id: corto(n.id, 40).replace(/[^A-Za-z0-9_]/g, '') || 'x', tipo: n.tipo, x: Math.round(Number(n.x) || 0), y: Math.round(Number(n.y) || 0) };
+    switch (n.tipo) {
+      case 'inicio': return { ...base, id: 'inicio', datos: {} };
+      case 'mensaje': return { ...base, datos: { texto: corto(d.texto, 1000), esperaHoras: Math.min(720, Math.max(1, Number(d.esperaHoras) || 24)), botones: (d.botones || []).slice(0, 3).map((b) => ({ titulo: corto(b.titulo, 20), tipo: b.tipo === 'enlace' ? 'enlace' : 'camino', ...(b.tipo === 'enlace' ? { url: corto(b.url, 1000) } : {}) })) } };
+      case 'pregunta': return { ...base, datos: { texto: corto(d.texto, 640), opciones: lista(d.opciones, 13, 20), campo: corto(d.campo, 40).replace(/[^A-Za-z0-9_]/g, '_'), esperaHoras: Math.min(720, Math.max(1, Number(d.esperaHoras) || 24)) } };
+      case 'esperar': return { ...base, datos: { cantidad: Math.max(0, Number(d.cantidad) || 0), unidad: ['minutos', 'horas', 'dias'].includes(d.unidad) ? d.unidad : 'horas' } };
+      case 'condicion': return { ...base, datos: { tipo: ['etiqueta', 'sigue', 'contiene'].includes(d.tipo) ? d.tipo : 'etiqueta', valor: corto(d.valor, 100) } };
+      case 'etiqueta': return { ...base, datos: { accion: d.accion === 'quitar' ? 'quitar' : 'poner', etiqueta: corto(d.etiqueta, 60) } };
+      case 'fin': return { ...base, datos: {} };
+      default: return null;
+    }
+  }).filter(Boolean);
+  if (!nodos.some((n) => n.tipo === 'inicio')) nodos.unshift({ id: 'inicio', tipo: 'inicio', x: 0, y: 0, datos: {} });
+  const ids = new Set(nodos.map((n) => n.id));
+  if (ids.size !== nodos.length) throw new AutomatizacionError('Hay bloques repetidos en el flujo');
+  // Una flecha por salida, entre bloques que existen
+  const vistas = new Set();
+  const conexiones = (Array.isArray(f.conexiones) ? f.conexiones : []).filter((c) => {
+    const k = `${c.de}:${c.salida}`;
+    if (!ids.has(c.de) || !ids.has(c.a) || c.a === 'inicio' || vistas.has(k)) return false;
+    vistas.add(k);
+    return true;
+  }).map((c) => ({ de: c.de, salida: String(c.salida), a: c.a }));
+  return { nodos, conexiones };
+}
 
-// El flujo de Zernio que arranca al pulsar el botón: recurso → pregunta → espera la respuesta y la guarda
-export function grafoFlujo(cfg, { id, clave }) {
-  const nodos = [{ id: 'inicio', type: 'trigger', config: { triggerType: 'inbound_message', keywords: [clave], matchType: 'exact' } }];
+// Lo que llega del tablero → configuración limpia (lo que se guarda en JARVIS)
+export function normalizarConfig(c = {}) {
+  const disparador = limpiarDisparador(c.disparador || {});
+  const flujo = limpiarFlujo(c.flujo || flujoInicial(disparador.tipo));
+  const { errores } = validarFlujo(flujo, disparador);
+  if (errores.length) throw new AutomatizacionError(errores.slice(0, 3).join(' · '));
+  const nombre = corto(c.nombre, 80) || (disparador.palabras[0] ? `Palabra ${disparador.palabras[0].toUpperCase()}` : disparador.tipo === 'story' ? 'Respuestas a stories' : 'Comentarios');
+  return { nombre, disparador, flujo };
+}
+
+// Las automatizaciones guardadas con el formulario de antes (sin tablero), al formato de ahora
+export function aFormatoNuevo(cfg = {}) {
+  if (cfg.disparador) return cfg;
+  return {
+    nombre: cfg.nombre || 'Automatización',
+    disparador: { tipo: cfg.tipo === 'story' ? 'story' : 'post', destino: cfg.destino, media_id: cfg.media_id || '', media_titulo: cfg.media_titulo || '', media_miniatura: cfg.media_miniatura || '', palabras: cfg.palabras || [], coincidencia: cfg.coincidencia || 'palabra', erratas: cfg.erratas !== false, respuestas: cfg.respuestas || [], sigueme: Boolean(cfg.sigueme), seguir: cfg.seguir || {}, repetir: cfg.repetir || 'una', tambienDm: Boolean(cfg.tambienDm) },
+    flujo: flujoDesdeFormulario(cfg),
+  };
+}
+
+// ---------- Del tablero a Zernio ----------
+// Un workflow de Zernio con lo que cuelga de un bloque. «disparo» es la config del nodo trigger.
+export function grafoZernio(flujo, desde, disparo) {
+  const nodos = [{ id: 'inicio', type: 'trigger', config: disparo }];
   const aristas = [];
-  let ultimo = 'inicio';
-  const unir = (a, b, handle) => aristas.push({ id: `${a}-${b}${handle ? `-${handle}` : ''}`, source: a, target: b, ...(handle ? { sourceHandle: handle } : {}) });
-  const nodo = (n) => { nodos.push(n); unir(ultimo, n.id); ultimo = n.id; };
-  if (cfg.recurso.texto || cfg.recurso.enlace) {
-    nodo({ id: 'recurso', type: 'send_message', label: 'Recurso', config: {
-      messageType: 'text',
-      text: cfg.recurso.texto || '¡Aquí lo tienes! 👇',
-      ...(cfg.recurso.enlace ? { buttons: [{ type: 'url', title: cfg.recurso.titulo, url: cfg.recurso.enlace }] } : {}),
-    } });
+  const hecho = new Map(); // bloque de JARVIS → nodo de entrada en Zernio
+  let finComun = null;
+  const unir = (a, b, handle) => aristas.push({ id: `${a}>${b}${handle ? `:${handle}` : ''}`, source: a, target: b, ...(handle ? { sourceHandle: handle } : {}) });
+  const fin = () => { if (!finComun) { finComun = 'fin_jarvis'; nodos.push({ id: finComun, type: 'end' }); } return finComun; };
+  const bloque = (id) => flujo.nodos.find((n) => n.id === id);
+  const destino = (id, salida) => entrada(destinoDe(flujo, id, salida));
+
+  function entrada(id) {
+    const n = id && bloque(id);
+    if (!n || n.tipo === 'inicio') return fin();
+    if (hecho.has(id)) return hecho.get(id);
+    hecho.set(id, id);
+    const d = n.datos;
+    switch (n.tipo) {
+      case 'mensaje': {
+        const caminos = d.botones.map((b, i) => ({ b, i })).filter(({ b }) => b.tipo === 'camino');
+        nodos.push({ id, type: 'send_message', label: 'Mensaje', config: {
+          messageType: 'text', text: d.texto,
+          ...(d.botones.length ? { buttons: d.botones.map((b) => (b.tipo === 'enlace' ? { type: 'url', title: b.titulo, url: b.url } : { type: 'postback', title: b.titulo })) } : {}),
+        } });
+        if (!caminos.length) { unir(id, destino(id, 'siguiente')); break; }
+        // Espera a que pulse y sigue por el camino de ese botón
+        nodos.push({ id: `${id}_w`, type: 'wait_for_reply', config: { timeoutMinutes: d.esperaHoras * 60, saveAs: `r_${id}` } });
+        nodos.push({ id: `${id}_c`, type: 'condition', config: { rules: caminos.map(({ b, i }) => ({ id: `b${i}`, variable: 'postback.title', operator: 'equals', value: b.titulo })) } });
+        unir(id, `${id}_w`);
+        unir(`${id}_w`, `${id}_c`, 'reply');
+        for (const { i } of caminos) unir(`${id}_c`, destino(id, `b${i}`), `b${i}`);
+        const sin = destino(id, 'sin_respuesta');
+        unir(`${id}_c`, sin, 'default');
+        unir(`${id}_w`, sin, 'timeout');
+        break;
+      }
+      case 'pregunta': {
+        const ops = d.opciones;
+        nodos.push({ id, type: 'send_message', label: 'Pregunta', config: { messageType: 'text', text: d.texto, ...(ops.length ? { quickReplies: ops.map((o) => ({ title: o, payload: o })) } : {}) } });
+        nodos.push({ id: `${id}_w`, type: 'wait_for_reply', config: { timeoutMinutes: d.esperaHoras * 60, saveAs: `r_${id}` } });
+        nodos.push({ id: `${id}_f`, type: 'set_field', config: { field: d.campo || `respuesta_${id}`, value: `{{r_${id}}}` } });
+        unir(id, `${id}_w`);
+        unir(`${id}_w`, `${id}_f`, 'reply');
+        unir(`${id}_w`, destino(id, 'sin_respuesta'), 'timeout');
+        if (!ops.length) { unir(`${id}_f`, destino(id, 'respuesta')); break; }
+        // Una respuesta rápida pulsada, o escrita igual que la opción
+        nodos.push({ id: `${id}_c`, type: 'condition', config: { rules: ops.flatMap((o, i) => [{ id: `q${i}`, variable: 'quickReply.title', operator: 'equals', value: o }, { id: `t${i}`, variable: `r_${id}`, operator: 'equals', value: o }]) } });
+        unir(`${id}_f`, `${id}_c`);
+        ops.forEach((_, i) => { const a = destino(id, `o${i}`); unir(`${id}_c`, a, `q${i}`); unir(`${id}_c`, a, `t${i}`); });
+        unir(`${id}_c`, destino(id, 'otra'), 'default');
+        break;
+      }
+      case 'esperar':
+        nodos.push({ id, type: 'delay', label: 'Esperar', config: { delayMinutes: Math.min(43200, Math.max(1, minutosDeEspera(d))) } });
+        unir(id, destino(id, 'siguiente'));
+        break;
+      case 'condicion': {
+        const regla = d.tipo === 'sigue' ? { variable: 'contact.isFollower', operator: 'is_true' }
+          : d.tipo === 'contiene' ? { variable: 'lastMessage', operator: 'contains', value: d.valor }
+            : { variable: 'contact.tags', operator: 'has_tag', value: d.valor };
+        nodos.push({ id, type: 'condition', label: 'Condición', config: { rules: [{ id: 'si', ...regla }] } });
+        unir(id, destino(id, 'si'), 'si');
+        unir(id, destino(id, 'no'), 'default');
+        break;
+      }
+      case 'etiqueta':
+        nodos.push({ id, type: d.accion === 'quitar' ? 'remove_tag' : 'add_tag', label: 'Etiqueta', config: { tag: d.etiqueta } });
+        unir(id, destino(id, 'siguiente'));
+        break;
+      default:
+        nodos.push({ id, type: 'end' });
+    }
+    return id;
   }
-  nodo({ id: 'pregunta', type: 'send_message', label: 'Pregunta', config: {
-    messageType: 'text', text: cfg.pregunta.texto,
-    ...(cfg.pregunta.opciones.length ? { quickReplies: cfg.pregunta.opciones.map((o) => ({ title: o, payload: o })) } : {}),
-  } });
-  nodo({ id: 'espera', type: 'wait_for_reply', label: 'Espera la respuesta', config: { timeoutMinutes: 1440, saveAs: 'respuesta' } });
-  nodos.push({ id: 'guardar', type: 'set_field', label: 'Guarda la respuesta', config: { field: campoDe(id), value: '{{respuesta}}' } });
-  unir('espera', 'guardar', 'reply');
-  nodos.push({ id: 'etiqueta', type: 'add_tag', config: { tag: `jarvis-${id}` } });
-  unir('guardar', 'etiqueta');
-  ultimo = 'etiqueta';
-  if (cfg.pregunta.gracias) nodo({ id: 'gracias', type: 'send_message', label: 'Gracias', config: { messageType: 'text', text: cfg.pregunta.gracias } });
-  nodo({ id: 'fin', type: 'end' });
-  unir('espera', 'fin', 'timeout');
+  unir('inicio', entrada(desde));
   return { nodes: nodos, edges: aristas, entryNodeId: 'inicio' };
 }
 
-// La automatización de comentarios de Zernio (sin cuenta ni perfil: se añaden al crearla)
-export function cuerpoAutomatizacion(cfg, { flujoId = null, activa = true, mediaId = null } = {}) {
-  const post = cfg.tipo === 'post';
-  const boton = flujoId ? { type: 'postback', title: cfg.boton, payload: `zernio:workflow:${flujoId}` }
-    : cfg.recurso.enlace ? { type: 'url', title: cfg.boton, url: cfg.recurso.enlace } : null;
-  const id = mediaId || cfg.media_id || null;
+// Qué hay que dar de alta en Zernio: los workflows («ramas») y, si empieza por un comentario, la comment automation
+export function compilar(cfg, { claves = {} } = {}) {
+  const { disparador: d, flujo } = cfg;
+  const primero = destinoDe(flujo, 'inicio', 'siguiente');
+  const clave = (rama) => claves[rama] || `jarvis-${rama}-${randomBytes(6).toString('hex')}`;
+  if (!empiezaConComentario(d.tipo)) {
+    const disparo = { triggerType: 'inbound_message', matchType: d.coincidencia === 'exacta' ? 'exact' : 'contains', keywords: palabrasParaZernio(d.palabras), cooldownHours: d.repetir === 'cada' ? 24 : 720 };
+    return { ramas: [{ rama: 'principal', clave: null, grafo: grafoZernio(flujo, primero, disparo) }], comentario: null };
+  }
+  // El primer mensaje lo manda la comment automation; cada botón con camino arranca su workflow
+  const m = flujo.nodos.find((n) => n.id === primero);
+  const ramas = [];
+  m.datos.botones.forEach((b, i) => {
+    if (b.tipo !== 'camino') return;
+    const k = clave(`b${i}`);
+    ramas.push({ rama: `b${i}`, clave: k, grafo: grafoZernio(flujo, destinoDe(flujo, primero, `b${i}`), { triggerType: 'inbound_message', keywords: [k], matchType: 'exact' }) });
+  });
+  return { ramas, comentario: { primero: m } };
+}
+
+// La comment automation de Zernio. idsRamas: { b0: workflowId, … }
+export function cuerpoAutomatizacion(cfg, { idsRamas = {}, activa = true, mediaId = null } = {}) {
+  const { disparador: d, flujo } = cfg;
+  const post = d.tipo === 'post';
+  const m = flujo.nodos.find((n) => n.id === destinoDe(flujo, 'inicio', 'siguiente'));
+  const id = mediaId || d.media_id || null;
   return {
     name: cfg.nombre,
     trigger: post ? 'comment' : 'story_reply',
-    ...(id ? { platformPostId: id, postTitle: cfg.media_titulo || cfg.nombre } : {}),
-    keywords: palabrasParaZernio(cfg.palabras),
-    matchMode: COINCIDENCIA[cfg.coincidencia],
-    ...(cfg.coincidencia === 'palabra' ? { typoTolerance: cfg.erratas } : {}),
-    dmMessage: cfg.mensaje,
-    dmMessageVariations: cfg.variaciones,
-    buttons: boton ? [boton] : [],
-    ...(post && cfg.respuestas.length ? { commentReply: cfg.respuestas[0], commentReplyVariations: cfg.respuestas.slice(1) } : {}),
+    ...(id ? { platformPostId: id, postTitle: d.media_titulo || cfg.nombre } : {}),
+    keywords: palabrasParaZernio(d.palabras),
+    matchMode: COINCIDENCIA[d.coincidencia],
+    ...(d.coincidencia === 'palabra' ? { typoTolerance: d.erratas } : {}),
+    dmMessage: m.datos.texto,
+    buttons: m.datos.botones.map((b, i) => (b.tipo === 'enlace' ? { type: 'url', title: b.titulo, url: b.url } : { type: 'postback', title: b.titulo, payload: `zernio:workflow:${idsRamas[`b${i}`]}` })),
+    ...(post && d.respuestas.length ? { commentReply: d.respuestas[0], commentReplyVariations: d.respuestas.slice(1) } : {}),
     // «Sígueme primero»: Instagram solo dice si te sigue a quien ya te ha escrito; al resto se le manda el botón para
     // confirmarlo y, al pulsarlo, se comprueba de verdad
-    audience: cfg.sigueme ? { followerStatus: 'follower', whenUnknown: 'verify' } : { followerStatus: 'any' },
-    ...(cfg.sigueme ? { followGate: { message: cfg.seguir.mensaje, buttonLabel: cfg.seguir.boton, profileButtonLabel: 'Ver perfil', notFollowingMessage: cfg.seguir.noSigue } } : {}),
-    repeatPolicy: cfg.repetir === 'cada' ? { mode: 'every_comment', cooldownHours: 24 } : { mode: 'once' },
-    ...(post ? { alsoMatchInDms: cfg.tambienDm } : {}),
+    audience: d.sigueme ? { followerStatus: 'follower', whenUnknown: 'verify' } : { followerStatus: 'any' },
+    ...(d.sigueme ? { followGate: { message: d.seguir.mensaje, buttonLabel: d.seguir.boton, profileButtonLabel: 'Ver perfil', notFollowingMessage: d.seguir.noSigue } } : {}),
+    repeatPolicy: d.repetir === 'cada' ? { mode: 'every_comment', cooldownHours: 24 } : { mode: 'once' },
+    ...(post ? { alsoMatchInDms: d.tambienDm } : {}),
     isActive: activa,
   };
 }
@@ -155,6 +264,8 @@ export function createAutomatizaciones({ db, env = process.env, fetchImpl = fetc
     creado TEXT NOT NULL DEFAULT (datetime('now','localtime')),
     actualizado TEXT NOT NULL DEFAULT (datetime('now','localtime'))
   )`);
+  // Los workflows de cada una: [{ rama, id, clave }]
+  try { db.exec('ALTER TABLE automatizaciones ADD COLUMN flujos TEXT'); } catch { /* ya estaba */ }
   const q = {
     todas: db.prepare('SELECT * FROM automatizaciones ORDER BY id DESC'),
     una: db.prepare('SELECT * FROM automatizaciones WHERE id = ?'),
@@ -165,10 +276,14 @@ export function createAutomatizaciones({ db, env = process.env, fetchImpl = fetc
     const k = Object.keys(campos);
     db.prepare(`UPDATE automatizaciones SET ${k.map((c) => `${c} = ?`).join(', ')}, actualizado = datetime('now','localtime') WHERE id = ?`).run(...k.map((c) => campos[c] ?? null), id);
   };
+  const flujosDe = (r) => {
+    try { const l = JSON.parse(r.flujos || 'null'); if (Array.isArray(l)) return l; } catch { /* vacío */ }
+    return r.flujo_id ? [{ rama: 'b0', id: r.flujo_id, clave: r.clave }] : [];
+  };
   const leer = (id) => {
     const r = row(q.una, Number(id));
     if (!r) throw new AutomatizacionError('Esa automatización no existe');
-    return { ...r, config: JSON.parse(r.config) };
+    return { ...r, config: aFormatoNuevo(JSON.parse(r.config)), ramas: flujosDe(r) };
   };
 
   const clave = () => String(env.ZERNIO_API_KEY || '').trim();
@@ -238,38 +353,64 @@ export function createAutomatizaciones({ db, env = process.env, fetchImpl = fetc
   }
 
   // ---------- Altas, cambios y bajas ----------
-  async function darDeAlta(id, cfg, { activa, mediaId }) {
+  const nombreFlujo = (cfg, rama) => `JARVIS · ${cfg.nombre}${rama === 'principal' ? '' : ` · botón ${Number(rama.slice(1)) + 1}`}`;
+  // Crea o actualiza los workflows de las ramas; borra los que sobran. Devuelve [{ rama, id, clave }]
+  async function sincronizarRamas(cfg, previas, { activar }) {
     const c = await cuenta();
-    let flujoId = null;
-    let claveFlujo = null;
-    if (llevaFlujo(cfg)) {
-      // Una palabra que nadie escribe: el flujo solo arranca con el botón
-      claveFlujo = `jarvis-${id}-${randomBytes(6).toString('hex')}`;
-      const { workflow } = await zernio('POST', '/workflows', { profileId: c.profileId, accountId: c.accountId, platform: 'instagram', name: `JARVIS · ${cfg.nombre}`, ...grafoFlujo(cfg, { id, clave: claveFlujo }) });
-      flujoId = workflow?.id;
-      if (!flujoId) throw new AutomatizacionError('Zernio no ha devuelto el flujo');
-      await zernio('POST', `/workflows/${flujoId}/activate`);
-    }
+    const claves = Object.fromEntries(previas.filter((p) => p.clave).map((p) => [p.rama, p.clave]));
+    const { ramas, comentario } = compilar(cfg, { claves });
+    const hechas = [];
     try {
-      const { automation } = await zernio('POST', '/comment-automations', { profileId: c.profileId, accountId: c.accountId, ...cuerpoAutomatizacion(cfg, { flujoId, activa, mediaId }) });
-      if (!automation?.id) throw new AutomatizacionError('Zernio no ha devuelto la automatización');
-      return { zernio_id: automation.id, flujo_id: flujoId, clave: claveFlujo };
+      for (const r of ramas) {
+        const ya = previas.find((p) => p.rama === r.rama);
+        const cuerpo = { name: nombreFlujo(cfg, r.rama), ...r.grafo };
+        let id = ya?.id;
+        if (id) await zernio('PATCH', `/workflows/${id}`, cuerpo);
+        else {
+          const { workflow } = await zernio('POST', '/workflows', { profileId: c.profileId, accountId: c.accountId, platform: 'instagram', ...cuerpo });
+          id = workflow?.id;
+          if (!id) throw new AutomatizacionError('Zernio no ha devuelto el flujo');
+          hechas.push(id);
+        }
+        // Las ramas de un comentario arrancan solo con su botón: siempre activas. La principal, según la pausa.
+        if (r.rama !== 'principal' || activar) await zernio('POST', `/workflows/${id}/activate`);
+        else if (ya) await zernio('POST', `/workflows/${id}/pause`).catch(() => {});
+        r.id = id;
+      }
     } catch (e) {
-      if (flujoId) await zernio('DELETE', `/workflows/${flujoId}`).catch(() => {});
+      for (const id of hechas) await zernio('DELETE', `/workflows/${id}`).catch(() => {});
       throw e;
     }
+    for (const p of previas) if (!ramas.some((r) => r.rama === p.rama)) await zernio('DELETE', `/workflows/${p.id}`).catch(() => {});
+    return { ramas: ramas.map(({ rama, id, clave: k }) => ({ rama, id, clave: k })), comentario, cuenta: c };
   }
 
-  async function crear(datos = {}) {
+  async function crear(datos = {}, { pausada = false } = {}) {
     const cfg = normalizarConfig(datos);
-    const esperar = cfg.destino === 'siguiente';
+    const d = cfg.disparador;
+    const esperar = d.destino === 'siguiente' && empiezaConComentario(d.tipo);
     if (esperar && !graph()) throw new AutomatizacionError('Para «la siguiente publicación» JARVIS tiene que ver tu Instagram: conéctalo con Facebook en la pestaña Instagram');
+    const estado = pausada ? 'pausada' : esperar ? 'esperando' : 'activa';
     const r = db.prepare('INSERT INTO automatizaciones (config, estado, desde, media_id, media_titulo) VALUES (?, ?, ?, ?, ?)')
-      .run(JSON.stringify(cfg), esperar ? 'esperando' : 'activa', new Date().toISOString(), cfg.media_id || null, cfg.media_titulo || null);
+      .run(JSON.stringify(cfg), estado, new Date().toISOString(), d.media_id || null, d.media_titulo || null);
     const id = Number(r.lastInsertRowid);
+    let creadas = [];
     try {
-      set(id, await darDeAlta(id, cfg, { activa: !esperar }));
-    } catch (e) { q.borrar.run(id); throw e; }
+      const s = await sincronizarRamas(cfg, [], { activar: estado === 'activa' });
+      creadas = s.ramas;
+      let zernioId = null;
+      if (s.comentario) {
+        const idsRamas = Object.fromEntries(s.ramas.map((x) => [x.rama, x.id]));
+        const { automation } = await zernio('POST', '/comment-automations', { profileId: s.cuenta.profileId, accountId: s.cuenta.accountId, ...cuerpoAutomatizacion(cfg, { idsRamas, activa: estado === 'activa' }) });
+        if (!automation?.id) throw new AutomatizacionError('Zernio no ha devuelto la automatización');
+        zernioId = automation.id;
+      }
+      set(id, { zernio_id: zernioId, flujos: JSON.stringify(s.ramas), flujo_id: null, clave: null });
+    } catch (e) {
+      for (const x of creadas) await zernio('DELETE', `/workflows/${x.id}`).catch(() => {});
+      q.borrar.run(id);
+      throw e;
+    }
     alCambiar();
     return ver(id);
   }
@@ -277,41 +418,52 @@ export function createAutomatizaciones({ db, env = process.env, fetchImpl = fetc
   async function editar(id, datos = {}) {
     const a = leer(id);
     const cfg = normalizarConfig(datos);
-    const c = await cuenta();
+    const d = cfg.disparador;
+    const comentario = empiezaConComentario(d.tipo);
     // Se mantiene a qué post está enganchada si sigue siendo «la siguiente» y ya salió
-    const mediaId = cfg.destino === 'siguiente' ? a.media_id : cfg.media_id || null;
-    const esperar = cfg.destino === 'siguiente' && !a.media_id;
-    const activa = a.estado !== 'pausada' && !esperar;
-    let flujoId = a.flujo_id;
-    let claveFlujo = a.clave;
-    if (llevaFlujo(cfg)) {
-      if (flujoId) await zernio('PATCH', `/workflows/${flujoId}`, { name: `JARVIS · ${cfg.nombre}`, ...grafoFlujo(cfg, { id: a.id, clave: claveFlujo }) });
-      else {
-        claveFlujo = `jarvis-${a.id}-${randomBytes(6).toString('hex')}`;
-        const { workflow } = await zernio('POST', '/workflows', { profileId: c.profileId, accountId: c.accountId, platform: 'instagram', name: `JARVIS · ${cfg.nombre}`, ...grafoFlujo(cfg, { id: a.id, clave: claveFlujo }) });
-        flujoId = workflow?.id;
-        await zernio('POST', `/workflows/${flujoId}/activate`);
+    const mismaSiguiente = a.config.disparador.destino === 'siguiente' && d.destino === 'siguiente' && a.config.disparador.tipo === d.tipo;
+    const mediaId = !comentario ? null : d.destino === 'siguiente' ? (mismaSiguiente ? a.media_id : null) : d.media_id || null;
+    const esperar = comentario && d.destino === 'siguiente' && !mediaId;
+    const estado = a.estado === 'pausada' ? 'pausada' : esperar ? 'esperando' : 'activa';
+    const s = await sincronizarRamas(cfg, a.ramas, { activar: estado === 'activa' });
+    let zernioId = a.zernio_id;
+    if (comentario) {
+      const cuerpo = cuerpoAutomatizacion(cfg, { idsRamas: Object.fromEntries(s.ramas.map((x) => [x.rama, x.id])), activa: estado === 'activa', mediaId });
+      if (zernioId) {
+        // Sin post: que Zernio la deje para cualquier publicación (sin enganchar) hasta que salga la siguiente
+        if (!cuerpo.platformPostId) Object.assign(cuerpo, { platformPostId: null, postId: null, postTitle: null });
+        await zernio('PATCH', `/comment-automations/${zernioId}`, cuerpo);
+      } else {
+        const { automation } = await zernio('POST', '/comment-automations', { profileId: s.cuenta.profileId, accountId: s.cuenta.accountId, ...cuerpo });
+        zernioId = automation?.id || null;
       }
+    } else if (zernioId) {
+      await zernio('DELETE', `/comment-automations/${zernioId}`).catch(() => {});
+      zernioId = null;
     }
-    const cuerpo = cuerpoAutomatizacion(cfg, { flujoId: llevaFlujo(cfg) ? flujoId : null, activa, mediaId });
-    // Sin post: que Zernio la deje para cualquier publicación (sin enganchar) hasta que salga la siguiente
-    if (!cuerpo.platformPostId) Object.assign(cuerpo, { platformPostId: null, postId: null, postTitle: null });
-    await zernio('PATCH', `/comment-automations/${a.zernio_id}`, cuerpo);
-    if (!llevaFlujo(cfg) && a.flujo_id) { await zernio('DELETE', `/workflows/${a.flujo_id}`).catch(() => {}); flujoId = null; claveFlujo = null; }
-    set(a.id, { config: JSON.stringify(cfg), flujo_id: llevaFlujo(cfg) ? flujoId : null, clave: llevaFlujo(cfg) ? claveFlujo : null, media_id: mediaId, media_titulo: cfg.destino === 'siguiente' ? a.media_titulo : cfg.media_titulo || null, estado: a.estado === 'pausada' ? 'pausada' : esperar ? 'esperando' : 'activa' });
+    set(a.id, { config: JSON.stringify(cfg), zernio_id: zernioId, flujos: JSON.stringify(s.ramas), flujo_id: null, clave: null, media_id: mediaId, media_titulo: mismaSiguiente ? a.media_titulo : d.media_titulo || null, estado, ...(esperar && !mismaSiguiente ? { desde: new Date().toISOString() } : {}) });
     alCambiar();
     return ver(a.id);
   }
 
+  // Duplicar: la copia queda en pausa (dos automatizaciones activas en el mismo post chocarían); se edita y se reanuda
+  async function duplicar(id) {
+    const a = leer(id);
+    return crear({ ...a.config, nombre: `${a.config.nombre} (copia)`.slice(0, 80) }, { pausada: true });
+  }
+
   async function pausar(id, { activa } = {}) {
     const a = leer(id);
-    const esperando = a.config.destino === 'siguiente' && !a.media_id;
+    const d = a.config.disparador;
+    const esperando = empiezaConComentario(d.tipo) && d.destino === 'siguiente' && !a.media_id;
+    const principal = a.ramas.find((r) => r.rama === 'principal');
     if (activa) {
-      if (!esperando) await zernio('PATCH', `/comment-automations/${a.zernio_id}`, { isActive: true });
-      if (a.flujo_id) await zernio('POST', `/workflows/${a.flujo_id}/activate`).catch(() => {});
+      if (a.zernio_id && !esperando) await zernio('PATCH', `/comment-automations/${a.zernio_id}`, { isActive: true });
+      for (const r of a.ramas) await zernio('POST', `/workflows/${r.id}/activate`).catch((e) => { if (r === principal) throw e; });
       set(a.id, { estado: esperando ? 'esperando' : 'activa' });
     } else {
-      await zernio('PATCH', `/comment-automations/${a.zernio_id}`, { isActive: false });
+      if (a.zernio_id) await zernio('PATCH', `/comment-automations/${a.zernio_id}`, { isActive: false });
+      if (principal) await zernio('POST', `/workflows/${principal.id}/pause`);
       set(a.id, { estado: 'pausada' });
     }
     alCambiar();
@@ -321,7 +473,7 @@ export function createAutomatizaciones({ db, env = process.env, fetchImpl = fetc
   async function borrar(id) {
     const a = leer(id);
     if (a.zernio_id) await zernio('DELETE', `/comment-automations/${a.zernio_id}`).catch((e) => { if (!/not.?found|404/i.test(e.message)) throw e; });
-    if (a.flujo_id) await zernio('DELETE', `/workflows/${a.flujo_id}`).catch(() => {});
+    for (const r of a.ramas) await zernio('DELETE', `/workflows/${r.id}`).catch(() => {});
     q.borrar.run(a.id);
     alCambiar();
     return { ok: true };
@@ -331,7 +483,7 @@ export function createAutomatizaciones({ db, env = process.env, fetchImpl = fetc
   // Mira si ha salido un post (o una story) después de crear la automatización y la engancha a él
   let revisando = false;
   async function revisarSiguientes() {
-    const pendientes = rows(q.esperando);
+    const pendientes = rows(q.esperando).filter((p) => p.zernio_id);
     if (revisando || !pendientes.length || !configurado()) return { enganchadas: 0 };
     const m = graph();
     if (!m) return { enganchadas: 0 };
@@ -339,20 +491,21 @@ export function createAutomatizaciones({ db, env = process.env, fetchImpl = fetc
     let enganchadas = 0;
     try {
       const recientes = {};
-      for (const tipo of new Set(pendientes.map((p) => JSON.parse(p.config).tipo))) {
+      for (const p of pendientes) p.cfg = aFormatoNuevo(JSON.parse(p.config));
+      for (const tipo of new Set(pendientes.map((p) => p.cfg.disparador.tipo))) {
         recientes[tipo] = tipo === 'story'
           ? (await m.g.get(`${m.ig}/stories`, { fields: 'id,timestamp' })).data || []
           : (await m.g.get(`${m.ig}/media`, { fields: 'id,caption,timestamp', limit: 5 })).data || [];
       }
       for (const p of pendientes) {
-        const cfg = JSON.parse(p.config);
+        const tipo = p.cfg.disparador.tipo;
         // La más antigua de las que salieron después (si salieron dos, la primera)
-        const nuevo = (recientes[cfg.tipo] || []).filter((x) => new Date(x.timestamp) > new Date(p.desde)).sort((x, y) => new Date(x.timestamp) - new Date(y.timestamp))[0];
+        const nuevo = (recientes[tipo] || []).filter((x) => new Date(x.timestamp) > new Date(p.desde)).sort((x, y) => new Date(x.timestamp) - new Date(y.timestamp))[0];
         if (!nuevo) continue;
-        const titulo = cfg.tipo === 'story' ? 'Story' : corto(nuevo.caption, 120) || 'Publicación';
+        const titulo = tipo === 'story' ? 'Story' : corto(nuevo.caption, 120) || 'Publicación';
         await zernio('PATCH', `/comment-automations/${p.zernio_id}`, { platformPostId: nuevo.id, postTitle: titulo, isActive: true });
         set(p.id, { estado: 'activa', media_id: nuevo.id, media_titulo: titulo });
-        log(`«${cfg.nombre}» enganchada a ${cfg.tipo === 'story' ? 'la story' : 'la publicación'} ${nuevo.id}`);
+        log(`«${p.cfg.nombre}» enganchada a ${tipo === 'story' ? 'la story' : 'la publicación'} ${nuevo.id}`);
         enganchadas++;
       }
     } catch (e) { log(`No se pudo revisar la siguiente publicación: ${e.message}`); }
@@ -366,10 +519,12 @@ export function createAutomatizaciones({ db, env = process.env, fetchImpl = fetc
 
   // ---------- Lectura ----------
   const fila = (r, z) => {
-    const cfg = JSON.parse(r.config);
+    const cfg = aFormatoNuevo(JSON.parse(r.config));
     return {
-      id: r.id, ...cfg, estado: r.estado, media_id: r.media_id || cfg.media_id || null, media_titulo: r.media_titulo || cfg.media_titulo || null,
-      creado: r.creado, conFlujo: Boolean(r.flujo_id), zernio: z ? { activa: Boolean(z.isActive), stats: z.stats || {} } : null,
+      id: r.id, nombre: cfg.nombre, disparador: cfg.disparador, flujo: cfg.flujo, estado: r.estado,
+      media_id: r.media_id || cfg.disparador.media_id || null, media_titulo: r.media_titulo || cfg.disparador.media_titulo || null,
+      bloques: cfg.flujo.nodos.filter((n) => n.tipo !== 'inicio' && n.tipo !== 'fin').length,
+      creado: r.creado, zernio: z ? { activa: Boolean(z.isActive), stats: z.stats || {} } : null,
     };
   };
   async function listar() {
@@ -381,9 +536,16 @@ export function createAutomatizaciones({ db, env = process.env, fetchImpl = fetc
         const c = await cuenta();
         const { automations = [] } = await zernio('GET', `/comment-automations?profileId=${encodeURIComponent(c.profileId)}`);
         remotas = Object.fromEntries(automations.map((a) => [a.id, a]));
+        // Las que no empiezan por un comentario (palabra por privado): las cifras de su workflow
+        for (const r of locales.filter((x) => !x.zernio_id)) {
+          const p = flujosDe(r).find((x) => x.rama === 'principal');
+          if (!p) continue;
+          const { workflow } = await zernio('GET', `/workflows/${p.id}`).catch(() => ({}));
+          if (workflow) remotas[`wf:${r.id}`] = { isActive: workflow.status === 'active', stats: { triggered: workflow.totalStarted || 0, completed: workflow.totalCompleted || 0 } };
+        }
       } catch (e) { error = e.message; }
     }
-    return { lista: locales.map((r) => fila(r, remotas[r.zernio_id])), error };
+    return { lista: locales.map((r) => fila(r, remotas[r.zernio_id] || remotas[`wf:${r.id}`])), error };
   }
 
   async function ver(id) {
@@ -392,22 +554,32 @@ export function createAutomatizaciones({ db, env = process.env, fetchImpl = fetc
     return fila(r, null);
   }
 
-  // Detalle: estadísticas, últimos comentarios que la activaron y las respuestas a la pregunta
+  // Detalle: estadísticas, últimos que la activaron y las respuestas a las preguntas
   async function detalle(id) {
-    const r = row(q.una, Number(id));
-    if (!r) throw new AutomatizacionError('Esa automatización no existe');
-    const { automation, logs = [] } = await zernio('GET', `/comment-automations/${r.zernio_id}`);
-    let respuestas = [];
-    if (r.flujo_id) {
-      const { executions = [] } = await zernio('GET', `/workflows/${r.flujo_id}/executions?limit=100`).catch(() => ({}));
-      respuestas = executions.map((x) => {
+    const a = leer(id);
+    let automation = null;
+    let logs = [];
+    if (a.zernio_id) ({ automation = null, logs = [] } = await zernio('GET', `/comment-automations/${a.zernio_id}`));
+    const preguntas = Object.fromEntries(a.config.flujo.nodos.filter((n) => n.tipo === 'pregunta').map((n) => [`r_${n.id}`, n.datos.texto]));
+    const respuestas = [];
+    let iniciados = 0;
+    for (const r of a.ramas) {
+      const { executions = [] } = await zernio('GET', `/workflows/${r.id}/executions?limit=100`).catch(() => ({}));
+      iniciados += executions.length;
+      for (const x of executions) {
         const v = x.variables || {};
         const quien = v['contact.handle'] || v.contact?.handle || v['contact.name'] || v.contact?.name || null;
-        return { quien, respuesta: typeof v.respuesta === 'string' ? v.respuesta : v.respuesta?.text || null, estado: x.status, fecha: x.updatedAt || x.createdAt };
-      }).filter((x) => x.respuesta || x.estado === 'waiting');
+        for (const [k, pregunta] of Object.entries(preguntas)) {
+          const valor = v[k];
+          if (valor != null && valor !== '') respuestas.push({ quien, pregunta, respuesta: typeof valor === 'string' ? valor : valor?.text || String(valor), fecha: x.updatedAt || x.createdAt });
+        }
+      }
     }
+    respuestas.sort((x, y) => String(y.fecha).localeCompare(String(x.fecha)));
+    const base = fila(row(q.una, a.id), automation);
+    if (!a.zernio_id) base.zernio = { activa: a.estado === 'activa', stats: { triggered: iniciados } };
     return {
-      ...fila(r, automation),
+      ...base,
       registros: logs.map((l) => ({ quien: l.commenterUsername || l.commenterName || null, comentario: l.commentText || null, estado: l.status, motivo: l.error || null, sigue: l.commenterIsFollower, clic: Boolean(l.clickedAt), fecha: l.createdAt })),
       respuestas,
     };
@@ -421,5 +593,8 @@ export function createAutomatizaciones({ db, env = process.env, fetchImpl = fetc
     } catch (e) { return { configurado: true, meta: Boolean(graph()), error: e.message }; }
   }
 
-  return { configurado, estado, conectar, medios, crear, editar, pausar, borrar, listar, detalle, revisarSiguientes, iniciar, parar };
+  return { configurado, estado, conectar, medios, crear, editar, duplicar, pausar, borrar, listar, detalle, revisarSiguientes, iniciar, parar };
 }
+
+// Para comprobar el tablero sin guardar (la interfaz enseña errores y avisos)
+export { salidasDe };

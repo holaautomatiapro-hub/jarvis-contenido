@@ -124,19 +124,24 @@ tienes que pasar la verificación de Meta.
 1. Crea tu cuenta en zernio.com y conecta allí tu Instagram (cuenta de empresa o creador, vinculada a una página de Facebook).
 2. Copia tu API key (zernio.com → API keys) y pégala en la pantalla de Automatizaciones, o ponla en el `.env` como
    `ZERNIO_API_KEY` (`npm run claves`). Si tienes varias cuentas de Instagram en Zernio, `ZERNIO_ACCOUNT_ID` elige cuál.
-3. **Nueva automatización**:
-   - **Cuándo se activa**: comentan una publicación o responden a una story. Puede ser **una concreta**, **cualquiera**
-     o **la siguiente**: se queda esperando y se activa sola en cuanto sale tu próximo post o story (JARVIS lo mira cada
-     2 minutos y justo después de publicar desde JARVIS; necesita Instagram conectado con Facebook).
-   - **Palabras clave** (como palabra, con erratas, o exactas) y, si quieres, que también responda si te las escriben por privado.
-   - **Respuesta pública** al comentario (varias, se elige una al azar).
-   - **Mensaje privado** con un botón (`{{first_name}}` pone su nombre).
-   - **Sígueme primero**: solo se lo envía si te sigue (con botón para confirmarlo y otro para ver tu perfil).
-   - **El recurso**: el enlace. Sin pregunta, el botón del mensaje lo abre directamente.
-   - **Pregunta** (opcional): al pulsar el botón le llega el recurso y la pregunta; su respuesta se guarda y la ves en
-     **Resultados**, junto con quién la activó, los mensajes enviados y los clics.
-4. **Pausar / Reanudar**, **Editar** y **Eliminar** desde cada tarjeta.
+3. **Nueva automatización** abre el **tablero**: bloques unidos con flechas, tan largo como quieras.
+   - **Cuando…** (el disparador): comentan una publicación, responden a una story o te escriben una palabra por
+     privado. Para publicaciones y stories: **una concreta**, **cualquiera** o **la siguiente** (se queda esperando y se
+     activa sola en cuanto sale tu próximo post o story; necesita Instagram conectado con Facebook). Palabras clave
+     (da igual mayúsculas, minúsculas y tildes), respuesta pública al comentario (varias, al azar), **sígueme primero**
+     y si se repite.
+   - **Mensaje**: texto (`{{first_name}}` pone su nombre) y hasta 3 botones: de **enlace** (puedes elegir uno de tus
+     lead magnets) o que **siguen un camino**. El primero tras un comentario es la respuesta privada: para seguir, la
+     persona tiene que pulsar un botón (Meta no deja escribirle más hasta que responda).
+   - **Pregunta**: guarda la respuesta (la ves en **Resultados**); con respuestas rápidas, un camino por opción.
+   - **Esperar**, **Condición** (tiene una etiqueta, te sigue, su mensaje contiene…), **Etiqueta** y **Fin**.
+   Arrastra desde un punto ● hasta otro bloque para unirlos; selecciona una flecha y pulsa Supr para quitarla.
+4. En cada tarjeta: **Abrir tablero**, **Pausar / Reanudar**, **Resultados**, **Duplicar** (la copia queda en pausa) y **Eliminar**.
 
-Límites de Meta: el mensaje privado sale una sola vez por comentario y como mucho 7 días después; tras el botón, solo
-se le puede seguir escribiendo en las 24 horas siguientes a su último mensaje. Si tienes ManyChat u otro bot en la misma
-cuenta con las mismas palabras, la persona recibiría dos mensajes.
+Límites de Meta: el mensaje privado sale una sola vez por comentario y como mucho 7 días después; después, solo se le
+puede escribir en las 24 horas siguientes a su último mensaje (una espera más larga puede hacer que no llegue). Si
+tienes ManyChat u otro bot en la misma cuenta con las mismas palabras, la persona recibiría dos mensajes.
+
+Cómo se monta en Zernio: el primer mensaje es una «comment automation» (respuesta pública, sígueme primero, botones) y
+cada botón con camino arranca un «workflow» con lo que cuelga de él; «por privado» es un solo workflow. Si los cambias
+en la web de Zernio, al guardar en JARVIS se sobrescriben.
