@@ -243,7 +243,11 @@ describe('Automatizaciones (Zernio)', () => {
     const copia = await a.duplicar(r.id);
     assert.equal(copia.nombre, 'Guía (copia)');
     assert.equal(copia.estado, 'pausada');
-    assert.equal(llamadas.filter((l) => l[0] === 'POST' && l[1] === '/comment-automations').at(-1)[2].isActive, false);
+    const caCopia = llamadas.filter((l) => l[0] === 'POST' && l[1] === '/comment-automations').at(-1)[2];
+    assert.equal(caCopia.isActive, false);
+    // Zernio no deja dos en la misma publicación: la copia va sin publicación, para «la siguiente»
+    assert.equal(caCopia.platformPostId, undefined);
+    assert.equal(copia.disparador.destino, 'siguiente');
     assert.equal((await a.listar()).lista.length, 2);
 
     // Quitar el camino del botón borra su workflow
@@ -290,6 +294,13 @@ describe('Automatizaciones (Zernio)', () => {
     assert.equal(lista[0].media_id, 'nuevo');
     const sinMeta = createAutomatizaciones({ db: openDb(':memory:'), env: { ZERNIO_API_KEY: CLAVE }, fetchImpl, instagram: null });
     await assert.rejects(sinMeta.crear({ disparador: { ...DISP, destino: 'siguiente' }, flujo: flujoLargo() }), /conéctalo con Facebook/);
+  });
+
+  test('si Zernio dice que ya hay una activa en esa publicación, se explica en castellano', async () => {
+    const { fetchImpl: base } = falso();
+    const fetchImpl = async (url, o) => (String(url).endsWith('/comment-automations') && o?.method === 'POST' ? new Response(JSON.stringify({ error: 'An active automation already exists for this post. Deactivate it first or edit it.' }), { status: 409 }) : base(url, o));
+    const a = createAutomatizaciones({ db: openDb(':memory:'), env: { ZERNIO_API_KEY: CLAVE }, fetchImpl, instagram });
+    await assert.rejects(a.crear({ disparador: DISP, flujo: flujoLargo() }), /Ya hay otra automatización activa en esa publicación/);
   });
 
   test('si Zernio falla al crear, no queda nada a medias', async () => {

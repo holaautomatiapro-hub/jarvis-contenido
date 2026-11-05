@@ -96,7 +96,7 @@ export default function Automatizaciones() {
 
   const accion = async (fn, ok = null) => { setAviso(null); try { await fn(); recargar(); if (ok) setAviso({ ok: true, texto: ok }); } catch (e) { setAviso({ ok: false, texto: e.message }); } };
   const pausar = (a) => accion(() => api(`/api/automatizaciones/${a.id}/pausar`, { method: 'POST', body: { activa: a.estado === 'pausada' } }));
-  const duplicar = (a) => accion(() => api(`/api/automatizaciones/${a.id}/duplicar`, { method: 'POST' }), 'Copia creada en pausa: ábrela (por ejemplo, para cambiar la publicación) y pulsa Reanudar.');
+  const duplicar = (a) => accion(() => api(`/api/automatizaciones/${a.id}/duplicar`, { method: 'POST' }), a.disparador.destino === 'publicacion' ? 'Copia creada en pausa y puesta para «la siguiente publicación» (Zernio no deja dos en la misma publicación). Ábrela si quieres elegir otra publicación y pulsa Reanudar.' : 'Copia creada en pausa: ábrela para cambiar lo que quieras y pulsa Reanudar.');
   const borrar = (a) => window.confirm(`¿Eliminar «${a.nombre}»? Deja de responder ya.`) && accion(() => api(`/api/automatizaciones/${a.id}`, { method: 'DELETE' }));
 
   if (error) return <div className="aviso error">No se pudieron cargar las automatizaciones. {error}</div>;
