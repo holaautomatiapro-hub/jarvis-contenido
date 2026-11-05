@@ -355,6 +355,7 @@ export function createAutomatizaciones({ db, env = process.env, fetchImpl = fetc
     const j = await r.json().catch(() => ({}));
     if (!r.ok) {
       if (r.status === 401 || r.status === 403) throw new AutomatizacionError('Zernio no acepta la API key: revísala en zernio.com y vuelve a ponerla');
+      if (/already exists for this post/i.test(JSON.stringify(j))) throw new AutomatizacionError('Ya hay otra automatización activa en esa publicación: páusala o elige otra publicación (Zernio solo deja una por publicación).');
       const m = j?.error?.message || j?.message || (typeof j?.error === 'string' ? j.error : '') || `error ${r.status}`;
       throw new AutomatizacionError(`Zernio: ${String(m).slice(0, 300)}`);
     }
@@ -446,7 +447,7 @@ export function createAutomatizaciones({ db, env = process.env, fetchImpl = fetc
     const cfg = normalizarConfig(datos);
     const d = cfg.disparador;
     const esperar = d.destino === 'siguiente' && empiezaConComentario(d.tipo);
-    if (esperar && !graph()) throw new AutomatizacionError('Para «la siguiente publicación» JARVIS tiene que ver tu Instagram: conéctalo con Facebook en la pestaña Instagram');
+    if (esperar && !pausada && !graph()) throw new AutomatizacionError('Para «la siguiente publicación» JARVIS tiene que ver tu Instagram: conéctalo con Facebook en la pestaña Instagram');
     const estado = pausada ? 'pausada' : esperar ? 'esperando' : 'activa';
     const r = db.prepare('INSERT INTO automatizaciones (config, estado, desde, media_id, media_titulo) VALUES (?, ?, ?, ?, ?)')
       .run(JSON.stringify(cfg), estado, new Date().toISOString(), d.media_id || null, d.media_titulo || null);
@@ -503,10 +504,14 @@ export function createAutomatizaciones({ db, env = process.env, fetchImpl = fetc
     return ver(a.id);
   }
 
-  // Duplicar: la copia queda en pausa (dos automatizaciones activas en el mismo post chocarían); se edita y se reanuda
+  // Duplicar: la copia queda en pausa. Zernio no deja dos automatizaciones en la misma publicación (ni en pausa), así
+  // que la copia de una «publicación concreta» pasa a «la siguiente publicación»; en el tablero se puede elegir otra.
   async function duplicar(id) {
     const a = leer(id);
-    return crear({ ...a.config, nombre: `${a.config.nombre} (copia)`.slice(0, 80) }, { pausada: true });
+    const d = a.config.disparador;
+    const disparador = empiezaConComentario(d.tipo) && d.destino === 'publicacion'
+      ? { ...d, destino: 'siguiente', media_id: '', media_titulo: '', media_miniatura: '' } : d;
+    return crear({ ...a.config, disparador, nombre: `${a.config.nombre} (copia)`.slice(0, 80) }, { pausada: true });
   }
 
   async function pausar(id, { activa } = {}) {
