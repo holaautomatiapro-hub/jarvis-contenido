@@ -168,7 +168,8 @@ en la web de Zernio, al guardar en JARVIS se sobrescriben.
 Los chats de Instagram (y de Facebook o WhatsApp si los conectas en Zernio), con filtros: abiertos o cerrados, no
 leídos, por etiqueta y buscador. Al abrir uno ves la conversación, puedes responder (con emojis, una plantilla o botones
 con enlace) y a la derecha tienes a la persona: si te sigue, sus etiquetas (añadir y quitar), **Pausar automatizaciones**
-(30 min, 1 h, 4 h, 24 h o hasta que la reanudes, para hablar tú sin que salte el bot), **Bloquear** y **Cerrar**.
+(30 min, 1 h, 4 h, 24 h o hasta que la reanudes, para hablar tú sin que salte el bot), **Bloquear**, **Ficha** y
+**Cerrar** (pasa a «Cerrados»; si la persona vuelve a escribir, se reabre sola).
 Meta deja responder 24 h después de su último mensaje; pasado eso, JARVIS lo envía como respuesta de una persona
 (`HUMAN_AGENT`), que Meta permite hasta 7 días. Encima del cuadro de texto ves cuánto tiempo te queda. No se puede
 escribir primero a alguien que nunca te ha escrito.
@@ -184,6 +185,25 @@ y cuáles. Si de alguien no se conoce el usuario (Zernio a veces solo da su nomb
 en los que entraron; JARVIS los va guardando (cada pocos minutos y al descargar), así que no se pierden aunque Zernio
 solo enseñe los últimos. Pulsa en una persona para ver su ficha: datos, etiquetas, recursos pedidos con fecha, campos y
 respuestas, todo el historial de mensajes y **Abrir el chat**.
+
+### Pipeline de ventas
+
+En **Contactos** puedes cambiar entre **Lista** y **Pipeline**. El pipeline tiene una columna por fase: Iniciada,
+Conexión, Descubrimiento, Cualificación, Propuesta de llamada, Pendiente de agendar, Agendado, Ganado y Perdido.
+Arrastra una tarjeta para moverla (o cambia la fase desde la ficha). Con **Columnas** añades las tuyas, las renombras,
+las reordenas y escribes **cuándo pasa alguien ahí**; las predeterminadas no se pueden borrar.
+
+**Mover solas con IA** (activado por defecto): cada 15 minutos JARVIS lee las conversaciones con mensajes nuevos (como
+mucho 12 cada vez) y, con Claude Code, decide en qué fase está cada persona según el «cuándo pasa aquí» de cada
+columna. Reglas: solo mueve hacia delante (o a Ganado/Perdido), nunca saca a nadie de Ganado o Perdido, y si moviste
+tú a alguien no lo toca hasta que haya mensajes nuevos. En la tarjeta verás ✦ y el motivo. **Leer conversaciones
+ahora** lo hace al momento. Necesita Claude Code con la sesión iniciada en el VPS (usa el modelo más ligero).
+
+### Tareas
+
+En la ficha de una persona (Contactos, Pipeline o Bandeja → **Ficha**) puedes asignarle una tarea con fecha. Todas
+salen en **Manychat → Tareas** (tarea, persona y fecha; atrasadas en rojo) y también en las tareas de JARVIS, en la
+categoría **Ventas**.
 
 ### Plantillas
 

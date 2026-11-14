@@ -66,8 +66,8 @@ const ordenar = (a, b) =>
 
 export function createTareas({ db, registrar }) {
   const q = {
-    ins: db.prepare(`INSERT INTO tareas (titulo, descripcion, fecha, categoria, origen, estado, prioridad, plazo_tipo, plazo_desde, plazo_hasta, hecha, completada, actualizado)
-      VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, CASE WHEN ? = 1 THEN datetime('now','localtime') END, datetime('now','localtime'))`),
+    ins: db.prepare(`INSERT INTO tareas (titulo, descripcion, fecha, categoria, origen, estado, prioridad, plazo_tipo, plazo_desde, plazo_hasta, hecha, completada, actualizado, contacto_id, contacto_nombre)
+      VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, CASE WHEN ? = 1 THEN datetime('now','localtime') END, datetime('now','localtime'), ?, ?)`),
     get: db.prepare('SELECT * FROM tareas WHERE id = ?'),
     todas: db.prepare('SELECT * FROM tareas'),
     del: db.prepare('DELETE FROM tareas WHERE id = ?'),
@@ -96,13 +96,15 @@ export function createTareas({ db, registrar }) {
 
   // Sin plazo_tipo: "fecha" (o hoy) es un día concreto, como siempre (así lo usan Hermes y Claude Code).
   // plazo_tipo: null crea la tarea sin fecha límite.
-  function crear({ titulo: t, descripcion: d, fecha, plazo_tipo, plazo, prioridad = 'media', estado = 'sin_empezar', categoria = 'contenido', origen = 'dashboard' } = {}) {
+  // contacto_id / contacto_nombre: la tarea es de una persona de Manychat (sale también en Manychat → Tareas)
+  function crear({ titulo: t, descripcion: d, fecha, plazo_tipo, plazo, prioridad = 'media', estado = 'sin_empezar', categoria = 'contenido', origen = 'dashboard', contacto_id = null, contacto_nombre = null } = {}) {
     const tit = titulo(t);
     comprobar('prioridad', prioridad); comprobar('estado', estado); comprobar('categoria', categoria);
     const tipo = plazo_tipo === undefined ? 'dia' : plazo_tipo || null;
     const { desde, hasta } = rangoPlazo(tipo, plazo ?? fecha);
     const hecha = estado === 'terminada' ? 1 : 0;
-    const { lastInsertRowid } = q.ins.run(tit, descripcion(d), desde || hoy(), categoria, origen, estado, prioridad, tipo, desde, hasta, hecha, hecha);
+    const cid = contacto_id ? String(contacto_id).slice(0, 100) : null;
+    const { lastInsertRowid } = q.ins.run(tit, descripcion(d), desde || hoy(), categoria, origen, estado, prioridad, tipo, desde, hasta, hecha, hecha, cid, cid && contacto_nombre ? String(contacto_nombre).trim().slice(0, 120) : null);
     if (origen === 'hermes') registrar('Hermes', `Tarea añadida vía Telegram: ${tit}`, origen);
     return leer(lastInsertRowid);
   }
@@ -139,7 +141,8 @@ export function createTareas({ db, registrar }) {
 
   // Filtros: estado, prioridad, categoria (uno o varios separados por comas), desde/hasta (solapan con el plazo),
   // sinFecha, atrasadas y texto (título o descripción).
-  function listar({ estado, prioridad, categoria, desde, hasta, sinFecha, atrasadas, texto } = {}) {
+  // contacto: '*' = las de cualquier contacto de Manychat; un id = las de esa persona
+  function listar({ estado, prioridad, categoria, desde, hasta, sinFecha, atrasadas, texto, contacto } = {}) {
     const lista = (v) => (Array.isArray(v) ? v : typeof v === 'string' && v ? v.split(',') : null);
     const [es, pr, ca] = [lista(estado), lista(prioridad), lista(categoria)];
     for (const v of es || []) comprobar('estado', v);
@@ -165,7 +168,8 @@ export function createTareas({ db, registrar }) {
       (!atrasadas || t.atrasada) &&
       (!desde || (t.plazo_hasta && t.plazo_hasta >= desde)) &&
       (!hasta || (t.plazo_desde && t.plazo_desde <= hasta)) &&
-      (!busca || `${t.titulo}\n${t.descripcion || ''}`.toLowerCase().includes(busca)),
+      (!contacto || (contacto === '*' ? Boolean(t.contacto_id) : t.contacto_id === String(contacto))) &&
+      (!busca || `${t.titulo}\n${t.descripcion || ''}\n${t.contacto_nombre || ''}`.toLowerCase().includes(busca)),
     ).sort(ordenar);
     return { hoy: dia, tareas, resumen };
   }

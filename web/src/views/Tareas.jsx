@@ -19,6 +19,7 @@ const CATEGORIAS = [
   { id: 'analisis', label: 'Análisis', color: 'var(--orange)' },
   { id: 'administracion', label: 'Administración', color: 'var(--green)' },
   { id: 'aprendizaje', label: 'Aprendizaje', color: 'var(--cyan)' },
+  { id: 'ventas', label: 'Ventas', color: 'var(--pink)' },
 ];
 const PLAZOS = [
   { id: '', label: 'Sin fecha' },

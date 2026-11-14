@@ -1,5 +1,7 @@
 import path from 'node:path';
 import { gzipSync } from 'node:zlib';
+import os from 'node:os';
+import { preguntar as preguntarClaude } from './claude-runner.js';
 import dotenv from 'dotenv';
 import express from 'express';
 import { createServer } from 'node:http';
@@ -434,8 +436,8 @@ export function createApp({ jarvis, archivos, miniaturas = null, estrategia = nu
   app.put('/api/pipeline', h((req) => jarvis.pipeline.guardar(req.body?.fases, { mover: req.body?.mover || {} }), true));
   app.get('/api/tareas', h((req) => jarvis.tareas({ fecha: req.query.fecha || undefined })));
   app.get('/api/tareas/lista', h((req) => {
-    const { estado, prioridad, categoria, desde, hasta, sinFecha, atrasadas, texto } = req.query;
-    return jarvis.listarTareas({ estado, prioridad, categoria, desde, hasta, sinFecha: sinFecha === '1', atrasadas: atrasadas === '1', texto });
+    const { estado, prioridad, categoria, desde, hasta, sinFecha, atrasadas, texto, contacto } = req.query;
+    return jarvis.listarTareas({ estado, prioridad, categoria, desde, hasta, sinFecha: sinFecha === '1', atrasadas: atrasadas === '1', texto, contacto });
   }));
   app.post('/api/tareas', h((req) => jarvis.crearTarea({ ...(req.body || {}), origen: 'dashboard' }), true));
   app.patch('/api/tareas/:id', h((req) => jarvis.actualizarTarea(req.params.id, req.body || {}), true));
@@ -523,6 +525,11 @@ export function createApp({ jarvis, archivos, miniaturas = null, estrategia = nu
       app.post('/api/manychat/conversaciones/:id/mensajes', h((req) => manychat.enviar(req.params.id, req.body || {}), true));
       app.post('/api/manychat/conversaciones/:id/leido', h((req) => manychat.leido(req.params.id, req.body?.cuenta)));
       app.post('/api/manychat/conversaciones/:id/estado', h((req) => manychat.archivar(req.params.id, req.body?.cuenta, req.body?.estado), true));
+      app.get('/api/manychat/pipeline', h(() => manychat.pipeline()));
+      app.put('/api/manychat/pipeline/fases', h((req) => manychat.guardarFases(req.body?.fases), true));
+      app.post('/api/manychat/pipeline/ia', h((req) => manychat.activarIa(Boolean(req.body?.activo)), true));
+      app.post('/api/manychat/pipeline/analizar', h(() => manychat.analizar({ forzar: true }), true));
+      app.post('/api/manychat/contactos/:id/fase', h((req) => manychat.mover(req.params.id, req.body?.fase, { por: 'manual' }), true));
       app.get('/api/manychat/contactos', h((req) => manychat.contactos(q(req))));
       app.get('/api/manychat/contactos.csv', async (req, res) => {
         try {
@@ -988,7 +995,7 @@ function main() {
   automatizaciones.iniciar();
   // Las automatizaciones guardadas antes de los bloqueos se rehacen con la protección (una vez, al arrancar)
   setTimeout(() => automatizaciones.actualizarGrafos().catch(() => {}), 15000).unref?.();
-  const manychat = createManychat({ db, auto: automatizaciones, alCambiar: onChange, log: (m) => console.log(`  [Manychat] ${m}`) });
+  const manychat = createManychat({ db, auto: automatizaciones, ia: (prompt) => preguntarClaude({ prompt, cwd: os.tmpdir() }), alCambiar: onChange, log: (m) => console.log(`  [Manychat] ${m}`) });
   manychat.iniciar();
   const competencia = createCompetencia({ db, instagram, vault: jarvis.vault, alCambiar: onChange });
   // La vista previa de los anuncios de la competencia se abre con el navegador de Diseño (motor, más abajo)

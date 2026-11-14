@@ -3,6 +3,7 @@ import Icon from '../../components/Icon.jsx';
 import CampoEmoji from '../../components/CampoEmoji.jsx';
 import { api, useRecurso } from '../../lib/api.js';
 import { Acciones, Avatar, ElegirPlantilla, Etiquetas, fechaCorta, ventana } from './comun.jsx';
+import Ficha from './Ficha.jsx';
 
 // Bandeja de entrada: a la izquierda los chats (con filtros), en medio la conversación y a la derecha la persona
 // (etiquetas, pausar automatizaciones, bloquear). Se actualiza sola cada pocos segundos.
@@ -77,11 +78,19 @@ function Conversacion({ chat, onCambio }) {
   );
 }
 
-function Persona({ chat, onCambio }) {
+function Persona({ chat, onCambio, onCerrado }) {
   const c = chat.contacto;
+  const [error, setError] = useState('');
+  const [cerrando, setCerrando] = useState(false);
+  const [ficha, setFicha] = useState(false);
+  const cerrada = chat.estado === 'archived';
   const archivar = async () => {
-    await api(`/api/manychat/conversaciones/${encodeURIComponent(chat.id)}/estado`, { method: 'POST', body: { cuenta: chat.cuenta, estado: chat.estado === 'archived' ? 'active' : 'archived' } }).catch(() => {});
-    onCambio();
+    setError(''); setCerrando(true);
+    try {
+      await api(`/api/manychat/conversaciones/${encodeURIComponent(chat.id)}/estado`, { method: 'POST', body: { cuenta: chat.cuenta, estado: cerrada ? 'active' : 'archived' } });
+      onCerrado(); onCambio();
+    } catch (e) { setError(e.message); }
+    setCerrando(false);
   };
   return (
     <aside className="mc-persona">
@@ -90,6 +99,7 @@ function Persona({ chat, onCambio }) {
         <b>{chat.nombre}</b>
         {chat.usuario && <a href={`https://www.instagram.com/${chat.usuario}/`} target="_blank" rel="noreferrer">@{chat.usuario}</a>}
         <small>{chat.sigue == null ? '' : chat.sigue ? 'Te sigue' : 'No te sigue'}{chat.seguidores != null ? ` · ${chat.seguidores.toLocaleString('es-ES')} seguidores` : ''}</small>
+        {c && <button className="btn btn-sec" onClick={() => setFicha(true)}><Icon name="users" size={13} />Ficha: fase y tareas</button>}
       </div>
       <div className="campo-et">Automatizaciones</div>
       <Acciones contacto={c ? { ...c, usuario: chat.usuario } : null} onCambio={onCambio} />
@@ -100,7 +110,9 @@ function Persona({ chat, onCambio }) {
         </>
       )}
       <div className="campo-et">Conversación</div>
-      <button className="btn btn-sec" onClick={archivar}><Icon name="check" size={13} />{chat.estado === 'archived' ? 'Reabrir' : 'Cerrar (archivar)'}</button>
+      <button className="btn btn-sec" onClick={archivar} disabled={cerrando}><Icon name="check" size={13} />{cerrando ? '…' : cerrada ? 'Reabrir' : 'Cerrar (archivar)'}</button>
+      {error && <div className="caja-error">{error}</div>}
+      {ficha && c && <Ficha id={c.id} onClose={() => { setFicha(false); onCambio(); }} />}
     </aside>
   );
 }
@@ -150,7 +162,7 @@ export default function Bandeja({ abrir = null, onAbierto = () => {} }) {
       {chat ? (
         <>
           <Conversacion key={chat.id} chat={chat} onCambio={recargar} />
-          <Persona chat={chat} onCambio={recargar} />
+          <Persona chat={chat} onCambio={recargar} onCerrado={() => setElegido(null)} />
         </>
       ) : <div className="mc-chat mc-chat-vacio"><Icon name="send" size={28} /><p>Elige un chat de la lista.</p></div>}
     </div>

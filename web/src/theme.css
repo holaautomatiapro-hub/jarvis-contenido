@@ -2264,3 +2264,48 @@ button.est-boton:hover { background: color-mix(in srgb, var(--cat) 30%, transpar
 .mc-recursos { display: flex; flex-direction: column; gap: 6px; }
 .mc-recursos > div { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; padding: 7px 10px; border: 1px solid var(--border-soft); border-radius: 8px; font-size: 12.5px; }
 .mc-recursos small { color: var(--muted); margin-left: auto; }
+/* Manychat: ficha (fase y tareas) */
+.mc-elegir-fase { display: flex; flex-direction: column; gap: 4px; width: 100%; }
+.mc-elegir-fase small { color: var(--muted); font-size: 11px; }
+.mc-tareas-ficha { display: flex; flex-direction: column; gap: 6px; }
+.mc-tarea { display: flex; align-items: center; gap: 8px; padding: 6px 10px; border: 1px solid var(--border-soft); border-radius: 8px; font-size: 12.5px; cursor: pointer; }
+.mc-tarea span { flex: 1; }
+.mc-tarea small { color: var(--muted); }
+.mc-tarea.hecha span { text-decoration: line-through; color: var(--muted); }
+.mc-tarea.atrasada small, .mc-fila-tarea.atrasada .mc-tarea-fecha { color: var(--rojo-texto); }
+.mc-nueva-tarea { margin: 0; flex-wrap: wrap; }
+.mc-nueva-tarea .campo:first-child { flex: 1; min-width: 200px; }
+.mc-nueva-tarea .campo[type="date"] { width: 150px; }
+/* Manychat: tareas */
+.mc-fila-tarea { grid-template-columns: 24px minmax(0, 2fr) minmax(120px, 1fr) 150px 32px; cursor: default; }
+.mc-fila-tarea .link-btn { justify-self: start; }
+.mc-fila-tarea.hecha .mc-tarea-titulo { text-decoration: line-through; color: var(--muted); }
+.mc-tarea-fecha { color: var(--muted); }
+/* Manychat: pipeline */
+.mc-pipeline { display: flex; flex-direction: column; gap: 10px; }
+.mc-pipeline-cab { display: flex; align-items: center; gap: 10px; flex-wrap: wrap; }
+.mc-pipeline-cab .ayuda, .mc-pipeline-cab .aviso-error { margin: 0; }
+.mc-tablero { display: flex; gap: 10px; overflow-x: auto; padding-bottom: 8px; align-items: flex-start; }
+.mc-columna { flex: 0 0 240px; display: flex; flex-direction: column; max-height: calc(100vh - 300px); min-height: 200px; border: 1px solid var(--border-soft); border-radius: 12px; background: color-mix(in srgb, var(--hondo) 40%, transparent); transition: border-color .15s, background .15s; }
+.mc-columna.encima { border-color: var(--accent); background: color-mix(in srgb, var(--accent) 10%, transparent); }
+.mc-columna.ganado .mc-columna-cab b { color: var(--green); }
+.mc-columna.perdido .mc-columna-cab b { color: var(--rojo-texto); }
+.mc-columna-cab { display: flex; justify-content: space-between; align-items: center; gap: 6px; padding: 10px 12px; border-bottom: 1px solid var(--border-soft); font-size: 12.5px; }
+.mc-contador-col { font-size: 11px; color: var(--muted); background: var(--panel-2); border-radius: 10px; padding: 1px 8px; }
+.mc-columna-lista { display: flex; flex-direction: column; gap: 8px; padding: 8px; overflow-y: auto; }
+.mc-columna-vacia { color: var(--dim, var(--muted)); font-size: 11px; text-align: center; margin: 14px 0; }
+.mc-tarjeta { display: flex; flex-direction: column; gap: 6px; text-align: left; padding: 9px 10px; border: 1px solid var(--border-soft); border-radius: 10px; background: var(--panel); color: var(--text); cursor: grab; width: 100%; }
+.mc-tarjeta:hover { border-color: var(--border); }
+.mc-tarjeta.moviendo { opacity: .45; }
+.mc-tarjeta-cab { display: flex; align-items: center; gap: 8px; min-width: 0; }
+.mc-motivo { font-size: 11px; color: var(--accent-2); line-height: 1.35; }
+.mc-tarjeta-pie { font-size: 10.5px; color: var(--muted); }
+.mc-columnas-ed { display: flex; flex-direction: column; gap: 8px; margin: 10px 0; max-height: 55vh; overflow-y: auto; }
+.mc-columna-ed { display: flex; gap: 8px; align-items: flex-start; padding: 8px; border: 1px solid var(--border-soft); border-radius: 10px; }
+.mc-orden { display: flex; flex-direction: column; gap: 2px; }
+.mc-columna-campos { flex: 1; display: flex; flex-direction: column; gap: 6px; }
+@media (max-width: 760px) {
+  .mc-fila-tarea { grid-template-columns: 24px minmax(0, 1fr) auto 32px; }
+  .mc-fila-tarea > :nth-child(4) { display: none; }
+  .mc-columna { flex-basis: 78vw; }
+}

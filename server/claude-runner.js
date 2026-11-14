@@ -139,3 +139,22 @@ export function ejecutar({ prompt, cwd, modelo, sesion, mcpConfig, sistema, herr
 }
 
 export const mcpConfigDe = (vaultPath) => path.join(vaultPath, '.mcp.json');
+
+// Una pregunta suelta a Claude Code (sin sesión ni herramientas útiles): devuelve el texto de la respuesta.
+// Lo usa, por ejemplo, el pipeline de Manychat para saber en qué fase está cada conversación.
+export function preguntar({ prompt, modelo = 'haiku', cwd = process.cwd(), timeout = 180_000, bin } = {}) {
+  return new Promise((resolve, reject) => {
+    let listo = false;
+    const acabar = (fn, v) => { if (!listo) { listo = true; clearTimeout(reloj); fn(v); } };
+    const r = ejecutar({
+      prompt, cwd, modelo, ...(bin ? { bin } : {}),
+      sistema: 'Responde solo con lo que se te pide, sin usar herramientas.',
+      onEvento: (e) => {
+        if (e.tipo === 'fin') acabar(resolve, e.texto || '');
+        else if (e.tipo === 'error') acabar(reject, new Error(e.mensaje));
+      },
+    });
+    const reloj = setTimeout(() => { r.cancelar(); acabar(reject, new Error('Claude tardó demasiado en responder')); }, timeout);
+    r.terminado.then(() => acabar(reject, new Error('Claude no respondió')));
+  });
+}

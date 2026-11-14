@@ -6,7 +6,7 @@ import path from 'node:path';
 // La comparten el dashboard y el MCP de Hermes/Claude Code; WAL permite varios procesos a la vez.
 
 export const ESTADOS = ['idea', 'guion', 'grabar', 'editar', 'listo', 'publicado'];
-export const CATEGORIAS = ['ideas', 'contenido', 'analisis', 'administracion', 'aprendizaje'];
+export const CATEGORIAS = ['ideas', 'contenido', 'analisis', 'administracion', 'aprendizaje', 'ventas'];
 // Objetivo de una pieza: atraer (alcance, gente nueva), nutrir (confianza) o convertir (ventas, leads)
 export const OBJETIVOS = ['atraer', 'nutrir', 'convertir'];
 export const TIPOS_ACTIVIDAD = ['Idea', 'Contenido', 'Nota', 'Tarea', 'Analisis', 'Hermes'];
@@ -223,6 +223,9 @@ export function openDb(file) {
     'ALTER TABLE tareas ADD COLUMN plazo_desde TEXT',
     'ALTER TABLE tareas ADD COLUMN plazo_hasta TEXT',
     'ALTER TABLE tareas ADD COLUMN actualizado TEXT',
+    // Tareas de un contacto de Manychat (seguimiento de ventas)
+    'ALTER TABLE tareas ADD COLUMN contacto_id TEXT',
+    'ALTER TABLE tareas ADD COLUMN contacto_nombre TEXT',
   ]) migrar(sql);
   // Solo la primera vez: las tareas de antes eran de un día concreto
   if (migrar('ALTER TABLE tareas ADD COLUMN plazo_tipo TEXT')) {
