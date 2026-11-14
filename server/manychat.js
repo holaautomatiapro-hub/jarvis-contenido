@@ -47,6 +47,14 @@ export function createManychat({ db, auto, alCambiar = () => {}, log = () => {},
   CREATE TABLE IF NOT EXISTS mc_pausas (
     contacto_id TEXT PRIMARY KEY,
     hasta INTEGER
+  );
+  CREATE TABLE IF NOT EXISTS mc_solicitudes (
+    usuario TEXT NOT NULL,
+    automatizacion_id INTEGER NOT NULL,
+    nombre TEXT,
+    primera TEXT NOT NULL,
+    ultima TEXT NOT NULL,
+    PRIMARY KEY (usuario, automatizacion_id)
   );`);
   const z = (...a) => auto.zernio(...a);
   const configurado = () => auto.configurado();
@@ -78,6 +86,40 @@ export function createManychat({ db, auto, alCambiar = () => {}, log = () => {},
     ultimoRecibido: c.lastMessageReceivedAt || null, ultimoEnviado: c.lastMessageSentAt || null, creado: c.createdAt || null,
   });
 
+  // ---------- Recursos pedidos: quién pidió qué y cuándo (se va guardando para no perderlo) ----------
+  let ultimaSync = 0;
+  async function sincronizarSolicitudes({ forzar = false } = {}) {
+    if (!configurado() || (!forzar && ahora() - ultimaSync < 10 * 60000)) return;
+    ultimaSync = ahora();
+    const guardar = db.prepare(`INSERT INTO mc_solicitudes (usuario, automatizacion_id, nombre, primera, ultima) VALUES (?, ?, ?, ?, ?)
+      ON CONFLICT (usuario, automatizacion_id) DO UPDATE SET nombre = excluded.nombre,
+        primera = MIN(primera, excluded.primera), ultima = MAX(ultima, excluded.ultima)`);
+    for (const x of await auto.solicitudes()) {
+      const f = new Date(x.fecha);
+      if (Number.isNaN(f.getTime())) continue;
+      guardar.run(x.usuario, x.automatizacion, x.nombre || null, f.toISOString(), f.toISOString());
+    }
+  }
+  const sincronizarDeFondo = () => sincronizarSolicitudes().catch((e) => log(`No se pudieron leer los recursos pedidos: ${e.message}`));
+  function nombresAutomatizaciones() {
+    try {
+      return Object.fromEntries(rows(db.prepare('SELECT id, config FROM automatizaciones')).map((r) => {
+        try { return [r.id, JSON.parse(r.config).nombre || null]; } catch { return [r.id, null]; }
+      }));
+    } catch { return {}; }
+  }
+  // Lo que ha pedido cada persona, del primero al último (las que solo conocemos por la etiqueta, sin fecha, al final)
+  function conRecursos(lista) {
+    const porUsuario = {};
+    for (const s of rows(db.prepare('SELECT * FROM mc_solicitudes ORDER BY primera'))) (porUsuario[s.usuario] ||= []).push(s);
+    const nombres = nombresAutomatizaciones();
+    return lista.map((c) => {
+      const pedidos = (c.usuario ? porUsuario[c.usuario.toLowerCase()] || [] : []).map((s) => ({ id: s.automatizacion_id, nombre: nombres[s.automatizacion_id] || s.nombre || `Automatización ${s.automatizacion_id}`, fecha: s.primera }));
+      for (const id of c.automatizaciones) if (!pedidos.some((x) => x.id === id)) pedidos.push({ id, nombre: nombres[id] || `Automatización ${id}`, fecha: null });
+      return { ...c, recursos: pedidos, recursoEntrada: pedidos[0] || null };
+    });
+  }
+
   // Filtros de la lista de contactos (y del CSV)
   function filtrar(lista, { q = '', etiqueta = '', estado = '', desde = '', hasta = '', automatizacion = '' } = {}) {
     const b = String(q).trim().toLowerCase();
@@ -90,30 +132,32 @@ export function createManychat({ db, auto, alCambiar = () => {}, log = () => {},
   }
 
   async function contactos(filtros = {}) {
+    sincronizarDeFondo();
     const p = pausas();
     const lista = filtrar((await todosLosContactos({ forzar: filtros.forzar === '1' })).map((c) => contacto(c, p)), filtros)
       .sort((a, b) => String(b.ultimoRecibido || b.creado || '').localeCompare(String(a.ultimoRecibido || a.creado || '')));
     const etiquetas = {};
     for (const c of (await todosLosContactos()).map((x) => contacto(x, p))) for (const t of c.etiquetas) etiquetas[t] = (etiquetas[t] || 0) + 1;
-    return { total: lista.length, lista: lista.slice(0, Number(filtros.limite) || 500), etiquetas: Object.entries(etiquetas).sort((a, b) => b[1] - a[1]).map(([nombre, n]) => ({ nombre, n })) };
+    return { total: lista.length, lista: conRecursos(lista.slice(0, Number(filtros.limite) || 500)), etiquetas: Object.entries(etiquetas).sort((a, b) => b[1] - a[1]).map(([nombre, n]) => ({ nombre, n })) };
   }
 
+  // Fechas del CSV a la española y en hora de España: 14/11/2026 18:30
+  const fecha = (f) => (f ? new Intl.DateTimeFormat('es-ES', { timeZone: 'Europe/Madrid', day: '2-digit', month: '2-digit', year: 'numeric', hour: '2-digit', minute: '2-digit' }).format(new Date(f)).replace(',', '') : '');
+  const ultimoMensaje = (c) => [c.ultimoRecibido, c.ultimoEnviado].filter(Boolean).sort().pop() || null;
+
   async function csv(filtros = {}) {
+    try { await sincronizarSolicitudes({ forzar: true }); } catch (e) { log(`No se pudieron leer los recursos pedidos: ${e.message}`); }
     const p = pausas();
-    const lista = filtrar((await todosLosContactos({ forzar: true })).map((c) => contacto(c, p)), filtros);
-    const campos = [...new Set(lista.flatMap((c) => Object.keys(c.campos)))].sort();
+    const lista = conRecursos(filtrar((await todosLosContactos({ forzar: true })).map((c) => contacto(c, p)), filtros));
     const columnas = [
       { nombre: 'Usuario', valor: (c) => (c.usuario ? `@${c.usuario}` : '') },
       { nombre: 'Nombre', valor: (c) => c.nombre },
-      { nombre: 'Canal', valor: (c) => c.canal },
-      { nombre: 'Etiquetas', valor: (c) => c.etiquetas },
-      { nombre: 'Suscrito', valor: (c) => (c.suscrito ? 'sí' : 'no') },
-      { nombre: 'Bloqueado', valor: (c) => (c.bloqueado ? 'sí' : 'no') },
-      { nombre: 'Mensajes recibidos', valor: (c) => c.recibidos },
-      { nombre: 'Mensajes enviados', valor: (c) => c.enviados },
-      { nombre: 'Último mensaje suyo', valor: (c) => c.ultimoRecibido },
-      { nombre: 'Alta', valor: (c) => c.creado },
-      ...campos.map((k) => ({ nombre: k, valor: (c) => c.campos[k] })),
+      { nombre: 'Perfil de Instagram', valor: (c) => (c.usuario && c.canal !== 'facebook' && c.canal !== 'whatsapp' ? `https://www.instagram.com/${c.usuario}/` : '') },
+      { nombre: 'Recurso de entrada', valor: (c) => c.recursoEntrada?.nombre || '' },
+      { nombre: 'Fecha de entrada', valor: (c) => fecha(c.recursoEntrada?.fecha || (c.recursoEntrada ? c.creado : null)) },
+      { nombre: 'Último mensaje', valor: (c) => fecha(ultimoMensaje(c)) },
+      { nombre: 'Recursos pedidos', valor: (c) => c.recursos.length },
+      { nombre: 'Qué recursos', valor: (c) => c.recursos.map((x) => x.nombre).join(' · ') },
     ];
     return { nombre: `contactos-${new Date(ahora()).toISOString().slice(0, 10)}.csv`, contenido: aCsv(columnas, lista), total: lista.length };
   }
@@ -121,7 +165,7 @@ export function createManychat({ db, auto, alCambiar = () => {}, log = () => {},
   async function fichaContacto(id) {
     const { contact, channels = [] } = await z('GET', `/contacts/${encodeURIComponent(id)}`);
     if (!contact) throw new ManychatError('Ese contacto no existe');
-    const c = contacto({ ...contact, platform: channels[0]?.platform, platformIdentifier: channels[0]?.platformIdentifier, displayIdentifier: channels[0]?.displayIdentifier });
+    const [c] = conRecursos([contacto({ ...contact, platform: channels[0]?.platform, platformIdentifier: channels[0]?.platformIdentifier, displayIdentifier: channels[0]?.displayIdentifier })]);
     const canal = channels.find((x) => x.conversationId) || null;
     const mensajes = canal ? await mensajesDe(canal.conversationId, canal.accountId).catch(() => []) : [];
     return { ...c, canales: channels.map((x) => ({ canal: x.platform, usuario: x.displayIdentifier, conversacion: x.conversationId, cuenta: x.accountId, activo: x.lastActiveAt })), conversacion: canal ? { id: canal.conversationId, cuenta: canal.accountId } : null, mensajes };
@@ -303,6 +347,7 @@ export function createManychat({ db, auto, alCambiar = () => {}, log = () => {},
       try { await pausar(p.contacto_id, { reanudar: true }); } catch (e) { log(`No se pudo quitar la pausa de ${p.contacto_id}: ${e.message}`); }
     }
     try { await aplicarBloqueos({ forzar: true }); } catch (e) { log(`No se pudieron revisar los bloqueos: ${e.message}`); }
+    await sincronizarDeFondo();
   }
   let reloj = null;
   const iniciar = (cada = 5 * 60000) => { if (!reloj) { reloj = setInterval(() => revisar(), cada); reloj.unref?.(); } };

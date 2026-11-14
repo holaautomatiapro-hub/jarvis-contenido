@@ -6,10 +6,9 @@ import { Acciones, Avatar, Etiquetas, fechaCorta } from './comun.jsx';
 
 // Contactos: tabla con filtros, descarga en CSV de lo filtrado y la ficha de cada persona con todo su historial
 
-function Ficha({ id, automatizaciones, onClose, onChat }) {
+function Ficha({ id, onClose, onChat }) {
   const [c, recargar, error] = useRecurso(`/api/manychat/contactos/${encodeURIComponent(id)}`, null);
-  const nombreAuto = (n) => automatizaciones.find((a) => a.id === n)?.nombre || `Automatización ${n}`;
-  const campos = Object.entries(c?.campos || {}).filter(([, v]) => v !== '' && v != null);
+    const campos = Object.entries(c?.campos || {}).filter(([, v]) => v !== '' && v != null);
   return (
     <Modal titulo={c ? (c.nombre || (c.usuario ? `@${c.usuario}` : 'Contacto')) : 'Contacto'} onClose={onClose} ancho={860}>
       {error && <div className="caja-error">{error}</div>}
@@ -29,8 +28,10 @@ function Ficha({ id, automatizaciones, onClose, onChat }) {
           <div className="mc-ficha-der">
             <div className="campo-et">Etiquetas</div>
             <Etiquetas contactoId={c.id} etiquetas={c.etiquetas} onCambio={recargar} />
-            <div className="campo-et">Automatizaciones en las que ha entrado</div>
-            {c.automatizaciones.length ? <div className="auto-palabras">{c.automatizaciones.map((n) => <span key={n} className="chip">{nombreAuto(n)}</span>)}</div> : <p className="ayuda">Ninguna todavía (o entró antes de que JARVIS lo apuntara).</p>}
+            <div className="campo-et">Recursos pedidos ({c.recursos.length})</div>
+            {c.recursos.length ? (
+              <div className="mc-recursos">{c.recursos.map((r, i) => <div key={r.id}><b>{r.nombre}</b>{i === 0 && <span className="chip">de entrada</span>}<small>{r.fecha ? new Date(r.fecha).toLocaleString('es-ES', { day: 'numeric', month: 'short', year: 'numeric', hour: '2-digit', minute: '2-digit' }) : 'sin fecha'}</small></div>)}</div>
+            ) : <p className="ayuda">Ninguno todavía.</p>}
             <div className="campo-et">Campos y respuestas</div>
             {campos.length ? <div className="mc-campos">{campos.map(([k, v]) => <div key={k}><small>{k.replace(/^respuesta_/, 'respuesta · ')}</small><span>{String(v)}</span></div>)}</div> : <p className="ayuda">Sin campos guardados.</p>}
             <div className="campo-et">Historial ({c.mensajes.length} mensajes)</div>
@@ -83,11 +84,12 @@ export default function Contactos({ onChat }) {
         <>
           <p className="ayuda">{d.total} contacto{d.total === 1 ? '' : 's'}{d.total > d.lista.length ? ` · se ven los ${d.lista.length} más recientes (el CSV lleva todos)` : ''}</p>
           <div className="mc-tabla">
-            <div className="mc-fila mc-fila-cab"><span /><span>Nombre</span><span>Etiquetas</span><span>Último mensaje suyo</span><span>Alta</span></div>
+            <div className="mc-fila mc-fila-cab"><span /><span>Nombre</span><span>Recurso de entrada</span><span>Etiquetas</span><span>Último mensaje suyo</span><span>Alta</span></div>
             {d.lista.map((c) => (
               <button key={c.id} className="mc-fila" onClick={() => setViendo(c.id)}>
                 <Avatar foto={c.foto} nombre={c.nombre || c.usuario} tam={32} />
                 <span className="fila-c-txt"><b>{c.nombre || (c.usuario ? `@${c.usuario}` : 'Contacto desconocido')}</b><small>{c.usuario ? `@${c.usuario}` : c.canal}{c.bloqueado ? ' · ⛔ bloqueado' : c.pausado ? ' · en pausa' : ''}</small></span>
+                <span className="fila-c-txt">{c.recursoEntrada ? <><b>{c.recursoEntrada.nombre}</b><small>{c.recursos.length === 1 ? '1 recurso pedido' : `${c.recursos.length} recursos pedidos`}</small></> : <small>—</small>}</span>
                 <span className="auto-palabras">{c.etiquetas.slice(0, 3).map((t) => <span key={t} className="chip">{t}</span>)}{c.etiquetas.length > 3 && <small>+{c.etiquetas.length - 3}</small>}</span>
                 <span>{c.ultimoRecibido ? fechaCorta(c.ultimoRecibido) : '—'}</span>
                 <span>{c.creado ? new Date(c.creado).toLocaleDateString('es-ES', { day: 'numeric', month: 'short' }) : '—'}</span>
@@ -97,7 +99,7 @@ export default function Contactos({ onChat }) {
           </div>
         </>
       )}
-      {viendo && <Ficha id={viendo} automatizaciones={automatizaciones} onClose={() => { setViendo(null); recargar(); }} onChat={(c) => { setViendo(null); onChat(c); }} />}
+      {viendo && <Ficha id={viendo} onClose={() => { setViendo(null); recargar(); }} onChat={(c) => { setViendo(null); onChat(c); }} />}
     </div>
   );
 }

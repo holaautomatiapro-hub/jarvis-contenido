@@ -715,6 +715,26 @@ export function createAutomatizaciones({ db, env = process.env, fetchImpl = fetc
     };
   }
 
+  // Quién pidió cada recurso y cuándo: los que comentaron (registro de la comment automation) y los que entraron en
+  // sus flujos (ejecuciones de los workflows). Manychat lo guarda para el CSV («recurso de entrada», «recursos pedidos»).
+  async function solicitudes() {
+    if (!configurado()) return [];
+    const salida = [];
+    for (const r of rows(q.todas)) {
+      const nombre = aFormatoNuevo(JSON.parse(r.config)).nombre;
+      const poner = (usuario, fecha) => { const u = String(usuario || '').trim().replace(/^@+/, '').toLowerCase(); if (u && fecha) salida.push({ automatizacion: r.id, nombre, usuario: u, fecha }); };
+      if (r.zernio_id) {
+        const { logs = [] } = await zernio('GET', `/comment-automations/${r.zernio_id}`).catch(() => ({}));
+        for (const l of logs) poner(l.commenterUsername, l.createdAt);
+      }
+      for (const rama of flujosDe(r)) {
+        const { executions = [] } = await zernio('GET', `/workflows/${rama.id}/executions?limit=100`).catch(() => ({}));
+        for (const x of executions) { const v = x.variables || {}; poner(v['contact.handle'] || v.contact?.handle, x.createdAt || x.startedAt); }
+      }
+    }
+    return salida;
+  }
+
   async function estado() {
     if (!configurado()) return { configurado: false, meta: Boolean(graph()) };
     try {
@@ -723,7 +743,7 @@ export function createAutomatizaciones({ db, env = process.env, fetchImpl = fetc
     } catch (e) { return { configurado: true, meta: Boolean(graph()), error: e.message }; }
   }
 
-  return { configurado, estado, conectar, medios, crear, editar, duplicar, pausar, borrar, listar, detalle, revisarSiguientes, actualizarGrafos, embudo, iniciar, parar, zernio, cuenta };
+  return { configurado, estado, conectar, medios, crear, editar, duplicar, pausar, borrar, listar, detalle, revisarSiguientes, actualizarGrafos, embudo, solicitudes, iniciar, parar, zernio, cuenta };
 }
 
 // Para comprobar el tablero sin guardar (la interfaz enseña errores y avisos)

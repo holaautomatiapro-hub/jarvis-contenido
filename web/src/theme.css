@@ -2210,7 +2210,7 @@ button.est-boton:hover { background: color-mix(in srgb, var(--cat) 30%, transpar
 .mc-plantillas-lista small { color: var(--muted); }
 /* Contactos */
 .mc-tabla { display: flex; flex-direction: column; border: 1px solid var(--border-soft); border-radius: 10px; overflow: hidden; }
-.mc-fila { display: grid; grid-template-columns: 36px minmax(160px, 1.4fr) minmax(140px, 1.2fr) 130px 80px; gap: 10px; align-items: center; padding: 8px 12px; border: 0; border-bottom: 1px solid var(--border-soft); background: none; color: var(--text); text-align: left; font-size: 12px; cursor: pointer; width: 100%; }
+.mc-fila { display: grid; grid-template-columns: 36px minmax(160px, 1.3fr) minmax(150px, 1.2fr) minmax(120px, 1fr) 120px 70px; gap: 10px; align-items: center; padding: 8px 12px; border: 0; border-bottom: 1px solid var(--border-soft); background: none; color: var(--text); text-align: left; font-size: 12px; cursor: pointer; width: 100%; }
 .mc-fila:last-child { border-bottom: 0; }
 .mc-fila:hover:not(.mc-fila-cab) { background: color-mix(in srgb, var(--accent) 6%, transparent); }
 .mc-fila-cab { cursor: default; color: var(--muted); font-size: 11px; text-transform: uppercase; letter-spacing: .04em; background: color-mix(in srgb, var(--hondo) 40%, transparent); }
@@ -2256,8 +2256,11 @@ button.est-boton:hover { background: color-mix(in srgb, var(--cat) 30%, transpar
   .mc-lista { max-height: 300px; border-right: 0; border-bottom: 1px solid var(--border-soft); }
   .mc-chat { min-height: 480px; }
   .mc-fila { grid-template-columns: 32px minmax(0, 1fr) 70px; }
-  .mc-fila > :nth-child(3), .mc-fila > :nth-child(4) { display: none; }
+  .mc-fila > :nth-child(3), .mc-fila > :nth-child(4), .mc-fila > :nth-child(5) { display: none; }
   .mc-ficha { grid-template-columns: 1fr; }
   .mc-config { grid-template-columns: 1fr; }
 }
 .mc-carpeta { display: flex; justify-content: flex-start; align-items: center; gap: 6px; }
+.mc-recursos { display: flex; flex-direction: column; gap: 6px; }
+.mc-recursos > div { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; padding: 7px 10px; border: 1px solid var(--border-soft); border-radius: 8px; font-size: 12.5px; }
+.mc-recursos small { color: var(--muted); margin-left: auto; }

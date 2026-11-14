@@ -24,6 +24,9 @@ function falso() {
     const c = ruta.match(/^\/contacts\/(c\d)$/);
     if (c && (o.method || 'GET') === 'GET') return json({ contact: contactos.find((x) => x.id === c[1]), channels: [{ platform: 'instagram', displayIdentifier: 'ana.fit', platformIdentifier: 'p1', conversationId: 'conv1', accountId: 'acc1' }] });
     if (c && o.method === 'PATCH') { Object.assign(contactos.find((x) => x.id === c[1]), body); return json({ success: true }); }
+    if (ruta === '/comment-automations/ca3') return json({ automation: {}, logs: [{ commenterUsername: 'ana.fit', createdAt: '2026-11-02T09:00:00Z' }] });
+    if (ruta === '/comment-automations/ca4') return json({ automation: {}, logs: [{ commenterUsername: 'Ana.Fit', createdAt: '2026-11-08T18:30:00Z' }, { commenterUsername: 'ana.fit', createdAt: '2026-11-09T10:00:00Z' }] });
+    if (ruta.startsWith('/workflows/wf3/executions')) return json({ executions: [{ variables: { 'contact.handle': 'ana.fit' }, createdAt: '2026-11-02T09:01:00Z' }] });
     if (ruta.startsWith('/inbox/conversations?')) return json({ data: [{ id: 'conv1', accountId: 'acc1', platform: 'instagram', participantId: 'p1', participantName: 'Ana', lastMessage: 'Hola, ¿precio?', unreadCount: 2, status: 'active', instagramProfile: { isFollower: true } }, { id: 'conv2', accountId: 'acc1', platform: 'instagram', participantId: 'p9', participantName: 'Otro', lastMessage: 'Gracias', unreadCount: 0, status: 'active' }] });
     if (/\/messages\?/.test(ruta)) return json({ messages: [{ id: 'm1', message: 'Hola', direction: 'incoming', createdAt: '2026-11-10T10:00:00Z' }, { id: 'm2', message: 'Hola Ana', direction: 'outgoing', createdAt: '2026-11-10T10:01:00Z' }] });
     if (/\/messages$/.test(ruta) && o.method === 'POST') {
@@ -70,15 +73,25 @@ describe('Manychat', () => {
     assert.equal((await mc.contactos({ automatizacion: '3' })).total, 1);
   });
 
-  test('descargar los contactos filtrados en CSV, con sus campos', async () => {
-    const { mc } = montar();
+  test('CSV: usuario, nombre, enlace al perfil, recurso de entrada, último mensaje y recursos pedidos', async () => {
+    const { mc, db } = montar();
+    db.prepare('INSERT INTO automatizaciones (id, config, zernio_id, flujos) VALUES (?, ?, ?, ?)').run(3, JSON.stringify({ nombre: 'Guía de reels' }), 'ca3', JSON.stringify([{ rama: 'b0', id: 'wf3' }]));
+    db.prepare('INSERT INTO automatizaciones (id, config, zernio_id) VALUES (?, ?, ?)').run(4, JSON.stringify({ nombre: 'Plantilla Notion' }), 'ca4');
     const r = await mc.csv({ etiqueta: 'lead' });
     assert.equal(r.total, 1);
     assert.match(r.nombre, /^contactos-2026-11-14\.csv$/);
-    const lineas = r.contenido.replace('﻿', '').trim().split('\r\n');
+    const lineas = r.contenido.replace('\ufeff', '').trim().split('\r\n');
     assert.equal(lineas.length, 2);
-    assert.match(lineas[0], /^Usuario;Nombre;Canal;Etiquetas;.*;respuesta_p1$/);
-    assert.match(lineas[1], /^@ana\.fit;Ana Pérez;instagram;lead;sí;no;4;0;.*;Entrenadora$/);
+    assert.equal(lineas[0], 'Usuario;Nombre;Perfil de Instagram;Recurso de entrada;Fecha de entrada;Último mensaje;Recursos pedidos;Qué recursos');
+    // Entró por la guía (2 nov, 10:00 en España); luego pidió la plantilla; su último mensaje, el 10 nov a las 11:00
+    assert.equal(lineas[1], '@ana.fit;Ana Pérez;https://www.instagram.com/ana.fit/;Guía de reels;02/11/2026 10:00;10/11/2026 11:00;2;Guía de reels · Plantilla Notion');
+    // Se guarda: aunque Zernio deje de devolver esos registros, el CSV los sigue teniendo (y no se duplican)
+    await mc.csv({});
+    assert.equal(db.prepare('SELECT COUNT(*) AS n FROM mc_solicitudes').get().n, 2);
+    const ficha = await mc.fichaContacto('c1');
+    assert.deepEqual(ficha.recursos.map((x) => x.nombre), ['Guía de reels', 'Plantilla Notion']);
+    const lista = await mc.contactos({});
+    assert.equal(lista.lista.find((c) => c.id === 'c2').recursoEntrada, null);
   });
 
   test('bandeja: conversaciones con su contacto, filtros, mensajes y enviar (también fuera de las 24 h)', async () => {
