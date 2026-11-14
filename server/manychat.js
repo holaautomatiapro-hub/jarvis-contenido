@@ -14,7 +14,9 @@ export class ManychatError extends Error {
 const corto = (s, n) => String(s ?? '').trim().slice(0, n);
 const SISTEMA = new Set([ETIQUETA_BLOQUEADO, ETIQUETA_PAUSADO]);
 export const etiquetaVisible = (t) => !SISTEMA.has(t) && !String(t).startsWith('jarvis-auto-');
-export const normalizarUsuario = (u) => String(u || '').trim().replace(/^@+/, '').replace(/^https?:\/\/(www\.)?instagram\.com\//i, '').replace(/[/?#].*$/, '').toLowerCase();
+export const normalizarUsuario = (u) => String(u || '').trim().replace(/^@+/, '').replace(/^https?:\/\/(www\.)?instagram\.com\//i, '').replace(/[/?#].*$/, '').replace(/\s*\(\d+\)$/, '').toLowerCase();
+// Zernio da el contacto como «usuario (id)» o «Nombre Visible (id)»: solo vale como usuario si lo parece
+export const usuarioDeZernio = (d) => { const u = normalizarUsuario(d); return /^[a-z0-9._]{1,30}$/.test(u) ? u : null; };
 const usuarioValido = (u) => /^[a-z0-9._]{1,30}$/.test(u);
 
 // Una fila del CSV (comillas solo cuando hacen falta; ; y saltos de línea dentro de un campo, entre comillas)
@@ -48,14 +50,22 @@ export function createManychat({ db, auto, alCambiar = () => {}, log = () => {},
     contacto_id TEXT PRIMARY KEY,
     hasta INTEGER
   );
-  CREATE TABLE IF NOT EXISTS mc_solicitudes (
-    usuario TEXT NOT NULL,
+  CREATE TABLE IF NOT EXISTS mc_pedidos (
+    clave TEXT NOT NULL,
     automatizacion_id INTEGER NOT NULL,
     nombre TEXT,
+    usuario TEXT,
+    participante TEXT,
+    contacto TEXT,
     primera TEXT NOT NULL,
     ultima TEXT NOT NULL,
-    PRIMARY KEY (usuario, automatizacion_id)
-  );`);
+    PRIMARY KEY (clave, automatizacion_id)
+  );
+  CREATE TABLE IF NOT EXISTS mc_usuarios (
+    participante TEXT PRIMARY KEY,
+    usuario TEXT NOT NULL
+  );
+  DROP TABLE IF EXISTS mc_solicitudes;`);
   const z = (...a) => auto.zernio(...a);
   const configurado = () => auto.configurado();
 
@@ -75,8 +85,10 @@ export function createManychat({ db, auto, alCambiar = () => {}, log = () => {},
   }
   const olvidar = () => { cache = null; };
   const pausas = () => Object.fromEntries(rows(db.prepare('SELECT * FROM mc_pausas')).map((p) => [p.contacto_id, p.hasta]));
-  const contacto = (c, p = pausas()) => ({
-    id: c.id, nombre: c.name || null, usuario: c.displayIdentifier || null, foto: c.avatarUrl || null, canal: c.platform || null,
+  // Usuario de Instagram de cada contacto: el que viene en los comentarios (por su id de Instagram) o, si no, el de Zernio
+  const usuariosConocidos = () => Object.fromEntries(rows(db.prepare('SELECT * FROM mc_usuarios')).map((u) => [u.participante, u.usuario]));
+  const contacto = (c, p = pausas(), u = usuariosConocidos()) => ({
+    id: c.id, nombre: c.name || null, usuario: u[c.platformIdentifier] || usuarioDeZernio(c.displayIdentifier), foto: c.avatarUrl || null, canal: c.platform || null,
     participante: c.platformIdentifier || null,
     etiquetas: (c.tags || []).filter(etiquetaVisible), bloqueado: Boolean(c.isBlocked) || (c.tags || []).includes(ETIQUETA_BLOQUEADO),
     pausado: (c.tags || []).includes(ETIQUETA_PAUSADO), pausaHasta: p[c.id] || null,
@@ -91,13 +103,19 @@ export function createManychat({ db, auto, alCambiar = () => {}, log = () => {},
   async function sincronizarSolicitudes({ forzar = false } = {}) {
     if (!configurado() || (!forzar && ahora() - ultimaSync < 10 * 60000)) return;
     ultimaSync = ahora();
-    const guardar = db.prepare(`INSERT INTO mc_solicitudes (usuario, automatizacion_id, nombre, primera, ultima) VALUES (?, ?, ?, ?, ?)
-      ON CONFLICT (usuario, automatizacion_id) DO UPDATE SET nombre = excluded.nombre,
+    const guardar = db.prepare(`INSERT INTO mc_pedidos (clave, automatizacion_id, nombre, usuario, participante, contacto, primera, ultima) VALUES (?, ?, ?, ?, ?, ?, ?, ?)
+      ON CONFLICT (clave, automatizacion_id) DO UPDATE SET nombre = excluded.nombre,
+        usuario = COALESCE(excluded.usuario, usuario), participante = COALESCE(excluded.participante, participante), contacto = COALESCE(excluded.contacto, contacto),
         primera = MIN(primera, excluded.primera), ultima = MAX(ultima, excluded.ultima)`);
+    const conocido = db.prepare('INSERT INTO mc_usuarios (participante, usuario) VALUES (?, ?) ON CONFLICT (participante) DO UPDATE SET usuario = excluded.usuario');
     for (const x of await auto.solicitudes()) {
       const f = new Date(x.fecha);
       if (Number.isNaN(f.getTime())) continue;
-      guardar.run(x.usuario, x.automatizacion, x.nombre || null, f.toISOString(), f.toISOString());
+      const usuario = x.usuario && /^[a-z0-9._]{1,30}$/.test(x.usuario) ? x.usuario : null;
+      const clave = x.participante ? `p:${x.participante}` : x.contacto ? `c:${x.contacto}` : usuario ? `u:${usuario}` : null;
+      if (!clave) continue;
+      if (x.participante && usuario) conocido.run(x.participante, usuario);
+      guardar.run(clave, x.automatizacion, x.nombre || null, usuario, x.participante || null, x.contacto || null, f.toISOString(), f.toISOString());
     }
   }
   const sincronizarDeFondo = () => sincronizarSolicitudes().catch((e) => log(`No se pudieron leer los recursos pedidos: ${e.message}`));
@@ -110,11 +128,22 @@ export function createManychat({ db, auto, alCambiar = () => {}, log = () => {},
   }
   // Lo que ha pedido cada persona, del primero al último (las que solo conocemos por la etiqueta, sin fecha, al final)
   function conRecursos(lista) {
-    const porUsuario = {};
-    for (const s of rows(db.prepare('SELECT * FROM mc_solicitudes ORDER BY primera'))) (porUsuario[s.usuario] ||= []).push(s);
+    const por = { p: {}, c: {}, u: {} };
+    for (const s of rows(db.prepare('SELECT * FROM mc_pedidos ORDER BY primera'))) {
+      if (s.participante) (por.p[s.participante] ||= []).push(s);
+      if (s.contacto) (por.c[s.contacto] ||= []).push(s);
+      if (s.usuario) (por.u[s.usuario] ||= []).push(s);
+    }
     const nombres = nombresAutomatizaciones();
     return lista.map((c) => {
-      const pedidos = (c.usuario ? porUsuario[c.usuario.toLowerCase()] || [] : []).map((s) => ({ id: s.automatizacion_id, nombre: nombres[s.automatizacion_id] || s.nombre || `Automatización ${s.automatizacion_id}`, fecha: s.primera }));
+      const pedidos = [];
+      // Por su id de Instagram, por su ficha de Zernio o por su usuario; cada automatización una vez, con su primera fecha
+      for (const s of [...(por.p[c.participante] || []), ...(por.c[c.id] || []), ...(c.usuario ? por.u[c.usuario] || [] : [])]) {
+        const ya = pedidos.find((x) => x.id === s.automatizacion_id);
+        if (ya) { if (s.primera < ya.fecha) ya.fecha = s.primera; continue; }
+        pedidos.push({ id: s.automatizacion_id, nombre: nombres[s.automatizacion_id] || s.nombre || `Automatización ${s.automatizacion_id}`, fecha: s.primera });
+      }
+      pedidos.sort((a, b) => a.fecha.localeCompare(b.fecha));
       for (const id of c.automatizaciones) if (!pedidos.some((x) => x.id === id)) pedidos.push({ id, nombre: nombres[id] || `Automatización ${id}`, fecha: null });
       return { ...c, recursos: pedidos, recursoEntrada: pedidos[0] || null };
     });
@@ -125,7 +154,7 @@ export function createManychat({ db, auto, alCambiar = () => {}, log = () => {},
     const b = String(q).trim().toLowerCase();
     return lista.filter((c) => (!b || `${c.nombre || ''} ${c.usuario || ''}`.toLowerCase().includes(b))
       && (!etiqueta || c.etiquetas.includes(etiqueta))
-      && (!automatizacion || c.automatizaciones.includes(Number(automatizacion)))
+      && (!automatizacion || (c.recursos ? c.recursos.some((x) => x.id === Number(automatizacion)) : c.automatizaciones.includes(Number(automatizacion))))
       && (!estado || (estado === 'bloqueado' ? c.bloqueado : estado === 'pausado' ? c.pausado : estado === 'suscrito' ? c.suscrito && !c.bloqueado : true))
       && (!desde || String(c.creado || '').slice(0, 10) >= desde)
       && (!hasta || String(c.creado || '').slice(0, 10) <= hasta));
@@ -134,11 +163,13 @@ export function createManychat({ db, auto, alCambiar = () => {}, log = () => {},
   async function contactos(filtros = {}) {
     sincronizarDeFondo();
     const p = pausas();
-    const lista = filtrar((await todosLosContactos({ forzar: filtros.forzar === '1' })).map((c) => contacto(c, p)), filtros)
+    const u = usuariosConocidos();
+    const todos = conRecursos((await todosLosContactos({ forzar: filtros.forzar === '1' })).map((c) => contacto(c, p, u)));
+    const lista = filtrar(todos, filtros)
       .sort((a, b) => String(b.ultimoRecibido || b.creado || '').localeCompare(String(a.ultimoRecibido || a.creado || '')));
     const etiquetas = {};
-    for (const c of (await todosLosContactos()).map((x) => contacto(x, p))) for (const t of c.etiquetas) etiquetas[t] = (etiquetas[t] || 0) + 1;
-    return { total: lista.length, lista: conRecursos(lista.slice(0, Number(filtros.limite) || 500)), etiquetas: Object.entries(etiquetas).sort((a, b) => b[1] - a[1]).map(([nombre, n]) => ({ nombre, n })) };
+    for (const c of todos) for (const t of c.etiquetas) etiquetas[t] = (etiquetas[t] || 0) + 1;
+    return { total: lista.length, lista: lista.slice(0, Number(filtros.limite) || 500), etiquetas: Object.entries(etiquetas).sort((a, b) => b[1] - a[1]).map(([nombre, n]) => ({ nombre, n })) };
   }
 
   // Fechas del CSV a la española y en hora de España: 14/11/2026 18:30
@@ -148,12 +179,12 @@ export function createManychat({ db, auto, alCambiar = () => {}, log = () => {},
   async function csv(filtros = {}) {
     try { await sincronizarSolicitudes({ forzar: true }); } catch (e) { log(`No se pudieron leer los recursos pedidos: ${e.message}`); }
     const p = pausas();
-    const lista = conRecursos(filtrar((await todosLosContactos({ forzar: true })).map((c) => contacto(c, p)), filtros));
+    const u = usuariosConocidos();
+    const lista = filtrar(conRecursos((await todosLosContactos({ forzar: true })).map((c) => contacto(c, p, u))), filtros);
     const columnas = [
-      { nombre: 'Usuario', valor: (c) => (c.usuario ? `@${c.usuario}` : '') },
-      { nombre: 'Nombre', valor: (c) => c.nombre },
+      // Sin usuario conocido (Zernio solo da su nombre visible), se pone ese nombre para no dejar la fila sin nadie
+      { nombre: 'Usuario', valor: (c) => (c.usuario ? `@${c.usuario}` : c.nombre || '') },
       { nombre: 'Perfil de Instagram', valor: (c) => (c.usuario && c.canal !== 'facebook' && c.canal !== 'whatsapp' ? `https://www.instagram.com/${c.usuario}/` : '') },
-      { nombre: 'Recurso de entrada', valor: (c) => c.recursoEntrada?.nombre || '' },
       { nombre: 'Fecha de entrada', valor: (c) => fecha(c.recursoEntrada?.fecha || (c.recursoEntrada ? c.creado : null)) },
       { nombre: 'Último mensaje', valor: (c) => fecha(ultimoMensaje(c)) },
       { nombre: 'Recursos pedidos', valor: (c) => c.recursos.length },
@@ -205,7 +236,8 @@ export function createManychat({ db, auto, alCambiar = () => {}, log = () => {},
     const r = await z('GET', `/inbox/conversations?profileId=${encodeURIComponent(c.profileId)}&limit=100&sortOrder=desc&status=${estado === 'archived' ? 'archived' : 'active'}${canal ? `&platform=${encodeURIComponent(canal)}` : ''}`);
     const p = pausas();
     const porParticipante = {};
-    try { for (const x of await todosLosContactos()) if (x.platformIdentifier) porParticipante[x.platformIdentifier] = contacto(x, p); } catch { /* sin contactos: la bandeja sigue */ }
+    const u = usuariosConocidos();
+    try { for (const x of await todosLosContactos()) if (x.platformIdentifier) porParticipante[x.platformIdentifier] = contacto(x, p, u); } catch { /* sin contactos: la bandeja sigue */ }
     const b = String(q).trim().toLowerCase();
     const lista = (r.data || []).map((x) => {
       const ct = porParticipante[x.participantId] || null;
@@ -292,10 +324,12 @@ export function createManychat({ db, auto, alCambiar = () => {}, log = () => {},
   async function aplicarBloqueos({ forzar = false } = {}) {
     const pendientes = rows(db.prepare('SELECT * FROM mc_bloqueos WHERE contacto_id IS NULL'));
     if (!pendientes.length || !configurado()) return { aplicados: 0 };
+    try { await sincronizarSolicitudes(); } catch { /* sin registros: se mira el usuario de Zernio */ }
+    const u = usuariosConocidos();
     const lista = await todosLosContactos({ forzar });
     let aplicados = 0;
     for (const b of pendientes) {
-      const c = lista.find((x) => normalizarUsuario(x.displayIdentifier) === b.usuario);
+      const c = lista.find((x) => (u[x.platformIdentifier] || usuarioDeZernio(x.displayIdentifier)) === b.usuario);
       if (!c) continue;
       await cambiarEtiquetaSistema(c.id, ETIQUETA_BLOQUEADO, true, { isBlocked: true });
       db.prepare('UPDATE mc_bloqueos SET contacto_id = ? WHERE id = ?').run(c.id, b.id);

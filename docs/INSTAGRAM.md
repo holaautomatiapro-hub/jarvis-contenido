@@ -177,9 +177,10 @@ escribir primero a alguien que nunca te ha escrito.
 
 Todas las personas que han pasado por tus automatizaciones o te han escrito, con filtros (buscador, etiqueta,
 automatización en la que entró, suscritos / en pausa / bloqueados y fecha de alta). **Descargar CSV** baja exactamente
-lo filtrado (se abre en Excel o Google Sheets, separado por `;`) con estas columnas: usuario, nombre, enlace a su perfil
-de Instagram, **recurso de entrada** (la primera automatización que le llegó) y su fecha, fecha del último mensaje,
-**cuántos recursos ha pedido** y cuáles. Los recursos salen de lo que comentaron en tus automatizaciones y de los flujos
+lo filtrado (se abre en Excel o Google Sheets, separado por `;`) con estas columnas: usuario, enlace a su perfil
+de Instagram, fecha de entrada (cuando pidió su primer recurso), fecha del último mensaje, **cuántos recursos ha pedido**
+y cuáles. Si de alguien no se conoce el usuario (Zernio a veces solo da su nombre visible), sale su nombre. El filtro
+«automatización» usa también estos recursos pedidos. Los recursos salen de lo que comentaron en tus automatizaciones y de los flujos
 en los que entraron; JARVIS los va guardando (cada pocos minutos y al descargar), así que no se pierden aunque Zernio
 solo enseñe los últimos. Pulsa en una persona para ver su ficha: datos, etiquetas, recursos pedidos con fecha, campos y
 respuestas, todo el historial de mensajes y **Abrir el chat**.
