@@ -29,7 +29,30 @@ export function aCsv(columnas, filas) {
   return `﻿${[columnas.map((c) => celda(c.nombre)).join(';'), ...filas.map((f) => columnas.map((c) => celda(c.valor(f))).join(';'))].join('\r\n')}\r\n`;
 }
 
-export function createManychat({ db, auto, alCambiar = () => {}, log = () => {}, ahora = () => Date.now() }) {
+// Columnas predeterminadas del pipeline de ventas. «criterio» es lo que lee la IA para saber cuándo mover a alguien.
+export const FASES_BASE = [
+  { id: 'iniciada', nombre: 'Iniciada', criterio: 'Ha entrado por una automatización o te ha escrito, pero aún no hay una conversación de verdad (solo la palabra clave, el recurso o un saludo).' },
+  { id: 'conexion', nombre: 'Conexión', criterio: 'Responde y hay conversación: se rompe el hielo, da las gracias por el recurso, comenta algo personal o general.' },
+  { id: 'descubrimiento', nombre: 'Descubrimiento', criterio: 'Cuenta a qué se dedica, cómo es su negocio o su situación, qué problema tiene o qué quiere conseguir.' },
+  { id: 'cualificacion', nombre: 'Cualificación', criterio: 'Se comprueba si encaja: tiene el problema de verdad, urgencia, capacidad de invertir o decide él/ella.' },
+  { id: 'propuesta', nombre: 'Propuesta de llamada', criterio: 'Se le ha propuesto una llamada o reunión y aún no ha contestado si sí o no.' },
+  { id: 'pendiente_agendar', nombre: 'Pendiente de agendar', criterio: 'Ha dicho que sí a la llamada pero todavía no ha reservado día y hora.' },
+  { id: 'agendado', nombre: 'Agendado', criterio: 'Ha reservado o confirmado un día y una hora para la llamada.' },
+  { id: 'ganado', nombre: 'Ganado', criterio: 'Ha comprado, pagado o confirmado que entra.' },
+  { id: 'perdido', nombre: 'Perdido', criterio: 'Dice que no le interesa, que no puede, que no encaja o pide que no se le escriba más.' },
+];
+const FINALES = new Set(['ganado', 'perdido']);
+
+// Saca el primer JSON (lista) de la respuesta de la IA
+export function leerJsonLista(texto) {
+  const t = String(texto || '');
+  const i = t.indexOf('[');
+  const j = t.lastIndexOf(']');
+  if (i < 0 || j < i) return [];
+  try { const v = JSON.parse(t.slice(i, j + 1)); return Array.isArray(v) ? v : []; } catch { return []; }
+}
+
+export function createManychat({ db, auto, ia = null, alCambiar = () => {}, log = () => {}, ahora = () => Date.now() }) {
   db.exec(`CREATE TABLE IF NOT EXISTS mc_plantillas (
     id INTEGER PRIMARY KEY,
     nombre TEXT NOT NULL,
@@ -65,7 +88,36 @@ export function createManychat({ db, auto, alCambiar = () => {}, log = () => {},
     participante TEXT PRIMARY KEY,
     usuario TEXT NOT NULL
   );
-  DROP TABLE IF EXISTS mc_solicitudes;`);
+  DROP TABLE IF EXISTS mc_solicitudes;
+  CREATE TABLE IF NOT EXISTS mc_cerradas (
+    conversacion_id TEXT PRIMARY KEY,
+    cerrada TEXT NOT NULL
+  );
+  CREATE TABLE IF NOT EXISTS mc_fases (
+    id TEXT PRIMARY KEY,
+    nombre TEXT NOT NULL,
+    criterio TEXT,
+    orden INTEGER NOT NULL,
+    base INTEGER NOT NULL DEFAULT 0
+  );
+  CREATE TABLE IF NOT EXISTS mc_etapas (
+    contacto_id TEXT PRIMARY KEY,
+    fase TEXT NOT NULL,
+    por TEXT NOT NULL DEFAULT 'manual',
+    motivo TEXT,
+    movido TEXT NOT NULL,
+    analizado TEXT
+  );
+  CREATE TABLE IF NOT EXISTS mc_ajustes (
+    clave TEXT PRIMARY KEY,
+    valor TEXT
+  );`);
+  if (!row(db.prepare('SELECT COUNT(*) AS n FROM mc_fases')).n) {
+    const ins = db.prepare('INSERT INTO mc_fases (id, nombre, criterio, orden, base) VALUES (?, ?, ?, ?, 1)');
+    FASES_BASE.forEach((f, i) => ins.run(f.id, f.nombre, f.criterio, i));
+  }
+  const ajuste = (k, def = null) => row(db.prepare('SELECT valor FROM mc_ajustes WHERE clave = ?'), k)?.valor ?? def;
+  const ponerAjuste = (k, v) => db.prepare('INSERT INTO mc_ajustes (clave, valor) VALUES (?, ?) ON CONFLICT (clave) DO UPDATE SET valor = excluded.valor').run(k, v == null ? null : String(v));
   const z = (...a) => auto.zernio(...a);
   const configurado = () => auto.configurado();
 
@@ -199,7 +251,7 @@ export function createManychat({ db, auto, alCambiar = () => {}, log = () => {},
     const [c] = conRecursos([contacto({ ...contact, platform: channels[0]?.platform, platformIdentifier: channels[0]?.platformIdentifier, displayIdentifier: channels[0]?.displayIdentifier })]);
     const canal = channels.find((x) => x.conversationId) || null;
     const mensajes = canal ? await mensajesDe(canal.conversationId, canal.accountId).catch(() => []) : [];
-    return { ...c, canales: channels.map((x) => ({ canal: x.platform, usuario: x.displayIdentifier, conversacion: x.conversationId, cuenta: x.accountId, activo: x.lastActiveAt })), conversacion: canal ? { id: canal.conversationId, cuenta: canal.accountId } : null, mensajes };
+    return { ...c, etapa: etapaDe(c.id), canales: channels.map((x) => ({ canal: x.platform, usuario: x.displayIdentifier, conversacion: x.conversationId, cuenta: x.accountId, activo: x.lastActiveAt })), conversacion: canal ? { id: canal.conversationId, cuenta: canal.accountId } : null, mensajes };
   }
 
   async function ponerEtiquetas(id, etiquetas = []) {
@@ -231,15 +283,32 @@ export function createManychat({ db, auto, alCambiar = () => {}, log = () => {},
   }
 
   // ---------- Bandeja ----------
+  // Cerrar un chat: se archiva en Zernio y además se apunta aquí, así se quita de «Abiertos» aunque Zernio tarde o no lo
+  // archive. Si la persona vuelve a escribir después de cerrarlo, se reabre solo (como en ManyChat).
+  const cerradas = () => Object.fromEntries(rows(db.prepare('SELECT * FROM mc_cerradas')).map((x) => [x.conversacion_id, x.cerrada]));
+  const sigueCerrada = (x, cerr) => Boolean(cerr[x.id]) && !(x.updatedTime && x.updatedTime > cerr[x.id]);
+
   async function conversaciones({ estado = 'active', noLeidos = '', etiqueta = '', q = '', canal = '' } = {}) {
     const c = await auto.cuenta();
-    const r = await z('GET', `/inbox/conversations?profileId=${encodeURIComponent(c.profileId)}&limit=100&sortOrder=desc&status=${estado === 'archived' ? 'archived' : 'active'}${canal ? `&platform=${encodeURIComponent(canal)}` : ''}`);
+    const pedir = (st) => z('GET', `/inbox/conversations?profileId=${encodeURIComponent(c.profileId)}&limit=100&sortOrder=desc&status=${st}${canal ? `&platform=${encodeURIComponent(canal)}` : ''}`);
+    const r = await pedir('active');
+    const cerr = cerradas();
+    // Las que volvieron a escribir tras cerrarlas: se reabren
+    for (const x of r.data || []) if (cerr[x.id] && !sigueCerrada(x, cerr)) { db.prepare('DELETE FROM mc_cerradas WHERE conversacion_id = ?').run(x.id); delete cerr[x.id]; }
+    let datos;
+    if (estado === 'archived') {
+      const a = await pedir('archived').catch(() => ({ data: [] }));
+      const vistos = new Set();
+      datos = [...(a.data || []).map((x) => ({ ...x, status: 'archived' })), ...(r.data || []).filter((x) => sigueCerrada(x, cerr)).map((x) => ({ ...x, status: 'archived' }))]
+        .filter((x) => !vistos.has(x.id) && vistos.add(x.id))
+        .sort((x, y) => String(y.updatedTime || '').localeCompare(String(x.updatedTime || '')));
+    } else datos = (r.data || []).filter((x) => !sigueCerrada(x, cerr));
     const p = pausas();
     const porParticipante = {};
     const u = usuariosConocidos();
     try { for (const x of await todosLosContactos()) if (x.platformIdentifier) porParticipante[x.platformIdentifier] = contacto(x, p, u); } catch { /* sin contactos: la bandeja sigue */ }
     const b = String(q).trim().toLowerCase();
-    const lista = (r.data || []).map((x) => {
+    const lista = datos.map((x) => {
       const ct = porParticipante[x.participantId] || null;
       return {
         id: x.id, cuenta: x.accountId, canal: x.platform, nombre: x.participantName || ct?.nombre || ct?.usuario || 'Sin nombre', usuario: ct?.usuario || null,
@@ -290,7 +359,16 @@ export function createManychat({ db, auto, alCambiar = () => {}, log = () => {},
     }
   }
   const leido = (id, cuenta) => z('POST', `/inbox/conversations/${encodeURIComponent(id)}/read`, { accountId: cuenta }).then(() => ({ ok: true }));
-  const archivar = (id, cuenta, estado) => z('PATCH', `/inbox/conversations/${encodeURIComponent(id)}`, { accountId: cuenta, status: estado === 'archived' ? 'archived' : 'active' }).then(() => ({ ok: true }));
+  async function archivar(id, cuenta, estado) {
+    if (!id) throw new ManychatError('Falta la conversación');
+    const cerrar = estado === 'archived';
+    if (cerrar) db.prepare('INSERT INTO mc_cerradas (conversacion_id, cerrada) VALUES (?, ?) ON CONFLICT (conversacion_id) DO UPDATE SET cerrada = excluded.cerrada').run(String(id), new Date(ahora()).toISOString());
+    else db.prepare('DELETE FROM mc_cerradas WHERE conversacion_id = ?').run(String(id));
+    let zernio = true;
+    try { if (cuenta) await z('PATCH', `/inbox/conversations/${encodeURIComponent(id)}`, { accountId: cuenta, status: cerrar ? 'archived' : 'active' }); else zernio = false; }
+    catch (e) { zernio = false; log(`Zernio no archivó la conversación ${id}: ${e.message}`); }
+    return { ok: true, estado: cerrar ? 'archived' : 'active', zernio };
+  }
 
   // ---------- Plantillas ----------
   const plantilla = (r) => ({ ...r, botones: JSON.parse(r.botones || '[]') });
@@ -374,6 +452,133 @@ export function createManychat({ db, auto, alCambiar = () => {}, log = () => {},
     return accounts.filter((a) => ['instagram', 'facebook', 'whatsapp'].includes(a.platform)).map((a) => ({ id: a._id, canal: a.platform, usuario: a.username || a.displayName || null, activo: a.isActive !== false, reconectar: Boolean(a.needsReconnection) }));
   }
 
+  // ---------- Pipeline de ventas ----------
+  const fases = () => rows(db.prepare('SELECT * FROM mc_fases ORDER BY orden')).map((f) => ({ id: f.id, nombre: f.nombre, criterio: f.criterio || '', base: Boolean(f.base), final: FINALES.has(f.id) }));
+  const etapas = () => Object.fromEntries(rows(db.prepare('SELECT * FROM mc_etapas')).map((e) => [e.contacto_id, e]));
+
+  // Columnas: se pueden añadir, renombrar, cambiar su criterio y reordenar; las predeterminadas no se borran
+  function guardarFases(lista) {
+    if (!Array.isArray(lista) || !lista.length) throw new ManychatError('Faltan las columnas');
+    const actuales = fases();
+    const nuevas = lista.map((f) => ({ id: f.id && actuales.some((a) => a.id === f.id) ? f.id : null, nombre: corto(f.nombre, 40), criterio: corto(f.criterio, 400) }));
+    if (nuevas.some((f) => !f.nombre)) throw new ManychatError('Cada columna necesita un nombre');
+    for (const b of actuales.filter((a) => a.base)) if (!nuevas.some((f) => f.id === b.id)) throw new ManychatError(`«${b.nombre}» es una columna predeterminada: se puede renombrar o mover, pero no borrar`);
+    const quedan = new Set(nuevas.map((f) => f.id).filter(Boolean));
+    db.exec('BEGIN');
+    try {
+      for (const a of actuales.filter((x) => !quedan.has(x.id))) {
+        db.prepare("UPDATE mc_etapas SET fase = 'iniciada' WHERE fase = ?").run(a.id);
+        db.prepare('DELETE FROM mc_fases WHERE id = ?').run(a.id);
+      }
+      nuevas.forEach((f, i) => {
+        if (f.id) db.prepare('UPDATE mc_fases SET nombre = ?, criterio = ?, orden = ? WHERE id = ?').run(f.nombre, f.criterio || null, i, f.id);
+        else db.prepare('INSERT INTO mc_fases (id, nombre, criterio, orden, base) VALUES (?, ?, ?, ?, 0)').run(`f_${ahora().toString(36)}_${i}`, f.nombre, f.criterio || null, i);
+      });
+      db.exec('COMMIT');
+    } catch (e) { db.exec('ROLLBACK'); throw e; }
+    alCambiar();
+    return fases();
+  }
+
+  function mover(contactoId, fase, { por = 'manual', motivo = null } = {}) {
+    if (!contactoId) throw new ManychatError('Falta el contacto');
+    if (!fases().some((f) => f.id === fase)) throw new ManychatError('Esa columna no existe');
+    const ya = new Date(ahora()).toISOString();
+    db.prepare(`INSERT INTO mc_etapas (contacto_id, fase, por, motivo, movido) VALUES (?, ?, ?, ?, ?)
+      ON CONFLICT (contacto_id) DO UPDATE SET fase = excluded.fase, por = excluded.por, motivo = excluded.motivo, movido = excluded.movido`).run(String(contactoId), fase, por, motivo ? corto(motivo, 200) : null, ya);
+    if (por === 'manual') alCambiar();
+    return { contacto: String(contactoId), fase, por, motivo, movido: ya };
+  }
+  const etapaDe = (id, e = etapas()) => {
+    const x = e[id];
+    return x ? { fase: x.fase, por: x.por, motivo: x.motivo, movido: x.movido } : { fase: 'iniciada', por: null, motivo: null, movido: null };
+  };
+
+  const estadoIa = () => ({ activo: ajuste('pipeline_ia', '1') === '1', disponible: Boolean(ia), ultima: ajuste('pipeline_ia_ultima'), error: ajuste('pipeline_ia_error'), movidos: Number(ajuste('pipeline_ia_movidos', 0)) });
+  function activarIa(activo) { ponerAjuste('pipeline_ia', activo ? '1' : '0'); return estadoIa(); }
+
+  async function pipeline() {
+    const p = pausas();
+    const u = usuariosConocidos();
+    const e = etapas();
+    const lista = conRecursos((await todosLosContactos()).map((c) => contacto(c, p, u))).filter((c) => !c.bloqueado);
+    const fs = fases();
+    const tarjetas = lista.map((c) => {
+      const et = etapaDe(c.id, e);
+      return { id: c.id, nombre: c.nombre, usuario: c.usuario, foto: c.foto, recurso: c.recursoEntrada?.nombre || null, ultimoRecibido: c.ultimoRecibido, creado: c.creado,
+        fase: fs.some((f) => f.id === et.fase) ? et.fase : 'iniciada', por: et.por, motivo: et.motivo, movido: et.movido };
+    }).sort((a, b) => String(b.ultimoRecibido || b.creado || '').localeCompare(String(a.ultimoRecibido || a.creado || '')));
+    return { fases: fs, tarjetas, ia: estadoIa() };
+  }
+
+  // La IA lee las conversaciones con mensajes nuevos y propone la fase. Reglas: solo hacia delante (o a Ganado/Perdido),
+  // nunca saca a nadie de Ganado o Perdido, y si moviste tú a alguien, no lo toca hasta que haya mensajes nuevos.
+  let analizando = false;
+  async function analizar({ forzar = false, maximo = 12 } = {}) {
+    if (!ia) throw new ManychatError('La IA no está disponible en este JARVIS (hace falta Claude Code)');
+    if (analizando) return { ...estadoIa(), enCurso: true };
+    analizando = true;
+    let movidos = 0;
+    try {
+      const fs = fases();
+      const orden = Object.fromEntries(fs.map((f, i) => [f.id, i]));
+      const e = etapas();
+      const { lista } = await conversaciones({ estado: 'active' });
+      const candidatos = lista.filter((x) => {
+        if (!x.contacto || x.contacto.bloqueado) return false;
+        const et = e[x.contacto.id];
+        if (et && FINALES.has(et.fase)) return false;
+        if (et?.por === 'manual' && x.fecha && et.movido >= x.fecha) return false;
+        return forzar || !et?.analizado || (x.fecha && x.fecha > et.analizado);
+      }).slice(0, maximo);
+      if (!candidatos.length) { ponerAjuste('pipeline_ia_ultima', new Date(ahora()).toISOString()); ponerAjuste('pipeline_ia_error', null); return { ...estadoIa(), analizados: 0, movidos: 0 }; }
+      const bloques = [];
+      for (const x of candidatos) {
+        const msgs = (await mensajesDe(x.id, x.cuenta).catch(() => [])).slice(-30);
+        const actual = etapaDe(x.contacto.id, e).fase;
+        bloques.push(`### Contacto ${x.contacto.id} (fase actual: ${actual})\n${msgs.map((m) => `[${m.de === 'yo' ? 'Cuenta' : 'Persona'}] ${(m.texto || (m.adjuntos.length ? '(adjunto)' : '')).replace(/\s+/g, ' ').slice(0, 300)}`).join('\n') || '(sin mensajes)'}`);
+      }
+      const prompt = `Eres el asistente de ventas de una cuenta de Instagram que vende por mensaje directo. Para cada conversación, di en qué fase del proceso de venta está ahora.
+
+Fases, en orden:
+${fs.map((f) => `- ${f.id} (${f.nombre}): ${f.criterio || 'sin descripción'}`).join('\n')}
+
+Los mensajes de «Cuenta» pueden ser automáticos (la entrega de un recurso no cuenta como conversación). Si no está claro, deja la fase actual.
+Responde SOLO con un JSON, sin texto alrededor:
+[{"id": "<id del contacto>", "fase": "<id de la fase>", "motivo": "<por qué, máximo 12 palabras>"}]
+
+${bloques.join('\n\n')}`;
+      const respuesta = leerJsonLista(await ia(prompt));
+      const ya = new Date(ahora()).toISOString();
+      for (const x of candidatos) {
+        const id = x.contacto.id;
+        const r = respuesta.find((y) => String(y?.id) === id);
+        const actual = etapaDe(id, e).fase;
+        if (r && r.fase in orden && r.fase !== actual && !FINALES.has(actual) && (FINALES.has(r.fase) || orden[r.fase] > (orden[actual] ?? 0))) {
+          mover(id, r.fase, { por: 'ia', motivo: r.motivo || null });
+          movidos++;
+        }
+        // Aunque no se mueva, queda leído hasta aquí (y sin «manual» si había mensajes nuevos)
+        db.prepare(`INSERT INTO mc_etapas (contacto_id, fase, por, movido, analizado) VALUES (?, 'iniciada', 'ia', ?, ?)
+          ON CONFLICT (contacto_id) DO UPDATE SET analizado = excluded.analizado`).run(id, ya, ya);
+      }
+      ponerAjuste('pipeline_ia_ultima', ya);
+      ponerAjuste('pipeline_ia_error', null);
+      ponerAjuste('pipeline_ia_movidos', Number(ajuste('pipeline_ia_movidos', 0)) + movidos);
+      if (movidos) alCambiar();
+      return { ...estadoIa(), analizados: candidatos.length, movidos };
+    } catch (err) {
+      ponerAjuste('pipeline_ia_error', err.message);
+      throw err;
+    } finally { analizando = false; }
+  }
+  async function analizarSiToca() {
+    const est = estadoIa();
+    if (!ia || !est.activo || !configurado()) return;
+    if (est.ultima && ahora() - Date.parse(est.ultima) < 15 * 60000) return;
+    try { await analizar(); } catch (e) { log(`El pipeline no pudo leer las conversaciones: ${e.message}`); }
+  }
+
   // ---------- Tareas periódicas: fin de pausas y bloqueos pendientes ----------
   async function revisar() {
     if (!configurado()) return;
@@ -382,9 +587,10 @@ export function createManychat({ db, auto, alCambiar = () => {}, log = () => {},
     }
     try { await aplicarBloqueos({ forzar: true }); } catch (e) { log(`No se pudieron revisar los bloqueos: ${e.message}`); }
     await sincronizarDeFondo();
+    await analizarSiToca();
   }
   let reloj = null;
   const iniciar = (cada = 5 * 60000) => { if (!reloj) { reloj = setInterval(() => revisar(), cada); reloj.unref?.(); } };
 
-  return { configurado, contactos, csv, fichaContacto, ponerEtiquetas, pausar, conversaciones, verConversacion, enviar, leido, archivar, plantillas, crearPlantilla, editarPlantilla, borrarPlantilla, bloqueos, bloquear, desbloquear, aplicarBloqueos, campos, crearCampo, canales, revisar, iniciar };
+  return { configurado, contactos, csv, fichaContacto, ponerEtiquetas, pausar, conversaciones, verConversacion, enviar, leido, archivar, plantillas, crearPlantilla, editarPlantilla, borrarPlantilla, bloqueos, bloquear, desbloquear, aplicarBloqueos, campos, crearCampo, canales, fases, guardarFases, mover, pipeline, analizar, activarIa, etapaDe, revisar, iniciar };
 }

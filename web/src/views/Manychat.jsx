@@ -5,6 +5,7 @@ import Automatizaciones, { ConectarZernio } from './manychat/Automatizaciones.js
 import Bandeja from './manychat/Bandeja.jsx';
 import Contactos from './manychat/Contactos.jsx';
 import Plantillas from './manychat/Plantillas.jsx';
+import Tareas from './manychat/Tareas.jsx';
 import Configuracion from './manychat/Configuracion.jsx';
 
 // «Manychat» de JARVIS, sobre Zernio: automatizaciones, bandeja de entrada, contactos, plantillas y configuración
@@ -12,6 +13,7 @@ const PESTANAS = [
   { id: 'automatizaciones', label: 'Automatizaciones', icon: 'bolt' },
   { id: 'bandeja', label: 'Bandeja de entrada', icon: 'send' },
   { id: 'contactos', label: 'Contactos', icon: 'users' },
+  { id: 'tareas', label: 'Tareas', icon: 'tasks' },
   { id: 'plantillas', label: 'Plantillas', icon: 'doc' },
   { id: 'configuracion', label: 'Configuración', icon: 'skills' },
 ];
@@ -45,6 +47,7 @@ export default function Manychat() {
           {pestana === 'automatizaciones' && <Automatizaciones />}
           {pestana === 'bandeja' && <Bandeja abrir={abrirChat} onAbierto={() => setAbrirChat(null)} />}
           {pestana === 'contactos' && <Contactos onChat={irAlChat} />}
+          {pestana === 'tareas' && <Tareas onChat={irAlChat} />}
           {pestana === 'plantillas' && <Plantillas />}
           {pestana === 'configuracion' && <Configuracion />}
         </>
