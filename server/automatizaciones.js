@@ -722,14 +722,22 @@ export function createAutomatizaciones({ db, env = process.env, fetchImpl = fetc
     const salida = [];
     for (const r of rows(q.todas)) {
       const nombre = aFormatoNuevo(JSON.parse(r.config)).nombre;
-      const poner = (usuario, fecha) => { const u = String(usuario || '').trim().replace(/^@+/, '').toLowerCase(); if (u && fecha) salida.push({ automatizacion: r.id, nombre, usuario: u, fecha }); };
+      // Zernio a veces da el usuario como «usuario (id)»: se queda solo el usuario
+      const limpio = (u) => String(u || '').trim().replace(/^@+/, '').replace(/\s*\(\d+\)$/, '').toLowerCase() || null;
+      const poner = ({ usuario, participante, contacto, fecha }) => {
+        const d = { automatizacion: r.id, nombre, usuario: limpio(usuario), participante: participante ? String(participante) : null, contacto: contacto ? String(contacto) : null, fecha };
+        if ((d.usuario || d.participante || d.contacto) && fecha) salida.push(d);
+      };
       if (r.zernio_id) {
         const { logs = [] } = await zernio('GET', `/comment-automations/${r.zernio_id}`).catch(() => ({}));
-        for (const l of logs) poner(l.commenterUsername, l.createdAt);
+        for (const l of logs) poner({ usuario: l.commenterUsername, participante: l.commenterId, fecha: l.createdAt });
       }
       for (const rama of flujosDe(r)) {
         const { executions = [] } = await zernio('GET', `/workflows/${rama.id}/executions?limit=100`).catch(() => ({}));
-        for (const x of executions) { const v = x.variables || {}; poner(v['contact.handle'] || v.contact?.handle, x.createdAt || x.startedAt); }
+        for (const x of executions) {
+          const v = x.variables || {};
+          poner({ usuario: v['contact.handle'] || v.contact?.handle, participante: v['contact.platformIdentifier'] || v.contact?.platformIdentifier, contacto: x.contactId || v['contact.id'] || v.contact?.id, fecha: x.createdAt || x.startedAt });
+        }
       }
     }
     return salida;

@@ -6,8 +6,9 @@ import { createManychat, aCsv, normalizarUsuario, etiquetaVisible } from '../ser
 
 const CLAVE = 'zernio-clave-secreta-123456';
 const CONTACTOS = [
-  { id: 'c1', name: 'Ana Pérez', displayIdentifier: 'ana.fit', platformIdentifier: 'p1', platform: 'instagram', tags: ['lead', 'jarvis-auto-3'], isSubscribed: true, customFields: { respuesta_p1: 'Entrenadora' }, messagesReceivedCount: 4, lastMessageReceivedAt: '2026-11-10T10:00:00Z', createdAt: '2026-11-01T10:00:00Z' },
+  { id: 'c1', name: 'Ana Pérez', displayIdentifier: 'ana.fit (17841400000000001)', platformIdentifier: 'p1', platform: 'instagram', tags: ['lead', 'jarvis-auto-3'], isSubscribed: true, customFields: { respuesta_p1: 'Entrenadora' }, messagesReceivedCount: 4, lastMessageReceivedAt: '2026-11-10T10:00:00Z', createdAt: '2026-11-01T10:00:00Z' },
   { id: 'c2', name: 'Spam', displayIdentifier: 'Spammer_99', platformIdentifier: 'p2', platform: 'instagram', tags: [], isSubscribed: true, createdAt: '2026-10-01T10:00:00Z' },
+  { id: 'c3', name: 'Kivy Fitness', displayIdentifier: 'Kivy Fitness (1627423061598298)', platformIdentifier: 'p3', platform: 'instagram', tags: ['lead'], isSubscribed: true, lastMessageReceivedAt: '2026-11-12T08:00:00Z', createdAt: '2026-11-03T10:00:00Z' },
 ];
 
 function falso() {
@@ -25,7 +26,7 @@ function falso() {
     if (c && (o.method || 'GET') === 'GET') return json({ contact: contactos.find((x) => x.id === c[1]), channels: [{ platform: 'instagram', displayIdentifier: 'ana.fit', platformIdentifier: 'p1', conversationId: 'conv1', accountId: 'acc1' }] });
     if (c && o.method === 'PATCH') { Object.assign(contactos.find((x) => x.id === c[1]), body); return json({ success: true }); }
     if (ruta === '/comment-automations/ca3') return json({ automation: {}, logs: [{ commenterUsername: 'ana.fit', createdAt: '2026-11-02T09:00:00Z' }] });
-    if (ruta === '/comment-automations/ca4') return json({ automation: {}, logs: [{ commenterUsername: 'Ana.Fit', createdAt: '2026-11-08T18:30:00Z' }, { commenterUsername: 'ana.fit', createdAt: '2026-11-09T10:00:00Z' }] });
+    if (ruta === '/comment-automations/ca4') return json({ automation: {}, logs: [{ commenterUsername: 'Ana.Fit', createdAt: '2026-11-08T18:30:00Z' }, { commenterUsername: 'ana.fit', createdAt: '2026-11-09T10:00:00Z' }, { commenterId: 'p3', commenterUsername: 'kivy.fit', createdAt: '2026-11-05T12:00:00Z' }] });
     if (ruta.startsWith('/workflows/wf3/executions')) return json({ executions: [{ variables: { 'contact.handle': 'ana.fit' }, createdAt: '2026-11-02T09:01:00Z' }] });
     if (ruta.startsWith('/inbox/conversations?')) return json({ data: [{ id: 'conv1', accountId: 'acc1', platform: 'instagram', participantId: 'p1', participantName: 'Ana', lastMessage: 'Hola, ¿precio?', unreadCount: 2, status: 'active', instagramProfile: { isFollower: true } }, { id: 'conv2', accountId: 'acc1', platform: 'instagram', participantId: 'p9', participantName: 'Otro', lastMessage: 'Gracias', unreadCount: 0, status: 'active' }] });
     if (/\/messages\?/.test(ruta)) return json({ messages: [{ id: 'm1', message: 'Hola', direction: 'incoming', createdAt: '2026-11-10T10:00:00Z' }, { id: 'm2', message: 'Hola Ana', direction: 'outgoing', createdAt: '2026-11-10T10:01:00Z' }] });
@@ -51,6 +52,7 @@ describe('Manychat', () => {
   test('utilidades: usuario de Instagram, etiquetas internas y CSV para Excel', () => {
     assert.equal(normalizarUsuario(' @Ana.Fit '), 'ana.fit');
     assert.equal(normalizarUsuario('https://www.instagram.com/ana.fit/?hl=es'), 'ana.fit');
+    assert.equal(normalizarUsuario('ana.fit (17841400000000001)'), 'ana.fit');
     assert.equal(etiquetaVisible('jarvis-bloqueado'), false);
     assert.equal(etiquetaVisible('jarvis-auto-3'), false);
     assert.equal(etiquetaVisible('lead'), true);
@@ -62,32 +64,38 @@ describe('Manychat', () => {
   test('contactos: lista con filtros, etiquetas visibles y en qué automatizaciones ha entrado', async () => {
     const { mc } = montar();
     const todos = await mc.contactos();
-    assert.equal(todos.total, 2);
+    assert.equal(todos.total, 3);
     const ana = todos.lista.find((c) => c.id === 'c1');
+    assert.equal(ana.usuario, 'ana.fit');
+    assert.equal(todos.lista.find((c) => c.id === 'c3').usuario, null);
     assert.deepEqual(ana.etiquetas, ['lead']);
     assert.deepEqual(ana.automatizaciones, [3]);
-    assert.deepEqual(todos.etiquetas, [{ nombre: 'lead', n: 1 }]);
-    assert.equal((await mc.contactos({ etiqueta: 'lead' })).total, 1);
+    assert.deepEqual(todos.etiquetas, [{ nombre: 'lead', n: 2 }]);
+    assert.equal((await mc.contactos({ etiqueta: 'lead' })).total, 2);
     assert.equal((await mc.contactos({ q: 'spam' })).total, 1);
-    assert.equal((await mc.contactos({ desde: '2026-10-15' })).total, 1);
+    assert.equal((await mc.contactos({ desde: '2026-10-15' })).total, 2);
     assert.equal((await mc.contactos({ automatizacion: '3' })).total, 1);
   });
 
-  test('CSV: usuario, nombre, enlace al perfil, recurso de entrada, último mensaje y recursos pedidos', async () => {
+  test('CSV: usuario, enlace al perfil, fecha de entrada, último mensaje y recursos pedidos', async () => {
     const { mc, db } = montar();
     db.prepare('INSERT INTO automatizaciones (id, config, zernio_id, flujos) VALUES (?, ?, ?, ?)').run(3, JSON.stringify({ nombre: 'Guía de reels' }), 'ca3', JSON.stringify([{ rama: 'b0', id: 'wf3' }]));
     db.prepare('INSERT INTO automatizaciones (id, config, zernio_id) VALUES (?, ?, ?)').run(4, JSON.stringify({ nombre: 'Plantilla Notion' }), 'ca4');
     const r = await mc.csv({ etiqueta: 'lead' });
-    assert.equal(r.total, 1);
+    assert.equal(r.total, 2);
     assert.match(r.nombre, /^contactos-2026-11-14\.csv$/);
     const lineas = r.contenido.replace('\ufeff', '').trim().split('\r\n');
-    assert.equal(lineas.length, 2);
-    assert.equal(lineas[0], 'Usuario;Nombre;Perfil de Instagram;Recurso de entrada;Fecha de entrada;Último mensaje;Recursos pedidos;Qué recursos');
-    // Entró por la guía (2 nov, 10:00 en España); luego pidió la plantilla; su último mensaje, el 10 nov a las 11:00
-    assert.equal(lineas[1], '@ana.fit;Ana Pérez;https://www.instagram.com/ana.fit/;Guía de reels;02/11/2026 10:00;10/11/2026 11:00;2;Guía de reels · Plantilla Notion');
+    assert.equal(lineas.length, 3);
+    assert.equal(lineas[0], 'Usuario;Perfil de Instagram;Fecha de entrada;Último mensaje;Recursos pedidos;Qué recursos');
+    // Zernio da «ana.fit (id)»: se queda el usuario. Entró por la guía (2 nov, 10:00 en España) y luego pidió la plantilla
+    assert.ok(lineas.includes('@ana.fit;https://www.instagram.com/ana.fit/;02/11/2026 10:00;10/11/2026 11:00;2;Guía de reels · Plantilla Notion'));
+    // «Kivy Fitness (id)» no es un usuario: el real sale de su comentario (por su id de Instagram)
+    assert.ok(lineas.includes('@kivy.fit;https://www.instagram.com/kivy.fit/;05/11/2026 13:00;12/11/2026 09:00;1;Plantilla Notion'));
+    // El filtro por automatización usa los recursos pedidos (no solo la etiqueta interna)
+    assert.deepEqual((await mc.contactos({ automatizacion: '4' })).lista.map((c) => c.id).sort(), ['c1', 'c3']);
     // Se guarda: aunque Zernio deje de devolver esos registros, el CSV los sigue teniendo (y no se duplican)
     await mc.csv({});
-    assert.equal(db.prepare('SELECT COUNT(*) AS n FROM mc_solicitudes').get().n, 2);
+    assert.equal(db.prepare('SELECT COUNT(*) AS n FROM mc_pedidos').get().n, 3);
     const ficha = await mc.fichaContacto('c1');
     assert.deepEqual(ficha.recursos.map((x) => x.nombre), ['Guía de reels', 'Plantilla Notion']);
     const lista = await mc.contactos({});
