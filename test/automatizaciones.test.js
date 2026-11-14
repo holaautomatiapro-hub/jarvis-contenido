@@ -193,7 +193,8 @@ describe('Automatizaciones (Zernio)', () => {
     const g = ramas[0].grafo;
     const ids = new Set(g.nodes.map((x) => x.id));
     assert.ok(g.edges.every((e) => ids.has(e.source) && ids.has(e.target)));
-    assert.ok(g.edges.some((e) => e.source === 'inicio' && e.target === 'sg_c'));
+    assert.ok(g.edges.some((e) => e.source === 'inicio' && e.target === 'guarda'), 'primero mira si está bloqueado o en pausa');
+    assert.ok(g.edges.some((e) => e.source === 'guarda' && e.target === 'sg_c' && e.sourceHandle === 'default'));
     assert.ok(g.edges.some((e) => e.source === 'sg_c' && e.target === 'm1' && e.sourceHandle === 'si'), 'si te sigue, el primer mensaje');
     assert.ok(g.edges.some((e) => e.source === 'sg_c' && e.target === 'm1' && e.sourceHandle === 'default'), 'si no se sabe, también');
     assert.ok(g.edges.some((e) => e.source === 'sg_c' && e.target === 'sg_no' && e.sourceHandle === 'no'));
@@ -204,6 +205,33 @@ describe('Automatizaciones (Zernio)', () => {
     assert.ok(g.edges.some((e) => e.source === 'm1_c' && e.target === 'm2' && e.sourceHandle === 'b0'));
   });
 
+  test('cada flujo empieza mirando si la persona está bloqueada o en pausa, y la etiqueta con la automatización', () => {
+    const { ramas } = compilar(normalizarConfig({ disparador: DISP, flujo: flujoLargo() }), { id: 9 });
+    const g = ramas[0].grafo;
+    assert.deepEqual(g.nodes.find((x) => x.id === 'guarda').config.rules.map((r) => [r.operator, r.value]), [['has_tag', 'jarvis-bloqueado'], ['has_tag', 'jarvis-pausado']]);
+    assert.ok(g.edges.some((e) => e.source === 'guarda' && e.target === 'fin_jarvis' && e.sourceHandle === 'bloqueado'));
+    assert.ok(g.edges.some((e) => e.source === 'guarda' && e.target === 'fin_jarvis' && e.sourceHandle === 'pausado'));
+    assert.deepEqual(g.nodes.find((x) => x.id === 'marca').config, { tag: 'jarvis-auto-9' });
+    assert.ok(g.edges.some((e) => e.source === 'guarda' && e.target === 'marca' && e.sourceHandle === 'default'));
+    assert.ok(g.edges.some((e) => e.source === 'marca' && e.target === 'm2'));
+  });
+
+  test('embudo y actualización de las guardadas con una versión anterior', async () => {
+    const { fetchImpl: base, llamadas } = falso();
+    const fetchImpl = async (url, o) => (/\/workflows\/wf\d+$/.test(String(url)) && (!o?.method || o.method === 'GET') ? new Response(JSON.stringify({ workflow: { totalStarted: 3, totalCompleted: 2 } }), { status: 200 }) : base(url, o));
+    const db = openDb(':memory:');
+    const a = createAutomatizaciones({ db, env: { ZERNIO_API_KEY: CLAVE }, fetchImpl, instagram });
+    const r = await a.crear({ nombre: 'Guía', disparador: DISP, flujo: flujoLargo() });
+    const { lista } = await a.embudo();
+    assert.deepEqual(lista[0].pasos.map((p) => [p.id, p.valor]), [['activaciones', 5], ['enviados', 4], ['pulsaron', 3], ['completaron', 2]]);
+    // Una guardada con la versión 1 se rehace sola
+    db.prepare('UPDATE automatizaciones SET grafo_v = 1 WHERE id = ?').run(r.id);
+    const antes = llamadas.length;
+    assert.equal((await a.actualizarGrafos()).rehechas, 1);
+    assert.ok(llamadas.slice(antes).some((l) => l[0] === 'PATCH' && l[1].startsWith('/workflows/')));
+    assert.equal((await a.actualizarGrafos()).rehechas, 0);
+  });
+
   test('palabra por privado: un solo workflow que empieza por el primer bloque', () => {
     const cfg = normalizarConfig({ disparador: { tipo: 'mensaje', palabras: 'precio' }, flujo: flujoLargo() });
     const { ramas, comentario } = compilar(cfg);
@@ -212,7 +240,7 @@ describe('Automatizaciones (Zernio)', () => {
     const g = ramas[0].grafo;
     assert.equal(g.nodes[0].config.matchType, 'contains');
     assert.ok(g.nodes[0].config.keywords.includes('PRECIO'));
-    assert.ok(g.edges.some((e) => e.source === 'inicio' && e.target === 'm1'));
+    assert.ok(g.edges.some((e) => e.source === 'guarda' && e.target === 'm1' && e.sourceHandle === 'default'));
   });
 
   test('las del formulario de antes se pasan al tablero', () => {

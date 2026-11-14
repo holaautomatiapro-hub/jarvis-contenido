@@ -57,6 +57,7 @@ export const TABS = [
   { id: 'laboratorio', label: 'Laboratorio', icon: 'flask' },
   { id: 'chat', label: 'Chat', icon: 'voice' },
   { id: 'instagram', label: 'Instagram', icon: 'instagram' },
+  { id: 'manychat', label: 'Manychat', icon: 'bolt' },
   { id: 'competencia', label: 'Competencia', icon: 'spy' },
   { id: 'ads', label: 'Meta Ads', icon: 'ads' },
 ];

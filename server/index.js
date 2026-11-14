@@ -42,6 +42,7 @@ import { createLaboratorio, carpetaPorDefecto } from './laboratorio.js';
 import { createFotosIa } from './fotos-ia.js';
 import { createMediosUrl } from './medios-url.js';
 import { createAutomatizaciones } from './automatizaciones.js';
+import { createManychat } from './manychat.js';
 import { promptCaption, limpiarCaption, createContextoCaption } from './caption.js';
 import { createRecortador } from './recortar.js';
 import { createAdjuntos, textoAdjuntos } from './adjuntos.js';
@@ -59,7 +60,7 @@ const DIST = path.join(ROOT, 'web', 'dist');
 // Replicar con diseño de carruseles o stories: lo hace Opus, como en Diseño
 const modeloReplicar = (formatos, disenar) => { try { return seDisena(normalizarFormatos(formatos), disenar) ? 'opus' : undefined; } catch { return undefined; } };
 
-export function createApp({ jarvis, archivos, miniaturas = null, estrategia = null, stories = null, acceso = null, publicadorIg, asistente, instagram, competencia, ads, publicar, hermes, jobs, kit, disenos, recordatorios, laboratorio, resultados, adjuntos, preferencias, actualizar, conversiones, confirmacionesIg = null, fotosIa = null, mediosUrl = null, automatizaciones = null, port, onChange = () => {}, status, tts = sintetizar }) {
+export function createApp({ jarvis, archivos, miniaturas = null, estrategia = null, stories = null, acceso = null, publicadorIg, asistente, instagram, competencia, ads, publicar, hermes, jobs, kit, disenos, recordatorios, laboratorio, resultados, adjuntos, preferencias, actualizar, conversiones, confirmacionesIg = null, fotosIa = null, mediosUrl = null, automatizaciones = null, manychat = null, port, onChange = () => {}, status, tts = sintetizar }) {
   const estadoSistema = status || (() => systemStatus({ vaultPath: jarvis.vault.base, instagram: Boolean(instagram?.estado().conectado), ads: Boolean(ads?.estado().conectado && ads?.estado().cuenta), hermes: Boolean(hermes?.estado().gateway.online) }));
   const app = express();
 
@@ -511,7 +512,37 @@ export function createApp({ jarvis, archivos, miniaturas = null, estrategia = nu
       app.put('/api/automatizaciones/:id', h((req) => automatizaciones.editar(req.params.id, req.body || {}), true));
       app.post('/api/automatizaciones/:id/pausar', h((req) => automatizaciones.pausar(req.params.id, req.body || {}), true));
       app.post('/api/automatizaciones/:id/duplicar', h((req) => automatizaciones.duplicar(req.params.id), true));
+      app.get('/api/automatizaciones-embudo', h(() => automatizaciones.embudo()));
       app.delete('/api/automatizaciones/:id', h((req) => automatizaciones.borrar(req.params.id), true));
+    }
+    // Manychat (Zernio): bandeja, contactos, plantillas, bloqueos y configuración
+    if (manychat) {
+      const q = (req) => req.query || {};
+      app.get('/api/manychat/conversaciones', h((req) => manychat.conversaciones(q(req))));
+      app.get('/api/manychat/conversaciones/:id', h((req) => manychat.verConversacion(req.params.id, req.query.cuenta)));
+      app.post('/api/manychat/conversaciones/:id/mensajes', h((req) => manychat.enviar(req.params.id, req.body || {}), true));
+      app.post('/api/manychat/conversaciones/:id/leido', h((req) => manychat.leido(req.params.id, req.body?.cuenta)));
+      app.post('/api/manychat/conversaciones/:id/estado', h((req) => manychat.archivar(req.params.id, req.body?.cuenta, req.body?.estado), true));
+      app.get('/api/manychat/contactos', h((req) => manychat.contactos(q(req))));
+      app.get('/api/manychat/contactos.csv', async (req, res) => {
+        try {
+          const r = await manychat.csv(q(req));
+          res.set({ 'Cache-Control': 'no-store', 'Content-Disposition': `attachment; filename="${r.nombre}"` }).type('text/csv; charset=utf-8').send(r.contenido);
+        } catch (e) { res.status(e.publico ? 400 : 500).json({ error: e.message }); }
+      });
+      app.get('/api/manychat/contactos/:id', h((req) => manychat.fichaContacto(req.params.id)));
+      app.put('/api/manychat/contactos/:id/etiquetas', h((req) => manychat.ponerEtiquetas(req.params.id, req.body?.etiquetas), true));
+      app.post('/api/manychat/contactos/:id/pausar', h((req) => manychat.pausar(req.params.id, req.body || {}), true));
+      app.get('/api/manychat/plantillas', h(() => manychat.plantillas()));
+      app.post('/api/manychat/plantillas', h((req) => manychat.crearPlantilla(req.body || {}), true));
+      app.put('/api/manychat/plantillas/:id', h((req) => manychat.editarPlantilla(req.params.id, req.body || {}), true));
+      app.delete('/api/manychat/plantillas/:id', h((req) => manychat.borrarPlantilla(req.params.id), true));
+      app.get('/api/manychat/bloqueos', h(() => manychat.bloqueos()));
+      app.post('/api/manychat/bloqueos', h((req) => manychat.bloquear(req.body || {}), true));
+      app.delete('/api/manychat/bloqueos/:id', h((req) => manychat.desbloquear(req.params.id), true));
+      app.get('/api/manychat/campos', h(() => manychat.campos()));
+      app.post('/api/manychat/campos', h((req) => manychat.crearCampo(req.body || {}), true));
+      app.get('/api/manychat/canales', h(() => manychat.canales()));
     }
     // Fotos con IA (Kie AI): las encarga generar_foto (MCP) y se guardan en la biblioteca
     if (fotosIa) {
@@ -955,6 +986,10 @@ function main() {
   // Automatizaciones (Zernio): las de «la siguiente publicación» se enganchan solas al post que salga
   const automatizaciones = createAutomatizaciones({ db, instagram, alCambiar: onChange, log: (m) => console.log(`  [Automatizaciones] ${m}`) });
   automatizaciones.iniciar();
+  // Las automatizaciones guardadas antes de los bloqueos se rehacen con la protección (una vez, al arrancar)
+  setTimeout(() => automatizaciones.actualizarGrafos().catch(() => {}), 15000).unref?.();
+  const manychat = createManychat({ db, auto: automatizaciones, alCambiar: onChange, log: (m) => console.log(`  [Manychat] ${m}`) });
+  manychat.iniciar();
   const competencia = createCompetencia({ db, instagram, vault: jarvis.vault, alCambiar: onChange });
   // La vista previa de los anuncios de la competencia se abre con el navegador de Diseño (motor, más abajo)
   const ads = createAds({ db, instagram, alCambiar: onChange, mediosDir: path.join(cfg.vaultPath, '.jarvis', 'anuncios'), renderizar: (url) => motor.mediosDePagina(url), fotograma: fotogramaDeVideo });
@@ -997,7 +1032,7 @@ function main() {
   }
   const estrategia = createEstrategia({ db, jarvis });
   stories = createStories({ db, jarvis, asistente, alCambiar: onChange });
-  const server = createServer(createApp({ jarvis, archivos, miniaturas, estrategia, stories, acceso, publicadorIg, asistente, instagram, competencia, ads, publicar, hermes, jobs, kit, disenos, recordatorios, laboratorio, resultados, adjuntos, preferencias, actualizar, conversiones, confirmacionesIg, fotosIa, mediosUrl, automatizaciones, port: cfg.port, onChange }));
+  const server = createServer(createApp({ jarvis, archivos, miniaturas, estrategia, stories, acceso, publicadorIg, asistente, instagram, competencia, ads, publicar, hermes, jobs, kit, disenos, recordatorios, laboratorio, resultados, adjuntos, preferencias, actualizar, conversiones, confirmacionesIg, fotosIa, mediosUrl, automatizaciones, manychat, port: cfg.port, onChange }));
   // Solo el propio dashboard puede escuchar los eventos (otra web abierta en el navegador, no)
   const local = hostsPermitidos(cfg.port);
   wss = new WebSocketServer({ server, path: '/ws', verifyClient: ({ origin, req }) => local.has(req.headers.host) && (!origin || local.has(origin.replace(/^https?:\/\//, ''))) && acceso.autorizado(req) });
