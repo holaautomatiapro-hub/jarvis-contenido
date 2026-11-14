@@ -9,6 +9,7 @@ import Chat from './views/Chat.jsx';
 import Instagram from './views/Instagram.jsx';
 import Competencia from './views/Competencia.jsx';
 import Ads from './views/Ads.jsx';
+import Manychat from './views/Manychat.jsx';
 import { obsidianUrl, useRecurso } from './lib/api.js';
 import { ponerFases } from './views/contenido/comun.jsx';
 
@@ -57,6 +58,7 @@ export default function App() {
   else if (tab === 'laboratorio') vista = <Laboratorio />;
   else if (tab === 'chat') vista = <Chat pendiente={pendiente} onConsumido={() => setPendiente(null)} />;
   else if (tab === 'instagram') vista = <Instagram />;
+  else if (tab === 'manychat') vista = <Manychat />;
   else if (tab === 'competencia') vista = <Competencia />;
   else if (tab === 'ads') vista = <Ads />;
   else vista = <Inicio data={inicio} onAsk={(t) => { setPendiente(t); go('chat'); }} acciones={acciones} recargar={recargarInicio} />;

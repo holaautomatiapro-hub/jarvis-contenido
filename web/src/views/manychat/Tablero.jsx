@@ -3,6 +3,7 @@ import { Background, Controls, Handle, Position, ReactFlow, ReactFlowProvider, u
 import '@xyflow/react/dist/style.css';
 import Icon from '../../components/Icon.jsx';
 import CampoEmoji from '../../components/CampoEmoji.jsx';
+import { ElegirPlantilla } from './comun.jsx';
 import { api, useRecurso } from '../../lib/api.js';
 import { DISPARADORES, MAX_BOTONES, TIPOS_BLOQUE, ZONA_HORARIA, bloqueNuevo, empiezaConComentario, esPrimero, esperaInicial, flujoInicial, salidasDe, validarFlujo } from '../../lib/flujo.js';
 
@@ -190,6 +191,7 @@ function PanelBloque({ n, primero, inicial, cambiar, quitarSalida }) {
       <>
         <label className="campo-et">Mensaje <span className="contador">{(d.texto || '').length} / {botones.length ? 640 : 1000}</span></label>
         <CampoEmoji rows={5} value={d.texto} onChange={(v) => pon('texto', v)} placeholder="¡Hola {{first_name}}! …" />
+        <ElegirPlantilla texto="Usar plantilla" onElegir={(p) => cambiar({ ...d, texto: p.texto, botones: [...botones, ...(p.botones || []).map((b) => ({ titulo: b.titulo, tipo: 'enlace', url: b.url }))].slice(0, MAX_BOTONES) })} />
         <p className="ayuda">{'{{first_name}}'} pone su nombre. {primero ? 'Es la respuesta privada al comentario: para seguir, la persona tiene que pulsar un botón.' : ''}</p>
         <label className="campo-et">Botones ({botones.length}/{MAX_BOTONES})</label>
         {botones.map((b, i) => (

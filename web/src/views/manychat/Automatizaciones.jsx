@@ -50,7 +50,7 @@ function Detalle({ id, onClose }) {
   );
 }
 
-function ConectarZernio({ onHecho }) {
+export function ConectarZernio({ onHecho }) {
   const [clave, setClave] = useState('');
   const [error, setError] = useState('');
   const [guardando, setGuardando] = useState(false);
@@ -82,10 +82,37 @@ const donde = (a) => {
   return a.media_titulo ? `«${a.media_titulo.slice(0, 50)}»` : `una ${cosa} concreta`;
 };
 
+// Embudo de cada automatización: cuántos pasan de un paso al siguiente
+function Embudo() {
+  const [d, , error] = useRecurso('/api/automatizaciones-embudo', null);
+  if (error) return <div className="aviso error">No se pudo cargar el embudo. {error}</div>;
+  if (!d) return <div className="panel panel-pad"><p className="ayuda">Calculando el embudo…</p></div>;
+  if (!d.lista.length) return <div className="panel panel-pad vacio">Cuando tengas automatizaciones, aquí verás su embudo.</div>;
+  return (
+    <div className="mc-embudos">
+      {d.lista.map((a) => (
+        <div key={a.id} className="panel panel-pad mc-embudo">
+          <div className="mc-embudo-cab"><b>{a.nombre}</b><span className="chip-estado"><span className={`dot ${a.estado === 'activa' ? 'on' : 'warn'}`} />{a.estado}</span></div>
+          {a.pasos.map((p, i) => (
+            <div key={p.id} className="mc-paso">
+              <span className="mc-paso-nombre">{p.nombre}</span>
+              <span className="mc-barra"><span style={{ width: `${i === 0 ? 100 : Math.min(100, p.pct)}%` }} /></span>
+              <b>{p.valor}</b>
+              <small>{i === 0 ? '' : `${p.pct}%`}</small>
+            </div>
+          ))}
+          {a.clics != null && <p className="ayuda">Clics en los enlaces del primer mensaje: <b>{a.clics}</b>{a.clicsUnicos != null ? ` (${a.clicsUnicos} personas)` : ''}</p>}
+        </div>
+      ))}
+    </div>
+  );
+}
+
 export default function Automatizaciones() {
   const [d, recargar, error] = useRecurso('/api/automatizaciones', null);
   const [editando, setEditando] = useState(null); // null | 'nueva' | automatización
   const [viendo, setViendo] = useState(null);
+  const [verEmbudo, setVerEmbudo] = useState(false);
   const [aviso, setAviso] = useState(null);
   // Mientras alguna espera «la siguiente», se mira de vez en cuando si ya se enganchó
   useEffect(() => {
@@ -110,13 +137,17 @@ export default function Automatizaciones() {
           <div className="label">Automatizaciones</div>
           <p className="ayuda">Comentan una palabra en tu publicación (o responden a una story, o te la escriben por privado) y les llega un mensaje; lo que pasa después lo diseñas en un tablero, como en ManyChat. Las envía Zernio{d.cuenta ? <> desde <b>@{d.cuenta}</b></> : ''}.</p>
         </div>
-        <button className="btn" onClick={() => setEditando('nueva')}><Icon name="plus" size={14} />Nueva automatización</button>
+        <div className="mc-cab-botones">
+          <button className={`btn btn-sec${verEmbudo ? ' on' : ''}`} onClick={() => setVerEmbudo((v) => !v)}><Icon name="chart" size={14} />{verEmbudo ? 'Ver automatizaciones' : 'Embudo'}</button>
+          <button className="btn" onClick={() => setEditando('nueva')}><Icon name="plus" size={14} />Nueva automatización</button>
+        </div>
       </div>
       {d.error && <div className="aviso error">{d.error}</div>}
       {d.reconectar && <div className="aviso error">Zernio dice que hay que volver a conectar tu Instagram: entra en zernio.com y reconéctalo.</div>}
       {aviso && <div className={`aviso ${aviso.ok ? 'ok' : 'error'}`}>{aviso.texto}</div>}
-      {!d.lista.length && <div className="panel panel-pad vacio">Aún no tienes automatizaciones. Crea la primera: eliges cuándo se activa y diseñas los mensajes en el tablero.</div>}
-      <div className="auto-lista">
+      {verEmbudo && <Embudo />}
+      {!verEmbudo && !d.lista.length && <div className="panel panel-pad vacio">Aún no tienes automatizaciones. Crea la primera: eliges cuándo se activa y diseñas los mensajes en el tablero.</div>}
+      {!verEmbudo && <div className="auto-lista">
         {d.lista.map((a) => {
           const [txt, punto] = ESTADO[a.estado] || [a.estado, 'warn'];
           const s = a.zernio?.stats || {};
@@ -146,7 +177,7 @@ export default function Automatizaciones() {
             </div>
           );
         })}
-      </div>
+      </div>}
       {editando && <Tablero inicial={editando === 'nueva' ? null : editando} meta={d.meta} onClose={() => setEditando(null)} onGuardado={recargar} />}
       {viendo && <Detalle id={viendo} onClose={() => setViendo(null)} />}
     </section>

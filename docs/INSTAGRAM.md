@@ -116,9 +116,14 @@ Con Instagram conectado con Facebook (opción A o B, con el permiso `instagram_c
 | *URL bloqueada* o *redirect_uri* al conectar | La URI del paso 2 no coincide exactamente. Revisa `http://localhost:3333/api/instagram/callback`. |
 | Faltan visualizaciones en algunas publicaciones | Meta no da todas las métricas para todos los tipos ni para publicaciones muy antiguas. JARVIS guarda las que hay. |
 
-## Automatizaciones (comentario → mensaje privado, como ManyChat)
+## Manychat: automatizaciones, bandeja, contactos y plantillas
 
-En **Instagram → Automatizaciones**. Las envía [Zernio](https://zernio.com), que tiene la app de Meta aprobada: tú no
+Todo está en la sección **Manychat** (arriba, junto a Instagram), en cinco pestañas: Automatizaciones, Bandeja de
+entrada, Contactos, Plantillas y Configuración.
+
+### Automatizaciones (comentario → mensaje privado)
+
+En **Manychat → Automatizaciones**. Las envía [Zernio](https://zernio.com), que tiene la app de Meta aprobada: tú no
 tienes que pasar la verificación de Meta.
 
 1. Crea tu cuenta en zernio.com y conecta allí tu Instagram (cuenta de empresa o creador, vinculada a una página de Facebook).
@@ -147,6 +152,8 @@ tienes que pasar la verificación de Meta.
    la palabra GUÍA que mande mi lead magnet de prompts y pregunte a qué se dedica». JARVIS diseña el flujo
    (`crear_automatizacion`) y lo deja **en pausa**: revísalo en el tablero y pulsa **Reanudar** para activarlo.
 4. En cada tarjeta: **Abrir tablero**, **Pausar / Reanudar**, **Resultados**, **Duplicar** (la copia queda en pausa) y **Eliminar**.
+5. **Embudo** (botón de arriba): por cada automatización, cuántos la activaron, a cuántos les llegó, cuántos
+   pulsaron un botón y cuántos llegaron al final, con el % de cada paso.
 
 Límites de Meta: el mensaje privado sale una sola vez por comentario y como mucho 7 días después; después, solo se le
 puede escribir en las 24 horas siguientes a su último mensaje (una espera más larga puede hacer que no llegue). Si
@@ -155,3 +162,41 @@ tienes ManyChat u otro bot en la misma cuenta con las mismas palabras, la person
 Cómo se monta en Zernio: el primer mensaje es una «comment automation» (respuesta pública, sígueme primero, botones) y
 cada botón con camino arranca un «workflow» con lo que cuelga de él; «por privado» es un solo workflow. Si los cambias
 en la web de Zernio, al guardar en JARVIS se sobrescriben.
+
+### Bandeja de entrada
+
+Los chats de Instagram (y de Facebook o WhatsApp si los conectas en Zernio), con filtros: abiertos o cerrados, no
+leídos, por etiqueta y buscador. Al abrir uno ves la conversación, puedes responder (con emojis, una plantilla o botones
+con enlace) y a la derecha tienes a la persona: si te sigue, sus etiquetas (añadir y quitar), **Pausar automatizaciones**
+(30 min, 1 h, 4 h, 24 h o hasta que la reanudes, para hablar tú sin que salte el bot), **Bloquear** y **Cerrar**.
+Meta deja responder 24 h después de su último mensaje; pasado eso, JARVIS lo envía como respuesta de una persona
+(`HUMAN_AGENT`), que Meta permite hasta 7 días. Encima del cuadro de texto ves cuánto tiempo te queda. No se puede
+escribir primero a alguien que nunca te ha escrito.
+
+### Contactos
+
+Todas las personas que han pasado por tus automatizaciones o te han escrito, con filtros (buscador, etiqueta,
+automatización en la que entró, suscritos / en pausa / bloqueados y fecha de alta). **Descargar CSV** baja exactamente
+lo filtrado (se abre en Excel o Google Sheets, separado por `;`), con sus campos y respuestas. Pulsa en una persona
+para ver su ficha: datos, etiquetas, automatizaciones en las que ha entrado, campos y respuestas, todo el historial
+de mensajes y **Abrir el chat**.
+
+### Plantillas
+
+Respuestas que repites (precio, cómo funciona, enlace a la llamada…), con carpeta y hasta 3 botones con enlace. Se
+pegan en la bandeja (botón **Plantilla**) y en los bloques Mensaje del tablero (**Usar plantilla**).
+
+### Configuración
+
+- **Bloqueos**: escribe el usuario de Instagram (o pega el enlace a su perfil) y nunca se le activará ninguna
+  automatización. Si aún no te ha escrito, queda *pendiente* y se aplica solo en cuanto aparezca (JARVIS lo mira cada
+  5 minutos). Cómo funciona: la persona queda bloqueada en Zernio y con la etiqueta `jarvis-bloqueado`, y todos los
+  flujos comprueban esa etiqueta antes del primer paso (al guardar JARVIS actualiza solo las automatizaciones que ya
+  tenías). La primera respuesta privada a un comentario la manda Zernio directamente; JARVIS la marca como bloqueada en
+  Zernio para que no la envíe, pero si alguna vez llegara, el resto del flujo ya no sigue.
+- **Canales**: las cuentas conectadas en Zernio. Facebook y WhatsApp se conectan en zernio.com.
+- **Campos personalizados**: ver y crear (texto, número, fecha, sí/no o lista de opciones).
+- **Etiquetas**: las que usan tus contactos y cuántos tiene cada una.
+
+Etiquetas internas que pone JARVIS y no se muestran: `jarvis-bloqueado`, `jarvis-pausado` y `jarvis-auto-<n>`
+(en qué automatización entró, para el filtro y el embudo).
