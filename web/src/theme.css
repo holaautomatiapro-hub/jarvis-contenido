@@ -1076,7 +1076,10 @@ input.filtro-select { padding-right: 10px; }
 .fotograma { outline: none; }
 .fotograma-video { position: relative; margin: 0 auto; width: min(100%, 300px); aspect-ratio: 9 / 16; background: #000; border-radius: 12px; overflow: hidden; }
 .fotograma-video video, .fotograma-video img { width: 100%; height: 100%; object-fit: contain; display: block; }
-.fotograma-perfil { position: absolute; left: 0; right: 0; top: 50%; transform: translateY(-50%); aspect-ratio: 3 / 4; border: 2px dashed rgba(255,255,255,.75); box-shadow: 0 0 0 999px rgba(0,0,0,.28); pointer-events: none; }
+.fotograma-perfil { position: absolute; left: 0; right: 0; top: 12.5%; aspect-ratio: 3 / 4; border: 2px dashed rgba(255,255,255,.75); box-shadow: 0 0 0 999px rgba(0,0,0,.35); cursor: grab; touch-action: none; }
+.fotograma-perfil:hover, .fotograma-perfil.moviendo { border-color: #fff; }
+.fotograma-perfil.moviendo { cursor: grabbing; }
+.fotograma-asa { position: absolute; left: 50%; bottom: 8px; transform: translateX(-50%); font-size: 11px; font-weight: 600; color: #fff; background: rgba(0,0,0,.55); border-radius: 999px; padding: 3px 10px; pointer-events: none; white-space: nowrap; }
 .fotograma-barra { display: flex; gap: 10px; align-items: center; margin: 12px 0 6px; }
 .fotograma-barra input[type=range] { flex: 1; accent-color: var(--accent); }
 .fotograma-t { font-variant-numeric: tabular-nums; font-size: 12px; color: var(--muted); white-space: nowrap; }

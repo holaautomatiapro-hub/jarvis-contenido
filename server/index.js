@@ -601,8 +601,8 @@ export function createApp({ jarvis, archivos, miniaturas = null, estrategia = nu
       const a = await archivos.guardar(req, { nombre: String(req.query.nombre || ''), mime: String(req.query.mime || '') });
       return req.query.jpg === '1' ? fotogramas.aJpg(a) : a;
     }));
-    // La portada de un reel: un fotograma del vídeo, en el segundo elegido
-    app.post('/api/contenido/fotograma', h((req) => fotogramas.comoPortada(String(req.body?.path || ''), req.body?.segundo)));
+    // La portada de un reel: un fotograma del vídeo, en el segundo elegido (y la franja que sale en el perfil)
+    app.post('/api/contenido/fotograma', h((req) => fotogramas.comoPortada(String(req.body?.path || ''), req.body?.segundo, req.body?.encuadre ?? null)));
     // Para elegir el momento aunque el navegador no sepa abrir el vídeo: cuánto dura y cómo se ve cada momento
     app.get('/api/contenido/fotograma/duracion', h(async (req) => ({ duracion: await fotogramas.duracion(String(req.query.ruta || '')) })));
     app.get('/api/contenido/fotograma/previa', async (req, res) => {
