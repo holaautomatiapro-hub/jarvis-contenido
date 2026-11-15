@@ -6,7 +6,7 @@ import { celdasMes, diaCorto, diaLargo, hoyIso, mesDe, nombreMes, sumarMeses } f
 import { EditorFases } from './Fases.jsx';
 import { redDe } from '../../lib/redes.js';
 import { colorCategoria } from '../../lib/categorias.js';
-import { ChipEstado, MarcaLeadMagnet, Miniatura, useFases, ponerFases, enPipeline, esIdea, Modal, esStory, estadoDe, objetivoDe, textoTipo, tipoDe } from './comun.jsx';
+import { ChipEstado, MarcaLeadMagnet, Miniatura, useFases, ponerFases, enPipeline, esHueco, esIdea, Modal, esStory, estadoDe, objetivoDe, textoTipo, tipoDe } from './comun.jsx';
 import { api } from '../../lib/api.js';
 
 const MAX_POR_DIA = 4;
@@ -294,7 +294,8 @@ export function Pipeline({ piezas: todas, onAbrir, onMover: moverPieza, onNuevaI
   const arrastrando = useRef(null);
   const columna = useRef(null); // la columna que se está arrastrando (para cambiar el orden)
   const piezas = useMemo(() => todas.filter(enPipeline), [todas]);
-  const soloBiblioteca = todas.length - piezas.length;
+  // Lo que solo está en la Biblioteca (sin contar los huecos del calendario, que se ven en el calendario)
+  const soloBiblioteca = todas.filter((p) => !enPipeline(p) && !esHueco(p)).length;
   // Mover una pieza en el pipeline la deja en el pipeline aunque no tenga fecha
   const onMover = (p, cambios) => moverPieza(p, { ...cambios, en_pipeline: true });
   const soltar = (estado) => (e) => {

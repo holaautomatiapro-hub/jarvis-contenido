@@ -86,6 +86,9 @@ describe('Qué sale en el pipeline', () => {
     assert.equal(enPipeline(movida), true, 'movida por ti: sí');
     assert.equal(enPipeline({ estado: 'listo', fecha: '2026-10-28' }), true, 'con fecha: sí');
     assert.equal(enPipeline({ estado: 'idea' }), true);
+    // Los huecos del calendario (día con título y nada dentro) no salen en la columna Idea: solo las ideas de la pestaña Ideas
+    assert.equal(enPipeline({ estado: 'idea', titulo: 'Post · Conexión', fecha: '2026-11-29', archivos: [] }), false);
+    assert.equal(enPipeline({ estado: 'idea', titulo: 'Idea con su nota', fecha: '2026-11-29', nota: '01-Ideas/x.md', archivos: [] }), true);
     // Desde el chat (MCP): mover a una fase o crear en una fase también la pone en el pipeline
     const { buildServer } = await import('../mcp/jarvis-mcp.js');
     const { Client } = await import('@modelcontextprotocol/sdk/client/index.js');
