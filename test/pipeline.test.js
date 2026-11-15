@@ -89,6 +89,14 @@ describe('Qué sale en el pipeline', () => {
     // Los huecos del calendario (día con título y nada dentro) no salen en la columna Idea: solo las ideas de la pestaña Ideas
     assert.equal(enPipeline({ estado: 'idea', titulo: 'Post · Conexión', fecha: '2026-11-29', archivos: [] }), false);
     assert.equal(enPipeline({ estado: 'idea', titulo: 'Idea con su nota', fecha: '2026-11-29', nota: '01-Ideas/x.md', archivos: [] }), true);
+    // Lo del Depósito sale en la columna «editar» (o en la de antes de «listo» si no existe); con día, en su fase
+    const { faseEnPipeline } = await import('../web/src/lib/pipeline.js');
+    const fases = [{ id: 'idea' }, { id: 'guion' }, { id: 'editar' }, { id: 'listo' }, { id: 'publicado' }];
+    const reserva = { estado: 'listo', deposito: 1, fecha: null };
+    assert.equal(enPipeline(reserva), true);
+    assert.equal(faseEnPipeline(reserva, fases), 'editar');
+    assert.equal(faseEnPipeline({ ...reserva, fecha: '2026-12-01' }, fases), 'listo');
+    assert.equal(faseEnPipeline(reserva, fases.filter((f) => f.id !== 'editar')), 'guion');
     // Desde el chat (MCP): mover a una fase o crear en una fase también la pone en el pipeline
     const { buildServer } = await import('../mcp/jarvis-mcp.js');
     const { Client } = await import('@modelcontextprotocol/sdk/client/index.js');
