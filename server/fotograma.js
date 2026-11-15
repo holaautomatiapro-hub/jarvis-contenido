@@ -22,11 +22,34 @@ function correr(bin, args, ejecutar, { conSalida = false } = {}) {
   });
 }
 
+// La cuadrícula del perfil enseña la franja 3:4 del centro de la portada (1080×1440 de 1080×1920). «encuadre» dice qué
+// franja quieres que salga ahí: 0 = la de arriba del todo, 0,5 = la del centro (sin tocar nada), 1 = la de abajo.
+// Para que se vea esa franja, la imagen se desplaza hasta dejarla en el centro y el hueco que queda arriba o abajo
+// se rellena con el mismo fotograma difuminado.
+export const ALTO = 1920;
+export const FRANJA = 1440;
+export function normalizarEncuadre(v) {
+  const n = Number(v);
+  return Number.isFinite(n) ? Math.min(1, Math.max(0, n)) : 0.5;
+}
+export function desplazamiento(encuadre) {
+  const recorrido = ALTO - FRANJA; // 480
+  return Math.round(recorrido / 2 - normalizarEncuadre(encuadre) * recorrido);
+}
+export function filtroEncuadre(encuadre, ancho = 1080) {
+  const alto = Math.round((ancho * ALTO) / 1080 / 2) * 2;
+  const dy = Math.round((desplazamiento(encuadre) * alto) / ALTO);
+  return `[0:v]scale=${ancho}:${alto}:force_original_aspect_ratio=decrease,pad=${ancho}:${alto}:(ow-iw)/2:(oh-ih)/2:black,setsar=1,split[fondo][foto];`
+    + `[fondo]boxblur=40:4[difuminado];[difuminado][foto]overlay=0:${dy}`;
+}
+const centrado = (encuadre) => encuadre == null || Math.abs(normalizarEncuadre(encuadre) - 0.5) < 0.01;
+
 // Un fotograma a un JPG (en `destino`); si el vídeo no deja saltar justo ahí, se busca leyendo (más lento)
-async function sacar({ origen, segundo, ancho, destino, ffmpeg, ejecutar }) {
+async function sacar({ origen, segundo, ancho, destino, ffmpeg, ejecutar, encuadre = null }) {
   const bin = await ffmpeg();
   const s = String(Math.max(0, Number(segundo) || 0));
-  const salida = ['-frames:v', '1', '-vf', `scale='min(${ancho},iw)':-2`, '-q:v', ancho > 500 ? '2' : '5', destino];
+  const filtro = centrado(encuadre) ? ['-vf', `scale='min(${ancho},iw)':-2`] : ['-filter_complex', filtroEncuadre(encuadre, ancho)];
+  const salida = ['-frames:v', '1', ...filtro, '-q:v', ancho > 500 ? '2' : '5', destino];
   const hay = () => existsSync(destino) && statSync(destino).size > 0;
   await correr(bin, ['-v', 'error', '-y', '-ss', s, '-i', origen, ...salida], ejecutar).catch(() => {});
   if (!hay()) await correr(bin, ['-v', 'error', '-y', '-i', origen, '-ss', s, ...salida], ejecutar).catch(() => {});
@@ -46,9 +69,10 @@ const videoDe = (archivos, rel) => {
 
 export function createFotogramas({ archivos, ffmpeg = rutaFfmpeg, ejecutar = spawn }) {
   // La portada: se guarda en Contenido y se devuelve como un archivo más
-  const comoPortada = (rel, segundo) => conTmp(async (tmp) => {
+  // encuadre: qué franja del vídeo sale en la cuadrícula del perfil (0 arriba, 0,5 centro, 1 abajo)
+  const comoPortada = (rel, segundo, encuadre = null) => conTmp(async (tmp) => {
     const destino = path.join(tmp, 'portada.jpg');
-    await sacar({ origen: videoDe(archivos, rel), segundo, ancho: 1080, destino, ffmpeg, ejecutar });
+    await sacar({ origen: videoDe(archivos, rel), segundo, ancho: 1080, destino, ffmpeg, ejecutar, encuadre });
     const base = path.basename(rel).replace(/^\d{13}-[a-f0-9]{6}_/, '').replace(/\.[^.]*$/, '');
     const s = Math.max(0, Number(segundo) || 0);
     return archivos.guardar(createReadStream(destino), { nombre: `portada-${base}-${s.toFixed(1).replace('.', '_')}s.jpg`, mime: 'image/jpeg' });

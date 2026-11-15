@@ -16,6 +16,23 @@ function ElegirFotograma({ video, onElegido, onClose }) {
   const [guardando, setGuardando] = useState(false);
   const [error, setError] = useState('');
   const [previa, setPrevia] = useState(0); // sin vídeo en el navegador: el momento de la vista previa del servidor
+  // Qué franja sale en la cuadrícula del perfil: 0 = arriba del todo, 0,5 = centro, 1 = abajo del todo
+  const [encuadre, setEncuadre] = useState(0.5);
+  const caja = useRef(null);
+  const arrastre = useRef(null);
+  const limitar = (v) => Math.min(1, Math.max(0, v));
+  // El recuadro (3:4) puede bajar un 25 % del alto del vídeo (9:16): ese es todo su recorrido
+  const empezar = (e) => {
+    e.preventDefault();
+    e.currentTarget.setPointerCapture?.(e.pointerId);
+    arrastre.current = { y: e.clientY, desde: encuadre, alto: caja.current?.getBoundingClientRect().height || 1 };
+  };
+  const mover = (e) => {
+    const a = arrastre.current;
+    if (!a) return;
+    setEncuadre(limitar(a.desde + (e.clientY - a.y) / (a.alto * 0.25)));
+  };
+  const soltar = () => { arrastre.current = null; };
   const ir = (s) => { setT(s); if (ref.current && !sinVer) ref.current.currentTime = s; };
   // Si el navegador no sabe abrir el vídeo (p. ej. un .mov HEVC del iPhone), JARVIS dice cuánto dura y enseña cada momento
   useEffect(() => {
@@ -29,11 +46,16 @@ function ElegirFotograma({ video, onElegido, onClose }) {
   }, [sinVer, t]);
   const usar = async () => {
     setGuardando(true); setError('');
-    try { onElegido(await api('/api/contenido/fotograma', { method: 'POST', body: { path: video.path, segundo: Math.round(t * 10) / 10 } })); }
+    try { onElegido(await api('/api/contenido/fotograma', { method: 'POST', body: { path: video.path, segundo: Math.round(t * 10) / 10, encuadre: Math.round(encuadre * 100) / 100 } })); }
     catch (e) { setError(e.message); setGuardando(false); }
   };
-  // Con las flechas: ← → una décima; con Mayús, un segundo
+  // Con las flechas: ← → una décima (con Mayús, un segundo); ↑ ↓ suben y bajan el recuadro del perfil
   const teclas = (e) => {
+    if (e.key === 'ArrowUp' || e.key === 'ArrowDown') {
+      e.preventDefault();
+      setEncuadre((v) => limitar(v + (e.key === 'ArrowUp' ? -0.05 : 0.05)));
+      return;
+    }
     if (e.key !== 'ArrowLeft' && e.key !== 'ArrowRight') return;
     e.preventDefault();
     const paso = (e.shiftKey ? 1 : 0.1) * (e.key === 'ArrowLeft' ? -1 : 1);
@@ -42,18 +64,23 @@ function ElegirFotograma({ video, onElegido, onClose }) {
   return (
     <Modal titulo={<><Icon name="palette" size={15} />Portada del reel: elige el fotograma</>} onClose={onClose} ancho={620} cerrarFuera={false} clase="fotograma-modal">
       <div className="fotograma" onKeyDown={teclas} tabIndex={-1}>
-        <div className="fotograma-video">
+        <div className="fotograma-video" ref={caja}>
           {sinVer ? <img src={`/api/contenido/fotograma/previa?ruta=${encodeURIComponent(video.path)}&s=${previa}`} alt="" />
             : <video ref={ref} src={video.url} muted playsInline preload="auto"
               onLoadedMetadata={(e) => { setDuracion(e.currentTarget.duration || 0); e.currentTarget.currentTime = 0.1; setT(0.1); }}
               onError={() => setSinVer(true)} />}
-          <span className="fotograma-perfil" title="Lo que se ve en la cuadrícula de tu perfil" />
+          <span className={`fotograma-perfil${arrastre.current ? ' moviendo' : ''}`} style={{ top: `${encuadre * 25}%` }}
+            onPointerDown={empezar} onPointerMove={mover} onPointerUp={soltar} onPointerCancel={soltar}
+            title="Lo que se ve en la cuadrícula de tu perfil: arrástralo arriba o abajo" role="slider" aria-label="Parte que sale en la cuadrícula del perfil"
+            aria-valuemin={0} aria-valuemax={100} aria-valuenow={Math.round(encuadre * 100)}>
+            <span className="fotograma-asa">↕ Arrastra</span>
+          </span>
         </div>
         <div className="fotograma-barra">
           <input type="range" min={0} max={duracion || 60} step={0.1} value={t} onChange={(e) => ir(Number(e.target.value))} aria-label="Momento del vídeo" autoFocus />
           <span className="fotograma-t">{tiempo(t)}{duracion ? ` / ${tiempo(duracion)}` : ''}</span>
         </div>
-        <div className="ayuda">Mueve la barra (o las flechas ← →; con Mayús, de segundo en segundo). El recuadro marca lo que se ve en la cuadrícula de tu perfil.</div>
+        <div className="ayuda">Mueve la barra (o las flechas ← →; con Mayús, de segundo en segundo). El recuadro marca lo que se ve en la cuadrícula de tu perfil: arrástralo arriba o abajo (o usa ↑ ↓) para elegir qué sale.{Math.abs(encuadre - 0.5) > 0.01 && <> Al moverlo, la portada se recoloca para que en el perfil salga esa parte; a pantalla completa se verá desplazada, con el hueco difuminado. <button type="button" className="link-btn" onClick={() => setEncuadre(0.5)}>Centrar</button></>}</div>
       </div>
       {error && <div className="caja-error">{error}</div>}
       <div className="modal-pie">
