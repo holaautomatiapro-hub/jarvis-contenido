@@ -6,7 +6,7 @@ import { celdasMes, diaCorto, diaLargo, hoyIso, mesDe, nombreMes, sumarMeses } f
 import { EditorFases } from './Fases.jsx';
 import { redDe } from '../../lib/redes.js';
 import { colorCategoria } from '../../lib/categorias.js';
-import { ChipEstado, MarcaLeadMagnet, Miniatura, useFases, ponerFases, enPipeline, esHueco, esIdea, Modal, esStory, estadoDe, objetivoDe, textoTipo, tipoDe } from './comun.jsx';
+import { ChipEstado, MarcaLeadMagnet, Miniatura, useFases, ponerFases, enPipeline, enDeposito, esHueco, esIdea, faseEnPipeline, columnaDeposito, Modal, esStory, estadoDe, objetivoDe, textoTipo, tipoDe } from './comun.jsx';
 import { api } from '../../lib/api.js';
 
 const MAX_POR_DIA = 4;
@@ -296,15 +296,18 @@ export function Pipeline({ piezas: todas, onAbrir, onMover: moverPieza, onNuevaI
   const piezas = useMemo(() => todas.filter(enPipeline), [todas]);
   // Lo que solo está en la Biblioteca (sin contar los huecos del calendario, que se ven en el calendario)
   const soloBiblioteca = todas.filter((p) => !enPipeline(p) && !esHueco(p)).length;
-  // Mover una pieza en el pipeline la deja en el pipeline aunque no tenga fecha
-  const onMover = (p, cambios) => moverPieza(p, { ...cambios, en_pipeline: true });
+  const colDeposito = columnaDeposito(ESTADOS);
+  const faseDe = (p) => faseEnPipeline(p, ESTADOS);
+  // Mover una pieza en el pipeline la deja en el pipeline aunque no tenga fecha; si estaba en el Depósito y la sacas de
+  // su columna, sale del Depósito
+  const onMover = (p, cambios) => moverPieza(p, { ...cambios, en_pipeline: true, ...(enDeposito(p) && cambios.estado && cambios.estado !== colDeposito ? { deposito: false } : {}) });
   const soltar = (estado) => (e) => {
     e.preventDefault();
     setSobre(null);
     if (columna.current) { reordenar(columna.current, estado); columna.current = null; return; }
     const id = Number(e.dataTransfer.getData('text/plain') || arrastrando.current);
     const p = piezas.find((x) => x.id === id);
-    if (p && p.estado !== estado) onMover(p, { estado });
+    if (p && faseDe(p) !== estado) onMover(p, { estado });
   };
   // Arrastrar la cabecera de una columna sobre otra la pone en su sitio (el orden se guarda para todos)
   const reordenar = async (desde, hasta) => {
@@ -327,12 +330,12 @@ export function Pipeline({ piezas: todas, onAbrir, onMover: moverPieza, onNuevaI
           <button className="chip" onClick={onNuevaIdea}><Icon name="plus" />Nueva idea</button>
         </div>
       </div>
-      <div className="ayuda pipeline-ayuda">Aquí sale lo que estás produciendo o tiene fecha. Arrastra una columna por su título para cambiarla de sitio.{soloBiblioteca > 0 && <> Hay {soloBiblioteca} {soloBiblioteca === 1 ? 'pieza' : 'piezas'} solo en la Biblioteca: salen aquí cuando les pones fecha o eliges su fase en la ficha.</>}</div>
+      <div className="ayuda pipeline-ayuda">Aquí sale lo que estás produciendo o tiene fecha. Arrastra una columna por su título para cambiarla de sitio. Lo del Depósito sale en «{ESTADOS.find((f) => f.id === colDeposito)?.label || 'Editar'}».{soloBiblioteca > 0 && <> Hay {soloBiblioteca} {soloBiblioteca === 1 ? 'pieza' : 'piezas'} solo en la Biblioteca: salen aquí cuando les pones fecha o eliges su fase en la ficha.</>}</div>
       {aviso && <div className="aviso error">{aviso}</div>}
       {editandoFases && <EditorFases piezas={todas} onClose={() => setEditandoFases(false)} />}
       <div className="kanban" style={{ gridTemplateColumns: `repeat(${ESTADOS.length}, minmax(148px, 1fr))` }}>
         {ESTADOS.map((c, idx) => {
-          const lista = piezas.filter((p) => p.estado === c.id).sort((a, b) => b.orden - a.orden || b.id - a.id);
+          const lista = piezas.filter((p) => faseDe(p) === c.id).sort((a, b) => b.orden - a.orden || b.id - a.id);
           const esIdea = c.id === 'idea';
           return (
             <div
@@ -361,6 +364,7 @@ export function Pipeline({ piezas: todas, onAbrir, onMover: moverPieza, onNuevaI
                   <div className="tarjeta-meta">
                     {p.formato && <span className="tag" style={{ background: 'color-mix(in srgb, var(--accent) 14%, transparent)', color: 'var(--accent-texto)' }}>{textoTipo(p.formato)}</span>}
                     {esIdea && p.fecha && <span className="mini"><Icon name="calendar" size={10} /> {p.fecha.slice(5).split('-').reverse().join('/')}</span>}
+                    {enDeposito(p) && <span className="mini" title="Está en el Depósito: ponle día para programarla"><Icon name="box" size={10} /> Depósito</span>}
                   </div>
                   <div className="tarjeta-acciones" onClick={(e) => e.stopPropagation()}>
                     {esIdea && onBorrar && <button className="tarjeta-borrar" onClick={() => onBorrar([p])} aria-label="Eliminar la idea" title="Eliminar la idea"><Icon name="trash" size={11} /></button>}

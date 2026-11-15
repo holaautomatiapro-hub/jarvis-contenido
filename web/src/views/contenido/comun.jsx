@@ -28,7 +28,7 @@ export function useFases() {
   }, []);
   return fases;
 }
-export { enPipeline, esHueco, esIdea } from '../../lib/pipeline.js';
+export { enPipeline, enDeposito, esHueco, esIdea, faseEnPipeline, columnaDeposito } from '../../lib/pipeline.js';
 export const estadoDe = (id) => fases.find((e) => e.id === id) || { id, label: id || '—', color: 'var(--muted)', icon: 'layers', ayuda: '' };
 
 export const TIPOS = [
